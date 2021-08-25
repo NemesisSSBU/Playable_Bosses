@@ -18,7 +18,7 @@ With this mod you're able to break free from Nintendo's restraints and be able t
 ## Setup
 Drop this mod into your ARCropolis folder and you're good to go.
 
-##Warning
+## Warning
 Do not use this mod in a multiplayer environment unless the other player also has this mod installed.
 
 ## Credit
