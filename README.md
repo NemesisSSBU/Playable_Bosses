@@ -6,9 +6,11 @@ With this mod you're able to break free from Nintendo's restraints and be able t
 
 *Compatible with almost any other mod*
 
+*Compatible with any gamemode*
+
 *Significantly less crashing*
 
-*Duet moves*
+*Boss duet moves*
 
 [Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html)
 * [Rust](https://www.rust-lang.org/install.html)
