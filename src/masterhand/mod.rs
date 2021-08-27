@@ -458,9 +458,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_END {
                         MotionModule::set_rate(boss_boma, 2.0);
                     }
-                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_START {
-                        
-                    }
                     if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIPPATAKU_HOLD {
                         MotionModule::set_rate(boss_boma, 1.2);
                         //Boss Control Stick Movement
@@ -740,6 +737,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         STOP_CONTROL_LOOP = true;
                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
                     }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW_LOOP {
+                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW, true);
+                        }
+                    }
                     if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WAIT_TIME {
                         STOP_CONTROL_LOOP = true;
                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
@@ -763,6 +765,21 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                     if CHARACTER_IS_TURNING == true {
                         MotionModule::set_rate(boss_boma, 2.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_HOMING {
+                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_HOLD, true);
+                        }
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DRILL_ATTACK {
+                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                            MotionModule::set_rate(boss_boma, 4.0);
+                        }
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING {
+                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) == false{
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU, true);
+                        }
                     }
                     if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_START {
                         MotionModule::set_rate(boss_boma, 1.5);
@@ -1191,7 +1208,27 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 {
                                 STOP_CONTROL_LOOP = false;
+                                if PostureModule::pos_y(boss_boma) <= 25.0 {
+                                    if PostureModule::pos_y(boss_boma) >= -25.0 {
+                                        if PostureModule::pos_x(boss_boma) <= 40.0 {
+                                            if PostureModule::pos_x(boss_boma) >= -40.0 {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_BARK, true);
+                                            }
+                                            else {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DRILL_START, true);
+                                                }
+                                        }
+                                        else {
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DRILL_START, true);
+                                            }
+                                    }
+                                    else {
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DRILL_START, true);
+                                        }
+                                }
+                                else {
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DRILL_START, true);
+                                }
                             }
                             if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
                                 STOP_CONTROL_LOOP = false;

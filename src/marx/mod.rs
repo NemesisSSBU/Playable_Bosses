@@ -454,6 +454,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 STOP_CONTROL_LOOP = true;
                             }
                         }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MARX_STATUS_KIND_ATTACK_FLY_OUT_HOMING {
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MARX_STATUS_KIND_ATTACK_FLY_OUT, true);
+                            }
+                        }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MARX_STATUS_KIND_ATTACK_THICK_LASER_END {
                             if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
                                 STOP_CONTROL_LOOP = true;

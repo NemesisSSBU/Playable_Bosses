@@ -725,6 +725,34 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_HIKOUKI_END {
                         MotionModule::set_rate(boss_boma, 1.4);
                     }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK {
+                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) == false {
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK, true);
+                        }
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK {
+                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK_END, true);
+                        }
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_LOOP {
+                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW, true);
+                        }
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_GROW_FINGER_LOOP {
+                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                            MotionModule::set_rate(boss_boma, 4.0);
+                        }
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_DRILL_ATTACK {
+                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                            MotionModule::set_rate(boss_boma, 4.0);
+                        }
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_GROW_FINGER_END {
+                        MotionModule::set_rate(boss_boma, 1.0);
+                    }
                     if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_COMPOUND_ATTACK_WAIT {
                         STOP_CONTROL_LOOP = true;
                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_WAIT_TELEPORT, true);
