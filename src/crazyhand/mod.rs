@@ -324,10 +324,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         
                     }
                     if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_DRILL_START {
-                        MotionModule::set_rate(boss_boma, 1.5);
-                    }
-                    if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_DRILL_ATTACK {
-                        MotionModule::set_rate(boss_boma, 2.2);
+                        MotionModule::set_rate(boss_boma, 1.7);
                     }
                     if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_DRILL_END {
                         MotionModule::set_rate(boss_boma, 2.0);
@@ -742,12 +739,15 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                     if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_GROW_FINGER_LOOP {
                         if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
-                            MotionModule::set_rate(boss_boma, 4.0);
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_GROW_FINGER_END, true);
                         }
                     }
                     if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_DRILL_ATTACK {
                         if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
                             MotionModule::set_rate(boss_boma, 4.0);
+                        }
+                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) == false {
+                            MotionModule::set_rate(boss_boma, 1.0);
                         }
                     }
                     if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_GROW_FINGER_END {
@@ -918,22 +918,22 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if TELEPORTED == false {
                                 //Boss Control Stick Movement
                                 if ControlModule::get_stick_x(module_accessor) <= 0.001 {
-                                        let pos = Vector3f{x: -150.0, y: 0.0, z: 0.0};
+                                        let pos = Vector3f{x: -140.0, y: 0.0, z: 0.0};
                                         PostureModule::add_pos(boss_boma, &pos);
                                         TELEPORTED = true;
                                 }
                                 if ControlModule::get_stick_x(module_accessor) >= -0.001 {
-                                        let pos = Vector3f{x: 150.0, y: 0.0, z: 0.0};
+                                        let pos = Vector3f{x: 140.0, y: 0.0, z: 0.0};
                                         PostureModule::add_pos(boss_boma, &pos);
                                         TELEPORTED = true;
                                 }
                                 if ControlModule::get_stick_y(module_accessor) <= 0.001 {
-                                        let pos = Vector3f{x: 0.0, y: -150.0, z: 0.0};
+                                        let pos = Vector3f{x: 0.0, y: -50.0, z: 0.0};
                                         PostureModule::add_pos(boss_boma, &pos);
                                         TELEPORTED = true;
                                 }
                                 if ControlModule::get_stick_y(module_accessor) >= -0.001 {
-                                        let pos = Vector3f{x: 0.0, y: 150.0, z: 0.0};
+                                        let pos = Vector3f{x: 0.0, y: 50.0, z: 0.0};
                                         PostureModule::add_pos(boss_boma, &pos);
                                         TELEPORTED = true;
                                 }
