@@ -153,7 +153,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == true {
                         if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
                             StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
-                            DamageModule::add_damage(module_accessor, 300.0, 0);
+                            DamageModule::add_damage(module_accessor, 360.0, 0);
                             STOP_CONTROL_LOOP = false;
                         }
                     }

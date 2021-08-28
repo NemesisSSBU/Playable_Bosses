@@ -7,7 +7,9 @@ mod crazyhand;
 mod galeem;
 mod marx;
 mod playable_masterhand;
-mod waluigi;
+mod dracula;
+mod rathalos;
+//mod waluigi;
 //mod killdebug;
 
 #[skyline::main(name = "playable_bosses")] 
@@ -18,6 +20,8 @@ mod waluigi;
        crazyhand::install();
        marx::install();
        playable_masterhand::install();
-       waluigi::install();
+       rathalos::install();
+       //waluigi::install();
+       dracula::install();
        //killdebug::install();
     }
