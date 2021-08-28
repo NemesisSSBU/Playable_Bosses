@@ -150,6 +150,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         }
         else {
             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+            let boss2_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
             if SPAWN_BOSS == true {
                 if fighter_kind == *FIGHTER_KIND_CHROM {
                     let x = PostureModule::pos_x(boss_boma);
@@ -216,18 +217,23 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_WAIT {
                         STOP_CONTROL_LOOP = true;
                     }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
+                        if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_STANDBY,true);
+                        }
+                    }
+                    
                     if StopModule::is_damage(boss_boma) {
                         if TRANSFORMED_MODE == false {
                             if DamageModule::damage(module_accessor, 0) >= 200.0 {
                                 TRANSFORMED_MODE = true;
                                 StatusModule::change_status_request_from_script(boss_boma,*ITEM_DRACULA_STATUS_KIND_CHANGE_START,true);
-                                StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_STANDBY,true);
-                                let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                                let boss2_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             
                                 ENTRANCE_ANIM = false;
                                 ItemModule::have_item(module_accessor,ItemKind(*ITEM_KIND_DRACULA2),0,0,false,false);
                                     BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                StatusModule::change_status_request_from_script(boss2_boma, *ITEM_STATUS_KIND_WAIT, true);
                             }
                         }
                     }
@@ -429,55 +435,55 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_TURN, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_TURN, true);
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_STRIKE, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_STRIKE, true);
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA_STATUS_KIND_TELEPORT_START, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA_STATUS_KIND_TELEPORT_START, true);
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_SLASH, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_SLASH, true);
                                 }
                                 if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_STEP_SLASH, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_STEP_SLASH, true);
                                 }
                                 if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_HOMING_SHOT_START, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_HOMING_SHOT_START, true);
                                 }
                                 if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_FRONT_JUMP, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_FRONT_JUMP, true);
                                 }
                                 if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_LW3 != 0 {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_FIRE_SHOT_START, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_FIRE_SHOT_START, true);
                                 }
                                 if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_SQUASH_START, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_SQUASH_START, true);
                                 }
                                 if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_BACK_JUMP, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_BACK_JUMP, true);
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_HI) {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_SHOCK_WAVE, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_SHOCK_WAVE, true);
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_S_R) {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_SLASH_THREE, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_SLASH_THREE, true);
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_LW) {
                                     STOP_CONTROL_LOOP = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_TURN_SLASH, true);
+                                    StatusModule::change_status_request_from_script(boss2_boma, *ITEM_DRACULA2_STATUS_KIND_TURN_SLASH, true);
                                 }
                             }
                         }

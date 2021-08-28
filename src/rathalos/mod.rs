@@ -59,7 +59,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             HAVE_ITEM = true;
                             ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
                             StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
-                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
                             StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
                         }
                     }
@@ -70,6 +70,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
 
                 if StopModule::is_damage(boss_boma) {
+                    if DamageModule::damage(module_accessor, 0) == 1.0 {
+                        StatusModule::change_status_request_from_script(boss_boma,*ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL,true);
+                        DamageModule::add_damage(module_accessor, 0.5, 0);
+                    }
                     if DamageModule::damage(module_accessor, 0) >= 300.0 {
                         if IS_BOSS_DEAD == false {
                             IS_BOSS_DEAD = true;
@@ -127,7 +131,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if sv_information::is_ready_go() == false {
                     if HAVE_ITEM == true {
                         if IS_BOSS_DEAD == false {
-                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT,true);
+                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_WAIT,true);
                         }
                     }
                 }
@@ -182,6 +186,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 //StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
                                 HAVE_ITEM = true;
                             }
+                        }
+                    }
+
+                    if sv_information::is_ready_go() == true {
+                        if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_WAIT {
+                            //StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
                         }
                     }
 
@@ -410,22 +420,22 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if IS_LANDED == false {
                                 //Boss Control Stick Movement
                                 if ControlModule::get_stick_x(module_accessor) <= 0.001 {
-                                    let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.2, y: 0.0, z: 0.0};
+                                    let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
                                     PostureModule::add_pos(boss_boma, &pos);
                                 }
                             
                                 if ControlModule::get_stick_x(module_accessor) >= -0.001 {
-                                    let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.2, y: 0.0, z: 0.0};
+                                    let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
                                     PostureModule::add_pos(boss_boma, &pos);
                                 }
                             
                                 if ControlModule::get_stick_y(module_accessor) <= 0.001 {
-                                    let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.2, z: 0.0};
+                                    let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
                                     PostureModule::add_pos(boss_boma, &pos);
                                 }
                             
                                 if ControlModule::get_stick_y(module_accessor) >= -0.001 {
-                                    let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.2, z: 0.0};
+                                    let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
                                     PostureModule::add_pos(boss_boma, &pos);
                                 }
                                 //Boss Moves
