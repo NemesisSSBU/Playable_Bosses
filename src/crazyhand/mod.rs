@@ -126,7 +126,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if sv_information::is_ready_go() == false {
                     if HAVE_ITEM == true {
                         if IS_BOSS_DEAD == false {
-                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_WAIT,true);
+                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_CRAZYHAND_STATUS_KIND_WAIT_FEINT,true);
                             MotionModule::set_rate(boss_boma, 0.0);
                         }
                     }
