@@ -175,7 +175,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 HAVE_ITEM = true;
                                 ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
                                 StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                //StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
                                 StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
                             }
                         }
@@ -222,7 +222,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         STOP_CONTROL_LOOP = true;
                         if HAVE_ITEM == true {
                             if IS_BOSS_DEAD == false {
-                                StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_WAIT,true);
+                                //StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_WAIT,true);
                             }
                         }
                     }
@@ -326,7 +326,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                                 }
                                 else {
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                    //StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
                                 }
                             }
                         }
