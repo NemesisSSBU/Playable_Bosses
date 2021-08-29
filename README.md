@@ -1,4 +1,4 @@
-# Playable Bosses Extension
+# Playable Bosses Competitive Edition
 
 With this mod you're able to break free from Nintendo's restraints and be able to play as and against Master Hand, Crazy Hand, WOL Master Hand, Dharkon, Galeem, Ganon, Rathos, Marx, Galleom, and Dracula anywhere at anytime you please. The sky is the limit.
 
@@ -8,7 +8,7 @@ With this mod you're able to break free from Nintendo's restraints and be able t
 
 *Compatible with any gamemode*
 
-*Significantly less crashing*
+*The most stable playable boss mod known*
 
 *Boss duet moves*
 
