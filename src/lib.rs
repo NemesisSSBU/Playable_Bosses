@@ -9,6 +9,8 @@ mod marx;
 mod playable_masterhand;
 mod dracula;
 mod rathalos;
+mod galleom;
+mod ganon;
 //mod waluigi;
 //mod killdebug;
 
@@ -21,7 +23,9 @@ mod rathalos;
        marx::install();
        playable_masterhand::install();
        rathalos::install();
-       //waluigi::install();
+       galleom::install();
        dracula::install();
+       ganon::install();
+       //waluigi::install();
        //killdebug::install();
     }
