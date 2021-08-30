@@ -165,7 +165,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                             ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                             if SPAWN_BOSS == true {
-                                let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
 
                                 ENTRANCE_ANIM = false;
                                 ItemModule::have_item(module_accessor,ItemKind(*ITEM_KIND_PLAYABLE_MASTERHAND),0,0,false,false);

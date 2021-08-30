@@ -118,7 +118,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if IS_BOSS_DEAD == false {
                             let vec3 = Vector3f{x: 0.0, y: -90.0, z: 0.0};
                             PostureModule::set_rot(boss_boma,&vec3,0);
-                            MotionModule::set_rate(boss_boma, 1.0);
                         }
                     }
                 }
@@ -127,7 +126,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if HAVE_ITEM == true {
                         if IS_BOSS_DEAD == false {
                             StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_WAIT,true);
-                            MotionModule::set_rate(boss_boma, 0.0);
                         }
                     }
                 }
@@ -188,10 +186,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 HAVE_ITEM = true;
                             }
                         }
-                    }
-
-                    if STOP_CONTROL_LOOP == true {
-                        MotionModule::set_rate(boss_boma, 1.0);
                     }
 
                     if sv_information::is_ready_go() == false {
