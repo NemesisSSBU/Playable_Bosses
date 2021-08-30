@@ -319,6 +319,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             PostureModule::add_pos(boss_boma, &pos);
                         }
                     }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_SPACE_RUSH_END {
+                        STOP_CONTROL_LOOP = true;
+                    }
                     if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_PIERCE_START {
                         STOP_CONTROL_LOOP = false;
                     }
