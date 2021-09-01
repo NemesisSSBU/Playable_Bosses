@@ -9,6 +9,7 @@ use smash::app::sv_battle_object;
 use std::u32;
 use smash::app::sv_information;
 use skyline::nn::ro::LookupSymbol;
+use acmd::acmd_func;
 
 static mut SPAWN_BOSS : bool = true;
 static mut HAVE_ITEM : bool = false;
@@ -19,6 +20,63 @@ static mut ENTRY_ID : usize = 0;
 static mut BOSS_ID : [u32; 8] = [0; 8];
 static mut IS_BOSS_DEAD : bool = false;
 pub static mut FIGHTER_MANAGER: usize = 0;
+
+#[acmd_func(
+    battle_object_category = BATTLE_OBJECT_CATEGORY_FIGHTER, 
+    battle_object_kind = FIGHTER_KIND_KEN,
+    animation = "fall_special",
+    animcmd = "game_fallspecial")]
+    pub fn wait(fighter: &mut L2CFighterCommon) {
+        let lua_state = fighter.lua_state_agent;
+        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+        pub unsafe fn entry_id(module_accessor: &mut BattleObjectModuleAccessor) -> usize {
+            let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+            return entry_id;
+        }
+        if sv_information::is_ready_go() == true {
+            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+            let vec3 = Vector3f{x: 0.0, y: -90.0, z: 0.0};
+            PostureModule::set_rot(boss_boma,&vec3,0);
+        }
+    }
+
+#[acmd_func(
+    battle_object_category = BATTLE_OBJECT_CATEGORY_FIGHTER, 
+    battle_object_kind = FIGHTER_KIND_KEN, 
+    animation = "passive_stand_b",
+    animcmd = "game_passivestandb")]
+    pub fn rot_l(fighter: &mut L2CFighterCommon) {
+        let lua_state = fighter.lua_state_agent;
+        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+        pub unsafe fn entry_id(module_accessor: &mut BattleObjectModuleAccessor) -> usize {
+            let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+            return entry_id;
+        }
+        if sv_information::is_ready_go() == true {
+            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+            let vec3 = Vector3f{x: 0.0, y: -90.0, z: 0.0};
+            PostureModule::set_rot(boss_boma,&vec3,0);
+        }
+    }
+
+#[acmd_func(
+    battle_object_category = BATTLE_OBJECT_CATEGORY_FIGHTER, 
+    battle_object_kind = FIGHTER_KIND_KEN, 
+    animation = "entry_r",
+    animcmd = "game_entryr")]
+    pub fn rot_r(fighter: &mut L2CFighterCommon) {
+        let lua_state = fighter.lua_state_agent;
+        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+        pub unsafe fn entry_id(module_accessor: &mut BattleObjectModuleAccessor) -> usize {
+            let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+            return entry_id;
+        }
+        if sv_information::is_ready_go() == true {
+            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+            let vec3 = Vector3f{x: 0.0, y: -90.0, z: 0.0};
+            PostureModule::set_rot(boss_boma,&vec3,0);
+        }
+    }
 
 pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
@@ -68,7 +126,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
 
                     if StopModule::is_damage(boss_boma) {
-                        if DamageModule::damage(module_accessor, 0) >= 300.0 {
+                        if DamageModule::damage(module_accessor, 0) >= 299.0 {
                             if IS_BOSS_DEAD == false {
                                 IS_BOSS_DEAD = true;
                                 StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
@@ -82,7 +140,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                             }
                         }
-                        DamageModule::add_damage(module_accessor, 0.5, 0);
+                        DamageModule::add_damage(module_accessor, 4.1, 0);
+                        if StopModule::is_stop(module_accessor) {
+                            StopModule::end_stop(module_accessor);
+                        }
+                        if StopModule::is_stop(boss_boma) {
+                            StopModule::end_stop(boss_boma);
+                        }
                     }
 
                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
@@ -114,15 +178,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    if sv_information::is_ready_go() == true {
-                        if HAVE_ITEM == true {
-                            if IS_BOSS_DEAD == false {
-                                let vec3 = Vector3f{x: 0.0, y: -90.0, z: 0.0};
-                                PostureModule::set_rot(boss_boma,&vec3,0);
-                            }
-                        }
-                    }
-
                     if sv_information::is_ready_go() == false {
                         if HAVE_ITEM == true {
                             if IS_BOSS_DEAD == false {
@@ -133,8 +188,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if sv_information::is_ready_go() == true {
                         GAME_START = true;
-                        let vec3 = Vector3f{x: 0.0, y: 90.0, z: 0.0};
-                        PostureModule::set_rot(boss_boma,&vec3,0);
                     }
             }}
             else {
@@ -191,8 +244,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                         if sv_information::is_ready_go() == false {
                             GAME_START = false;
-                            let vec3 = Vector3f{x: 0.0, y: -90.0, z: 0.0};
-                            PostureModule::set_rot(boss_boma,&vec3,0);
                         }
 
                         if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
@@ -204,8 +255,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                         if sv_information::is_ready_go() == true {
                             GAME_START = true;
-                            let vec3 = Vector3f{x: 0.0, y: -90.0, z: 0.0};
-                            PostureModule::set_rot(boss_boma,&vec3,0);
                         }
 
                         if IS_BOSS_DEAD == true {
@@ -229,7 +278,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
 
                         if StopModule::is_damage(boss_boma) {
-                            if DamageModule::damage(module_accessor, 0) >= 300.0 {
+                            if DamageModule::damage(module_accessor, 0) >= 299.0 {
                                 if IS_BOSS_DEAD == false {
                                     IS_BOSS_DEAD = true;
                                     StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
@@ -243,7 +292,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                                 }
                             }
-                            DamageModule::add_damage(module_accessor, 0.5, 0);
+                            DamageModule::add_damage(module_accessor, 4.1, 0);
+                            if StopModule::is_stop(module_accessor) {
+                                StopModule::end_stop(module_accessor);
+                            }
+                            if StopModule::is_stop(boss_boma) {
+                                StopModule::end_stop(boss_boma);
+                            }
                         }
 
                         if sv_information::is_ready_go() == false {
@@ -570,4 +625,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
 pub fn install() {
     acmd::add_custom_hooks!(once_per_fighter_frame);
+    acmd::add_hooks!(
+        rot_l,
+        rot_r,
+        wait
+    );
 }

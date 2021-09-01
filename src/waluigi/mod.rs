@@ -79,7 +79,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
 
                         if StopModule::is_damage(assist_boma) {
-                            DamageModule::add_damage(module_accessor, 0.5, 0);
+                            DamageModule::add_damage(module_accessor, 9.1, 0);
                         }
 
                         if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {

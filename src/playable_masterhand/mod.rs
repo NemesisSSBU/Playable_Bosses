@@ -84,7 +84,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     if StopModule::is_damage(boss_boma) {
-                        if DamageModule::damage(module_accessor, 0) >= 360.0 {
+                        if DamageModule::damage(module_accessor, 0) >= 359.0 {
                             if IS_BOSS_DEAD == false {
                                 IS_BOSS_DEAD = true;
                                 StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
@@ -98,7 +98,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                             }
                         }
-                        DamageModule::add_damage(module_accessor, 0.5, 0);
+                        DamageModule::add_damage(module_accessor, 4.1, 0);
+                        if StopModule::is_stop(module_accessor) {
+                            StopModule::end_stop(module_accessor);
+                        }
+                        if StopModule::is_stop(boss_boma) {
+                            StopModule::end_stop(boss_boma);
+                        }
                     }
 
                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
@@ -185,7 +191,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
 
                         if StopModule::is_damage(boss_boma) {
-                            if DamageModule::damage(module_accessor, 0) >= 360.0 {
+                            if DamageModule::damage(module_accessor, 0) >= 359.0 {
                                 if IS_BOSS_DEAD == false {
                                     IS_BOSS_DEAD = true;
                                     StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
@@ -201,7 +207,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                         }
-                        DamageModule::add_damage(module_accessor, 0.5, 0);
+                        DamageModule::add_damage(module_accessor, 4.1, 0);
+                        if StopModule::is_stop(module_accessor) {
+                            StopModule::end_stop(module_accessor);
+                        }
+                        if StopModule::is_stop(boss_boma) {
+                            StopModule::end_stop(boss_boma);
+                        }
                     }
 
                         if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {

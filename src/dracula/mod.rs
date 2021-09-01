@@ -85,7 +85,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     if StopModule::is_damage(boss_boma) {
-                        if DamageModule::damage(module_accessor, 0) >= 500.0 {
+                        if DamageModule::damage(module_accessor, 0) >= 499.0 {
                             if IS_BOSS_DEAD == false {
                                 IS_BOSS_DEAD = true;
                                 StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
@@ -99,7 +99,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                             }
                         }
-                        DamageModule::add_damage(module_accessor, 0.5, 0);
+                        DamageModule::add_damage(module_accessor, 4.1, 0);
+                        if StopModule::is_stop(module_accessor) {
+                            StopModule::end_stop(module_accessor);
+                        }
+                        if StopModule::is_stop(boss_boma) {
+                            StopModule::end_stop(boss_boma);
+                        }
                     }
 
                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
@@ -225,7 +231,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if TRANSFORMED_MODE == false {
                                 if DamageModule::damage(module_accessor, 0) >= 200.0 {
                                     TRANSFORMED_MODE = true;
-                                    DamageModule::add_damage(boss_boma, 300.0, 0);
+                                    DamageModule::add_damage(boss_boma, 500.0, 0);
                                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
                                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                                 
@@ -238,7 +244,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
         
                         if StopModule::is_damage(boss_boma) {
-                            if DamageModule::damage(module_accessor, 0) >= 500.0 {
+                            if DamageModule::damage(module_accessor, 0) >= 499.0 {
                                 if IS_BOSS_DEAD == false {
                                     IS_BOSS_DEAD = true;
                                     StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
@@ -252,7 +258,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                                 }
                             }
-                            DamageModule::add_damage(module_accessor, 0.5, 0);
+                            DamageModule::add_damage(module_accessor, 4.1, 0);
+                            if StopModule::is_stop(module_accessor) {
+                                StopModule::end_stop(module_accessor);
+                            }
+                            if StopModule::is_stop(boss_boma) {
+                                StopModule::end_stop(boss_boma);
+                            }
                         }
 
                         if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {

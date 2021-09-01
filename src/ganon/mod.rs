@@ -44,21 +44,21 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     let x = PostureModule::pos_x(boss_boma);
                     let y = PostureModule::pos_y(boss_boma);
                     let z = PostureModule::pos_z(boss_boma);
-                    let boss_pos = Vector3f{x: x, y: y, z: z};
-                    if PostureModule::pos_y(boss_boma) >= 220.0 {
-                        let boss_y_pos = Vector3f{x: x, y: 220.0, z: z};
+                    let boss_pos = Vector3f{x: x, y: y + 75.0, z: z};
+                    if PostureModule::pos_y(boss_boma) >= 145.0 {
+                        let boss_y_pos = Vector3f{x: x, y: 145.0, z: z};
                         PostureModule::set_pos(module_accessor, &boss_y_pos);
                     }
                     else if PostureModule::pos_y(boss_boma) <= -100.0 {
                         let boss_y_pos = Vector3f{x: x, y: -100.0, z: z};
                         PostureModule::set_pos(module_accessor, &boss_y_pos);
                     }
-                    else if PostureModule::pos_x(boss_boma) >= 200.0 {
-                        let boss_x_pos = Vector3f{x: 200.0, y: y, z: z};
+                    else if PostureModule::pos_x(boss_boma) >= 175.0 {
+                        let boss_x_pos = Vector3f{x: 175.0, y: y, z: z};
                         PostureModule::set_pos(module_accessor, &boss_x_pos);
                     }
-                    else if PostureModule::pos_x(boss_boma) <= -220.0 {
-                        let boss_x_pos = Vector3f{x: -220.0, y: y, z: z};
+                    else if PostureModule::pos_x(boss_boma) <= -175.0 {
+                        let boss_x_pos = Vector3f{x: -175.0, y: y, z: z};
                         PostureModule::set_pos(module_accessor, &boss_x_pos);
                     }
                     else {
@@ -100,9 +100,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if StopModule::is_damage(boss_boma) {
                         if DamageModule::damage(module_accessor, 0) == 1.0 {
                             StatusModule::change_status_request_from_script(boss_boma,*ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_READY_TURN_JUMP,true);
-                            DamageModule::add_damage(module_accessor, 0.5, 0);
+                            DamageModule::add_damage(module_accessor, 4.1, 0);
                         }
-                        if DamageModule::damage(module_accessor, 0) >= 400.0 {
+                        if DamageModule::damage(module_accessor, 0) >= 399.0 {
                             if IS_BOSS_DEAD == false {
                                 IS_BOSS_DEAD = true;
                                 StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
@@ -116,7 +116,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                             }
                         }
-                        DamageModule::add_damage(module_accessor, 0.5, 0);
+                        DamageModule::add_damage(module_accessor, 4.1, 0);
+                        if StopModule::is_stop(module_accessor) {
+                            StopModule::end_stop(module_accessor);
+                        }
+                        if StopModule::is_stop(boss_boma) {
+                            StopModule::end_stop(boss_boma);
+                        }
                     }
 
                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
@@ -130,7 +136,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if sv_information::is_ready_go() == true {
                             if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
                                 StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
-                                DamageModule::add_damage(module_accessor, 300.0, 0);
+                                DamageModule::add_damage(module_accessor, 400.0, 0);
                                 STOP_CONTROL_LOOP = false;
                             }
                         }
@@ -222,7 +228,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if sv_information::is_ready_go() == true {
                                 if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
                                     StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
-                                    DamageModule::add_damage(module_accessor, 300.0, 0);
+                                    DamageModule::add_damage(module_accessor, 400.0, 0);
                                     STOP_CONTROL_LOOP = false;
                                 }
                             }
@@ -239,7 +245,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
 
                         if StopModule::is_damage(boss_boma) {
-                            if DamageModule::damage(module_accessor, 0) >= 400.0 {
+                            if DamageModule::damage(module_accessor, 0) >= 399.0 {
                                 if IS_BOSS_DEAD == false {
                                     IS_BOSS_DEAD = true;
                                     StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
@@ -253,7 +259,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                                 }
                             }
-                            DamageModule::add_damage(module_accessor, 0.5, 0);
+                            DamageModule::add_damage(module_accessor, 4.1, 0);
+                            if StopModule::is_stop(module_accessor) {
+                                StopModule::end_stop(module_accessor);
+                            }
+                            if StopModule::is_stop(boss_boma) {
+                                StopModule::end_stop(boss_boma);
+                            }
                         }
 
                         if sv_information::is_ready_go() == false {
@@ -340,6 +352,59 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_STANDBY {
                                 STOP_CONTROL_LOOP = true;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_DOWN_END {
+                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                    STOP_CONTROL_LOOP = true;
+                                }
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_LOOP_END {
+                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                    STOP_CONTROL_LOOP = true;
+                                }
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_SPIN_SLASH_END_REVERSE {
+                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                    STOP_CONTROL_LOOP = true;
+                                }
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_BODY_ATTACK_END {
+                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                    STOP_CONTROL_LOOP = true;
+                                }
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_SPIN_SLASH_END {
+                                STOP_CONTROL_LOOP = true;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_END {
+                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                    STOP_CONTROL_LOOP = true;
+                                }
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_BIG_JUMP_END {
+                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                    STOP_CONTROL_LOOP = true;
+                                }
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_DOWN_END {
+                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                    STOP_CONTROL_LOOP = true;
+                                }
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_LOOP_END {
+                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                    STOP_CONTROL_LOOP = true;
+                                }
                             }
 
                             if STOP_CONTROL_LOOP == true {
