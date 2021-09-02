@@ -84,12 +84,27 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                             }
                         }
-                        DamageModule::add_damage(module_accessor, 4.1, 0);
-                        if StopModule::is_stop(module_accessor) {
-                            StopModule::end_stop(module_accessor);
+                        if StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_LOOK_START {
+                            if StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_LOOK_LOOP {
+                                if StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_LOOK_END {
+                                    DamageModule::add_damage(module_accessor, 4.1, 0);
+                                    if StopModule::is_stop(module_accessor) {
+                                        StopModule::end_stop(module_accessor);
+                                    }
+                                    if StopModule::is_stop(boss_boma) {
+                                        StopModule::end_stop(boss_boma);
+                                    }
+                                }
+                                else {
+                                    DamageModule::add_damage(module_accessor, 0.1, 0);
+                                }
+                            }
+                            else {
+                                DamageModule::add_damage(module_accessor, 0.1, 0);
+                            }
                         }
-                        if StopModule::is_stop(boss_boma) {
-                            StopModule::end_stop(boss_boma);
+                        else {
+                            DamageModule::add_damage(module_accessor, 0.1, 0);
                         }
                     }
 
@@ -257,12 +272,27 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                                 }
                             }
-                            DamageModule::add_damage(module_accessor, 4.1, 0);
-                            if StopModule::is_stop(module_accessor) {
-                                StopModule::end_stop(module_accessor);
+                            if StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_LOOK_START {
+                                if StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_LOOK_LOOP {
+                                    if StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_LOOK_END {
+                                        DamageModule::add_damage(module_accessor, 4.1, 0);
+                                        if StopModule::is_stop(module_accessor) {
+                                            StopModule::end_stop(module_accessor);
+                                        }
+                                        if StopModule::is_stop(boss_boma) {
+                                            StopModule::end_stop(boss_boma);
+                                        }
+                                    }
+                                    else {
+                                        DamageModule::add_damage(module_accessor, 0.1, 0);
+                                    }
+                                }
+                                else {
+                                    DamageModule::add_damage(module_accessor, 0.1, 0);
+                                }
                             }
-                            if StopModule::is_stop(boss_boma) {
-                                StopModule::end_stop(boss_boma);
+                            else {
+                                DamageModule::add_damage(module_accessor, 0.1, 0);
                             }
                         }
 

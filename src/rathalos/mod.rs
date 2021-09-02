@@ -169,7 +169,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                 if SPAWN_BOSS == true {
                     if fighter_kind == *FIGHTER_KIND_RICHTER {
-                        if MotionModule::frame(fighter.module_accessor) >= 29.0 {
+                        if MotionModule::frame(fighter.module_accessor) >= 99.0 {
                             if sv_information::is_ready_go() == false {
                                 IS_LANDED = true;
                                 GAME_START = false;
@@ -185,10 +185,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     ItemModule::have_item(module_accessor,ItemKind(*ITEM_KIND_LIOLEUSBOSS),0,0,false,false);
                                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
                                     ModelModule::set_scale(module_accessor,0.0001);
-                                    //StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
-                                    //StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
-                                    //StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
-                                    //StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
                                     HAVE_ITEM = true;
                                 }
                             }
@@ -267,7 +263,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             STOP_CONTROL_LOOP = true;
                         }
 
-                        if MotionModule::frame(fighter.module_accessor) >= 30.0 {
+                        if MotionModule::frame(fighter.module_accessor) >= 100.0 {
                             if sv_information::is_ready_go() == true {
                                 HAVE_ITEM = true;
                             }
