@@ -39,15 +39,18 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             );
             let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
             if fighter_kind == *FIGHTER_KIND_KEN {
-                if sv_information::is_ready_go() == true {
+                if HAVE_ITEM == true {
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                    if lua_bind::PostureModule::lr(module_accessor) == -1.0 { // left
-                        let vec3 = Vector3f{x: 0.0, y: 90.0, z: 0.0};
-                        PostureModule::set_rot(boss_boma,&vec3,0);
-                    }
-                    if lua_bind::PostureModule::lr(module_accessor) == 1.0 { // right
-                        let vec3 = Vector3f{x: 0.0, y: -90.0, z: 0.0};
-                        PostureModule::set_rot(boss_boma,&vec3,0);
+                    if sv_information::is_ready_go() == false {
+                        StatusModule::change_status_request_from_script(boss_boma,*ITEM_MARX_STATUS_KIND_DEBUG_CONTROL,true);
+                        if lua_bind::PostureModule::lr(module_accessor) == -1.0 { // left
+                            let vec3 = Vector3f{x: 0.0, y: 90.0, z: 0.0};
+                            PostureModule::set_rot(boss_boma,&vec3,0);
+                        }
+                        if lua_bind::PostureModule::lr(module_accessor) == 1.0 { // right
+                            let vec3 = Vector3f{x: 0.0, y: -90.0, z: 0.0};
+                            PostureModule::set_rot(boss_boma,&vec3,0);
+                        }
                     }
                 }
             }
@@ -100,13 +103,32 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FOLLOW_EYE_START {
                                 if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FOLLOW_EYE_START {
                                     if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FACET_EYE_LASER_START {
-                                        if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FACET_EYE_LASER_END {
-                                            DamageModule::add_damage(module_accessor, 4.1, 0);
-                                            if StopModule::is_stop(module_accessor) {
-                                                StopModule::end_stop(module_accessor);
+                                        if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FACET_EYE_LASER {
+                                            if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FACET_EYE_LASER_END {
+                                                if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FOLLOW_EYE_END {
+                                                        if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FOLLOW_EYE_LOOP {
+                                                            DamageModule::add_damage(module_accessor, 4.1, 0);
+                                                            if StopModule::is_stop(module_accessor) {
+                                                                StopModule::end_stop(module_accessor);
+                                                            }
+                                                            if StopModule::is_stop(boss_boma) {
+                                                                StopModule::end_stop(boss_boma);
+                                                            }
+                                                        }
+                                                        else {
+                                                            DamageModule::add_damage(module_accessor, 0.1, 0);
+                                                        }
+                                                    }
+                                                    else {
+                                                        DamageModule::add_damage(module_accessor, 0.1, 0);
+                                                    }
+                                                }
+                                                else {
+                                                    DamageModule::add_damage(module_accessor, 0.1, 0);
+                                                }
                                             }
-                                            if StopModule::is_stop(boss_boma) {
-                                                StopModule::end_stop(boss_boma);
+                                            else {
+                                                DamageModule::add_damage(module_accessor, 0.1, 0);
                                             }
                                         }
                                         else {
@@ -125,10 +147,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 DamageModule::add_damage(module_accessor, 0.1, 0);
                             }
                         }
-                        else {
-                            DamageModule::add_damage(module_accessor, 0.1, 0);
-                        }
-                    }
 
                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
                         if IS_BOSS_DEAD == false {
@@ -277,13 +295,32 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FOLLOW_EYE_START {
                                     if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FOLLOW_EYE_START {
                                         if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FACET_EYE_LASER_START {
-                                            if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FACET_EYE_LASER_END {
-                                                DamageModule::add_damage(module_accessor, 4.1, 0);
-                                                if StopModule::is_stop(module_accessor) {
-                                                    StopModule::end_stop(module_accessor);
+                                            if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FACET_EYE_LASER {
+                                                if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FACET_EYE_LASER_END {
+                                                    if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FOLLOW_EYE_END {
+                                                            if StatusModule::status_kind(boss_boma) != *ITEM_MARX_STATUS_KIND_ATTACK_FOLLOW_EYE_LOOP {
+                                                                DamageModule::add_damage(module_accessor, 4.1, 0);
+                                                                if StopModule::is_stop(module_accessor) {
+                                                                    StopModule::end_stop(module_accessor);
+                                                                }
+                                                                if StopModule::is_stop(boss_boma) {
+                                                                    StopModule::end_stop(boss_boma);
+                                                                }
+                                                            }
+                                                            else {
+                                                                DamageModule::add_damage(module_accessor, 0.1, 0);
+                                                            }
+                                                        }
+                                                        else {
+                                                            DamageModule::add_damage(module_accessor, 0.1, 0);
+                                                        }
+                                                    }
+                                                    else {
+                                                        DamageModule::add_damage(module_accessor, 0.1, 0);
+                                                    }
                                                 }
-                                                if StopModule::is_stop(boss_boma) {
-                                                    StopModule::end_stop(boss_boma);
+                                                else {
+                                                    DamageModule::add_damage(module_accessor, 0.1, 0);
                                                 }
                                             }
                                             else {
@@ -302,10 +339,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     DamageModule::add_damage(module_accessor, 0.1, 0);
                                 }
                             }
-                            else {
-                                DamageModule::add_damage(module_accessor, 0.1, 0);
-                            }
-                        }
 
                         if sv_information::is_ready_go() == false {
                             STOP_CONTROL_LOOP = true;
