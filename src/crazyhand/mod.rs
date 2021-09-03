@@ -23,8 +23,9 @@ static mut IS_BOSS_DEAD : bool = false;
 
 pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
-            let lua_state = fighter.lua_state_agent;
-            let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+        let lua_state = fighter.lua_state_agent;
+        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+        if WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_COLOR) == 0 {
             let fighter_kind = smash::app::utility::get_kind(module_accessor);
             pub unsafe fn entry_id(module_accessor: &mut BattleObjectModuleAccessor) -> usize {
                 let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
@@ -38,7 +39,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 .as_ptr(),
             );
             let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
-        //if smash::lib::lua_const::FIGHTER_INSTANCE_WORK_ID_INT_COLOR == 0 {
             if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                 if fighter_kind == *FIGHTER_KIND_PICHU {
@@ -1148,7 +1148,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             }
         }
     }
-//}
+}
                 
 
 pub fn install() {
