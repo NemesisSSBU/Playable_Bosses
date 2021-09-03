@@ -200,6 +200,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                         }
+    
+                        if STOP_CONTROL_LOOP == true {
+                            if sv_information::is_ready_go() == true {
+                                if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
+                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                }
+                            }
+                        }
 
                         if sv_information::is_ready_go() == true {
                             if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_WAIT {

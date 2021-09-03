@@ -14,7 +14,7 @@ mod ganon;
 //mod waluigi;
 //mod killdebug;
 
-#[skyline::main(name = "playable_bosses")] 
+#[skyline::main(name = "comp_playable_bosses")] 
  pub fn main() {
        galeem::install();
        dharkon::install();
