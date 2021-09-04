@@ -99,6 +99,16 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    if sv_information::is_ready_go() == true {
+                        if DamageModule::damage(module_accessor, 0) >= 1.0 {
+
+                        }
+                        else {
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
+                            DamageModule::add_damage(module_accessor, 0.1, 0);
+                        }
+                    }
+
                     DamageModule::set_damage_lock(boss_boma,true);
                     WHOLE_HIT(fighter, *HIT_STATUS_XLU);
                     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
@@ -792,6 +802,16 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
+                        if sv_information::is_ready_go() == true {
+                            if DamageModule::damage(module_accessor, 0) >= 1.0 {
+
+                            }
+                            else {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
+                                DamageModule::add_damage(module_accessor, 0.1, 0);
+                            }
+                        }
+
                             if STOP_CONTROL_LOOP == true {
                                 if HAVE_ITEM == true {
                                 
@@ -799,20 +819,20 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if sv_information::is_ready_go() == true {
                                         if ControlModule::get_stick_x(module_accessor) <= 1.0 {
                                             if KICKSTART_ANIM_BEGIN == false {
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
                                                 KICKSTART_ANIM_BEGIN = true;
                                             }
-                                            if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                            if StatusModule::status_kind(boss_boma) != *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
                                             }
                                         }
                                         if ControlModule::get_stick_x(module_accessor) >= 1.0 {
                                             if KICKSTART_ANIM_BEGIN == false {
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
                                                 KICKSTART_ANIM_BEGIN = true;
                                             }
-                                            if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                            if StatusModule::status_kind(boss_boma) != *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
                                             }
                                         }
                                         //Boss Moves
