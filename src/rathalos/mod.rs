@@ -20,6 +20,7 @@ static mut ENTRY_ID : usize = 0;
 static mut BOSS_ID : [u32; 8] = [0; 8];
 static mut IS_BOSS_DEAD : bool = false;
 pub static mut FIGHTER_MANAGER: usize = 0;
+static mut KICKSTART_ANIM_BEGIN : bool = false;
 
 pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
@@ -75,6 +76,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if fighter_kind == *FIGHTER_KIND_RICHTER {
                     if MotionModule::frame(fighter.module_accessor) >= 29.0 {
                         if sv_information::is_ready_go() == false {
+                            KICKSTART_ANIM_BEGIN = false;
                             IS_LANDED = true;
                             HAVE_ITEM = false;
                             IS_BOSS_DEAD = false;
@@ -173,6 +175,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if fighter_kind == *FIGHTER_KIND_RICHTER {
                         if MotionModule::frame(fighter.module_accessor) >= 29.0 {
                             if sv_information::is_ready_go() == false {
+                                KICKSTART_ANIM_BEGIN = false;
                                 IS_LANDED = true;
                                 GAME_START = false;
                                 HAVE_ITEM = false;
@@ -188,21 +191,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
                                     ModelModule::set_scale(module_accessor,0.0001);
                                     HAVE_ITEM = true;
-                                }
-                            }
-                        }
-    
-                        if STOP_CONTROL_LOOP == true {
-                            if sv_information::is_ready_go() == true {
-                                if IS_LANDED == true {
-                                    if StatusModule::status_kind(boss_boma) != *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT {
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
-                                    }
-                                }
-                                else {
-                                    if StatusModule::status_kind(boss_boma) != *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT_AIR {
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT_AIR, true);
-                                    }
                                 }
                             }
                         }
@@ -392,7 +380,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_STANDBY {
                                 STOP_CONTROL_LOOP = true;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_END, true);
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_HOLE_END {
@@ -810,12 +798,22 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if IS_LANDED == true {
                                     if sv_information::is_ready_go() == true {
                                         if ControlModule::get_stick_x(module_accessor) <= 1.0 {
-                                            STOP_CONTROL_LOOP = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                            if KICKSTART_ANIM_BEGIN == false {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                KICKSTART_ANIM_BEGIN = true;
+                                            }
+                                            if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                            }
                                         }
                                         if ControlModule::get_stick_x(module_accessor) >= 1.0 {
-                                            STOP_CONTROL_LOOP = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                            if KICKSTART_ANIM_BEGIN == false {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                KICKSTART_ANIM_BEGIN = true;
+                                            }
+                                            if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                            }
                                         }
                                         //Boss Moves
                                         if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
@@ -866,12 +864,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if IS_LANDED == false {
                                         if sv_information::is_ready_go() == true {
                                             if ControlModule::get_stick_x(module_accessor) <= 1.0 {
-                                                STOP_CONTROL_LOOP = false;
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                }
                                             }
                                             if ControlModule::get_stick_x(module_accessor) >= 1.0 {
-                                                STOP_CONTROL_LOOP = false;
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                }
                                             }
                                         //Boss Control Stick Movement
                                         if ControlModule::get_stick_x(module_accessor) <= 0.001 {

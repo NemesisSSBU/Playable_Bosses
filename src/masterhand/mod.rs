@@ -176,6 +176,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     //DamageModule::add_damage(boss_boma, 149.0, 0);
                                     //DamageModule::add_damage(module_accessor, -299.0, 0);
                                     //DamageModule::add_damage(boss_boma, -299.0, 0);
+                                    //DamageModule::add_damage(boss_boma, 299.0, 0);
                                     StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
                                     //ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
                                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT, true);
@@ -213,21 +214,21 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
-                    if IS_BOSS_DEAD == true {
-                        if sv_information::is_ready_go() == true {
-                            if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
-                                StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
-                                DamageModule::add_damage(module_accessor, 360.0, 0);
-                                STOP_CONTROL_LOOP = false;
+                        if IS_BOSS_DEAD == true {
+                            if sv_information::is_ready_go() == true {
+                                if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
+                                    StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
+                                    DamageModule::add_damage(module_accessor, 360.0, 0);
+                                    STOP_CONTROL_LOOP = false;
+                                }
                             }
                         }
-                    }
 
-                    if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == 0 {
-                        if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
-                            StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
+                        if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == 0 {
+                            if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
+                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
+                            }
                         }
-                    }
 
 
                         if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {

@@ -19,6 +19,7 @@ static mut ENTRY_ID : usize = 0;
 static mut BOSS_ID : [u32; 8] = [0; 8];
 static mut IS_BOSS_DEAD : bool = false;
 pub static mut FIGHTER_MANAGER: usize = 0;
+static mut KICKSTART_ANIM_BEGIN : bool = false;
 
 pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
@@ -74,6 +75,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if fighter_kind == *FIGHTER_KIND_SHIZUE {
                     if MotionModule::frame(fighter.module_accessor) >= 29.0 {
                         if sv_information::is_ready_go() == false {
+                            KICKSTART_ANIM_BEGIN = false;
                             HAVE_ITEM = false;
                             IS_BOSS_DEAD = false;
                             let lua_state = fighter.lua_state_agent;
@@ -179,6 +181,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if fighter_kind == *FIGHTER_KIND_SHIZUE {
                         if MotionModule::frame(fighter.module_accessor) >= 29.0 {
                             if sv_information::is_ready_go() == false {
+                                KICKSTART_ANIM_BEGIN = false;
                                 GAME_START = false;
                                 HAVE_ITEM = false;
                                 IS_BOSS_DEAD = false;
@@ -192,10 +195,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     ItemModule::have_item(module_accessor,ItemKind(*ITEM_KIND_GANONBOSS),0,0,false,false);
                                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
                                     ModelModule::set_scale(module_accessor,0.0001);
-                                    //StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
-                                    //StatusModule::change_status_request_from_script(boss_boma, *:ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_READY_TURN_JUMP, true);
-                                    //StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
-                                    //StatusModule::change_status_request_from_script(boss_boma, *:ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_READY_TURN_JUMP, true);
                                     HAVE_ITEM = true;
                                 }
                             }
@@ -285,14 +284,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if MotionModule::frame(fighter.module_accessor) >= 30.0 {
                             if sv_information::is_ready_go() == true {
                                 HAVE_ITEM = true;
-                            }
-                        }
-
-                        if sv_information::is_ready_go() == false {
-                            if HAVE_ITEM == true {
-                                if IS_BOSS_DEAD == false {
-                                    //StatusModule::change_status_request_from_script(boss_boma,*ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_READY_TURN_JUMP,true);
-                                }
                             }
                         }
 
@@ -430,12 +421,22 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if HAVE_ITEM == true {
                                     if sv_information::is_ready_go() == true {
                                     if ControlModule::get_stick_x(module_accessor) <= 1.0 {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                        if KICKSTART_ANIM_BEGIN == false {
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                            KICKSTART_ANIM_BEGIN = true;
+                                        }
+                                        if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                        }
                                     }
                                     if ControlModule::get_stick_x(module_accessor) >= 1.0 {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                        if KICKSTART_ANIM_BEGIN == false {
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                            KICKSTART_ANIM_BEGIN = true;
+                                        }
+                                        if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                        }
                                     }
                                     //Boss Moves
                                     if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {
