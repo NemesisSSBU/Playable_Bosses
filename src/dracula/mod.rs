@@ -104,11 +104,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     WHOLE_HIT(fighter, *HIT_STATUS_XLU);
                     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
 
+
                     if StopModule::is_damage(boss_boma) {
                         if TRANSFORMED_MODE == false {
                             if DamageModule::damage(module_accessor, 0) >= 199.0 {
+                                let x = PostureModule::pos_x(boss_boma);
                                 let z = PostureModule::pos_z(boss_boma);
-                                let none_pos = Vector3f{x: 0.0, y: 0.0, z: z};
+                                let none_pos = Vector3f{x: x, y: 0.0, z: z};
 
                                 if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD {
                                     StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
@@ -117,17 +119,19 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                                 if TRANSITIONING == true {
                                     if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD {
-                                        TRANSFORMED_MODE = true;
-                                        ENTRANCE_ANIM = false;
-                                        PostureModule::set_pos(module_accessor, &none_pos);
-                                        PostureModule::set_pos(boss_boma, &none_pos);
-                                        StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_STANDBY,true);
-                                        let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                                        ItemModule::have_item(module_accessor,ItemKind(*ITEM_KIND_DRACULA2),0,0,false,false);
-                                            BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
-                                        PostureModule::set_pos(module_accessor, &none_pos);
-                                        PostureModule::set_pos(boss_boma, &none_pos);
-                                        TRANSITIONING = false;
+                                        if StatusModule::status_kind(boss_boma) != *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
+                                            TRANSFORMED_MODE = true;
+                                            ENTRANCE_ANIM = false;
+                                            PostureModule::set_pos(module_accessor, &none_pos);
+                                            PostureModule::set_pos(boss_boma, &none_pos);
+                                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_STANDBY,true);
+                                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                                            ItemModule::have_item(module_accessor,ItemKind(*ITEM_KIND_DRACULA2),0,0,false,false);
+                                                BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
+                                            PostureModule::set_pos(module_accessor, &none_pos);
+                                            PostureModule::set_pos(boss_boma, &none_pos);
+                                            TRANSITIONING = false;
+                                        }
                                     }
                                 }
                             }
@@ -233,27 +237,30 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StopModule::is_damage(boss_boma) {
                             if TRANSFORMED_MODE == false {
                                 if DamageModule::damage(module_accessor, 0) >= 199.0 {
+                                    let x = PostureModule::pos_x(boss_boma);
                                     let z = PostureModule::pos_z(boss_boma);
-                                    let none_pos = Vector3f{x: 0.0, y: 0.0, z: z};
-
+                                    let none_pos = Vector3f{x: x, y: 0.0, z: z};
+    
                                     if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD {
                                         StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
                                         TRANSITIONING = true;
                                     }
-
+    
                                     if TRANSITIONING == true {
                                         if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD {
-                                            TRANSFORMED_MODE = true;
-                                            ENTRANCE_ANIM = false;
-                                            PostureModule::set_pos(module_accessor, &none_pos);
-                                            PostureModule::set_pos(boss_boma, &none_pos);
-                                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_STANDBY,true);
-                                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                                            ItemModule::have_item(module_accessor,ItemKind(*ITEM_KIND_DRACULA2),0,0,false,false);
-                                                BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
-                                            PostureModule::set_pos(module_accessor, &none_pos);
-                                            PostureModule::set_pos(boss_boma, &none_pos);
-                                            TRANSITIONING = false;
+                                            if StatusModule::status_kind(boss_boma) != *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
+                                                TRANSFORMED_MODE = true;
+                                                ENTRANCE_ANIM = false;
+                                                PostureModule::set_pos(module_accessor, &none_pos);
+                                                PostureModule::set_pos(boss_boma, &none_pos);
+                                                StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_STANDBY,true);
+                                                let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                                                ItemModule::have_item(module_accessor,ItemKind(*ITEM_KIND_DRACULA2),0,0,false,false);
+                                                    BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
+                                                PostureModule::set_pos(module_accessor, &none_pos);
+                                                PostureModule::set_pos(boss_boma, &none_pos);
+                                                TRANSITIONING = false;
+                                            }
                                         }
                                     }
                                 }
@@ -545,41 +552,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                         }
-                        
-                        if HAVE_ITEM  == true {
-                            if sv_information::is_ready_go() == true {
-                                if STOP_CONTROL_LOOP == true {
-                                    MotionModule::set_rate(boss_boma, 0.0);
-                                }
-                                if STOP_CONTROL_LOOP == false {
-                                    MotionModule::set_rate(boss_boma, 1.0);
-                                }
-                            }
-                        }
-
                         if STOP_CONTROL_LOOP == true {
                             if TRANSFORMED_MODE == true {
                                 if HAVE_ITEM  == true {
                                     if sv_information::is_ready_go() == true {
                                         //Boss Control Movement
-                                        if ControlModule::get_stick_x(module_accessor) <= 1.0 {
-                                            if KICKSTART_ANIM_BEGIN == false {
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_WAIT, true);
-                                                KICKSTART_ANIM_BEGIN = true;
-                                            }
-                                            if StatusModule::status_kind(boss_boma) != *ITEM_DRACULA2_STATUS_KIND_WAIT {
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_WAIT, true);
-                                            }
-                                        }
-                                        if ControlModule::get_stick_x(module_accessor) >= 1.0 {
-                                            if KICKSTART_ANIM_BEGIN == false {
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_WAIT, true);
-                                                KICKSTART_ANIM_BEGIN = true;
-                                            }
-                                            if StatusModule::status_kind(boss_boma) != *ITEM_DRACULA2_STATUS_KIND_WAIT {
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_WAIT, true);
-                                            }
-                                        }
                                         if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                             let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * - 2.0 * ControlModule::get_stick_x(module_accessor), y: 0.0, z: 0.0};
                                             PostureModule::add_pos(boss_boma, &pos);
