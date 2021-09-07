@@ -11,7 +11,7 @@ use smash::app::sv_information;
 use skyline::nn::ro::LookupSymbol;
 
 static mut SPAWN_BOSS : bool = true;
-static mut HAVE_ITEM : bool = false;
+static mut HAVE_ITEM : bool = true;
 static mut ENTRANCE_ANIM : bool = false;
 static mut IS_LANDED : bool = true;
 static mut GAME_START : bool = false;
@@ -379,6 +379,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                         if HAVE_ITEM == true {
 
+                            if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_NONE {
+                                STOP_CONTROL_LOOP = true;
+                            }
                             if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WAIT {
                                 STOP_CONTROL_LOOP = true;
                             }
@@ -388,21 +391,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT {
                                 STOP_CONTROL_LOOP = true;
                             }
+                            if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_MOVE_TACKLE_TURN {
+                                STOP_CONTROL_LOOP = true;
+                            }
                             if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_STANDBY {
                                 STOP_CONTROL_LOOP = true;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_END, true);
-                            }
-
-                            if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_HOLE_END {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
-                                    STOP_CONTROL_LOOP = true;
-                                }
-                            }
-
-                            if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_KIZETSU_END {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
-                                    STOP_CONTROL_LOOP = true;
-                                }
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_AIR_END {
@@ -411,10 +405,16 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
 
-                            if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_MOVE_TACKLE_END {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                            if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_KIZETSU_END {
                                     STOP_CONTROL_LOOP = true;
-                                }
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_HOLE_END {
+                                    STOP_CONTROL_LOOP = true;
+                            }
+
+                            if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_MOVE_TACKLE_END {
+                                    STOP_CONTROL_LOOP = true;
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_GLIDE_END {
@@ -423,45 +423,31 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_GLIDE_END2 {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
                                     STOP_CONTROL_LOOP = true;
-                                }
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_END {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
                                     STOP_CONTROL_LOOP = true;
-                                }
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_TAIL_CUT_END {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
                                     STOP_CONTROL_LOOP = true;
-                                }
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_END {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
                                     STOP_CONTROL_LOOP = true;
-                                }
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_AIR_END {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
                                     STOP_CONTROL_LOOP = true;
-                                }
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_CHARGE_FIREBALL_END {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
                                     STOP_CONTROL_LOOP = true;
-                                }
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_FLY_END {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
                                     STOP_CONTROL_LOOP = true;
-                                }
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_END {
@@ -471,6 +457,72 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_FLY_TURN {
+                                //Boss Control Stick Movement
+                                if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                    let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            
+                                if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                    let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            
+                                if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                    let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            
+                                if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                    let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            }
+                            if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_GLIDE {
+                                //Boss Control Stick Movement
+                                if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                    let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            
+                                if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                    let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            
+                                if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                    let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            
+                                if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                    let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            }
+                            if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_GLIDE_START {
+                                //Boss Control Stick Movement
+                                if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                    let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            
+                                if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                    let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            
+                                if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                    let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            
+                                if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                    let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                    PostureModule::add_pos(boss_boma, &pos);
+                                }
+                            }
+                            if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_FLY_END {
                                 //Boss Control Stick Movement
                                 if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                     let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
@@ -838,7 +890,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         //Boss Moves
                                         if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
                                             STOP_CONTROL_LOOP = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_TAIL_CUT_START, true);
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TAIL, true);
                                         }
                                         if StatusModule::status_kind(module_accessor) != *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_AIR {
                                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {
@@ -916,7 +968,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         //Boss Moves
                                         if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
                                             STOP_CONTROL_LOOP = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_AIR_START, true);
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_KIZETSU_START, true);
                                         }
                                         if StatusModule::status_kind(module_accessor) != *ITEM_LIOLEUSBOSS_STATUS_KIND_FLY {
                                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {

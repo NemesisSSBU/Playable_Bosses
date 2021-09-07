@@ -12,7 +12,7 @@ use skyline::nn::ro::LookupSymbol;
 
 static mut SPAWN_BOSS : bool = true;
 static mut TELEPORTED : bool = false;
-static mut HAVE_ITEM : bool = false;
+static mut HAVE_ITEM : bool = true;
 static mut CHARACTER_IS_TURNING : bool = false;
 static mut ENTRANCE_ANIM : bool = false;
 static mut STOP_CONTROL_LOOP : bool = true;

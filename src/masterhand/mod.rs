@@ -12,7 +12,7 @@ use skyline::nn::ro::LookupSymbol;
 
 static mut SPAWN_BOSS : bool = true;
 static mut TELEPORTED : bool = false;
-static mut HAVE_ITEM : bool = false;
+static mut HAVE_ITEM : bool = true;
 static mut CHARACTER_IS_TURNING : bool = false;
 static mut ENTRANCE_ANIM : bool = false;
 static mut STOP_CONTROL_LOOP : bool = true;
@@ -728,6 +728,16 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) == false {
                                 MotionModule::set_rate(boss_boma, 1.0);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_START {
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_END_START, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_HOMING {
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_END_START, true);
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING {

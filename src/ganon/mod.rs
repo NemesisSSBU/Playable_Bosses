@@ -11,7 +11,7 @@ use smash::app::sv_information;
 use skyline::nn::ro::LookupSymbol;
 
 static mut SPAWN_BOSS : bool = true;
-static mut HAVE_ITEM : bool = false;
+static mut HAVE_ITEM : bool = true;
 static mut ENTRANCE_ANIM : bool = false;
 static mut GAME_START : bool = false;
 static mut STOP_CONTROL_LOOP : bool = false;
@@ -350,7 +350,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WAIT {
                                 STOP_CONTROL_LOOP = true;
                             }
-
+                            if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_NONE {
+                                STOP_CONTROL_LOOP = true;
+                            }
                             if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_WALK_FRONT {
                                 STOP_CONTROL_LOOP = true;
                             }
@@ -399,9 +401,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_BIG_JUMP_END {
-                                if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
-                                    STOP_CONTROL_LOOP = true;
-                                }
+                                STOP_CONTROL_LOOP = true;
                             }
 
                             if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_DOWN_END {
