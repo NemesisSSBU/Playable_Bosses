@@ -419,65 +419,67 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                             if STOP_CONTROL_LOOP == true {
                                 if HAVE_ITEM == true {
-                                    if sv_information::is_ready_go() == true {
-                                    if ControlModule::get_stick_x(module_accessor) <= 1.0 {
-                                        if KICKSTART_ANIM_BEGIN == false {
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
-                                            KICKSTART_ANIM_BEGIN = true;
+                                    if IS_BOSS_DEAD == false {
+                                        if sv_information::is_ready_go() == true {
+                                            if ControlModule::get_stick_x(module_accessor) <= 1.0 {
+                                                if KICKSTART_ANIM_BEGIN == false {
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                    KICKSTART_ANIM_BEGIN = true;
+                                                }
+                                                if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                }
+                                            }
+                                        if ControlModule::get_stick_x(module_accessor) >= 1.0 {
+                                            if KICKSTART_ANIM_BEGIN == false {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                KICKSTART_ANIM_BEGIN = true;
+                                            }
+                                            if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                            }
                                         }
-                                        if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                        //Boss Moves
+                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_BACK_JUMP, true);
                                         }
-                                    }
-                                    if ControlModule::get_stick_x(module_accessor) >= 1.0 {
-                                        if KICKSTART_ANIM_BEGIN == false {
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
-                                            KICKSTART_ANIM_BEGIN = true;
+                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_JUMP_SLASH_START, true);
                                         }
-                                        if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_READY_TURN_JUMP, true);
                                         }
-                                    }
-                                    //Boss Moves
-                                    if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_BACK_JUMP, true);
-                                    }
-                                    if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_JUMP_SLASH_START, true);
-                                    }
-                                    if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_READY_TURN_JUMP, true);
-                                    }
-                                    if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_HOLD, true);
-                                    }
-                                    if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_SPIN_SLASH_START, true);
-                                    }
-                                    if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_BODY_ATTACK_HOLD, true);
-                                    }
-                                    if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_HOMING_BOMB_HOLD, true);
-                                    }
-                                    if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_LW3 != 0 {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_DOUBLE_SLASH_START, true);
-                                    }
-                                    if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_THUNDER_SLASH_START, true);
-                                    }
-                                    if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
-                                        STOP_CONTROL_LOOP = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_RETURN_START, true);
+                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_HOLD, true);
+                                        }
+                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_SPIN_SLASH_START, true);
+                                        }
+                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_BODY_ATTACK_HOLD, true);
+                                        }
+                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_HOMING_BOMB_HOLD, true);
+                                        }
+                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_LW3 != 0 {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_DOUBLE_SLASH_START, true);
+                                        }
+                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_THUNDER_SLASH_START, true);
+                                        }
+                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_RETURN_START, true);
+                                        }
                                     }
                                 }
                             }
