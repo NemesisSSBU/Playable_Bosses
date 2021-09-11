@@ -9,6 +9,7 @@ use smash::app::sv_battle_object;
 use std::u32;
 use smash::app::sv_information;
 use skyline::nn::ro::LookupSymbol;
+use smash::app::lua_bind;
 
 static mut SPAWN_BOSS : bool = true;
 static mut HAVE_ITEM : bool = true;
@@ -364,12 +365,63 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_AIR_END {
                                             
                                         }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_AIR_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_KIZETSU_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_HOLE_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_MOVE_TACKLE_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_GLIDE_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_GLIDE_END2 {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_TAIL_CUT_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_AIR_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_CHARGE_FIREBALL_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_FLY_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_MOVE_TACKLE {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_END {
+                                            
+                                        }
+                                        else if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_MOVE_TACKLE_END {
+                                            
+                                        }
                                         else {
-                                            if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY {
-
+                                            if IS_LANDED == true {
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
                                             }
                                             else {
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_FLY, true);
                                             }
                                         }
                                     }
@@ -864,11 +916,33 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
+                        if STOP_CONTROL_LOOP == false {
+                            if HAVE_ITEM == true {
+                                if IS_LANDED == true {
+                                    if IS_BOSS_DEAD == false {
+                                        if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE {
+                                            if lua_bind::PostureModule::lr(boss_boma) == 1.0 { // right
+                                                if ControlModule::get_stick_x(module_accessor) < -0.1 {
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_TURN, true);
+                                                }
+                                            }
+                                            if lua_bind::PostureModule::lr(boss_boma) == -1.0 { // left
+                                                if ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_TURN, true);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                             if STOP_CONTROL_LOOP == true {
                                 if HAVE_ITEM == true {
                                     if IS_LANDED == true {
                                         if IS_BOSS_DEAD == false {
                                             if sv_information::is_ready_go() == true {
+
                                                 if ControlModule::get_stick_x(module_accessor) <= 1.0 {
                                                     if KICKSTART_ANIM_BEGIN == false {
                                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
