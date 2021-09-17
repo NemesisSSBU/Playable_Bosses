@@ -131,6 +131,89 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                     }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WAIT {
+                        MotionModule::set_rate(boss_boma, 1.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SATELLITE_GUN_START {
+                        MotionModule::set_rate(boss_boma, 1.4);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SATELLITE_GUN_HOLD {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SATELLITE_GUN_END {
+                        MotionModule::set_rate(boss_boma, 1.4);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBI_BEAM {
+                        //Boss Control Stick Movement
+                        MotionModule::set_rate(boss_boma, 2.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WFINGER_BEAM_START {
+                        //Boss Control Stick Movement
+                        MotionModule::set_rate(boss_boma, 1.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW_LOOP {
+                        MotionModule::set_rate(boss_boma, 1.2);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW {
+                        MotionModule::set_rate(boss_boma, 1.2);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_START {
+                        MotionModule::set_rate(boss_boma, 1.5);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_HOLD {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_HOMING {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_END {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAINT_BALL_START {
+                        MotionModule::set_rate(boss_boma, 1.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAINT_BALL {
+                        STOP_CONTROL_LOOP = false;
+                        MotionModule::set_rate(boss_boma, 1.1);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL {
+                        STOP_CONTROL_LOOP = false;
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DRILL_START {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DRILL_END {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIKOUKI_START {
+                        MotionModule::set_rate(boss_boma, 1.4);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.4);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIKOUKI {
+                        MotionModule::set_rate(boss_boma, 1.4);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.4);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIKOUKI_END {
+                        MotionModule::set_rate(boss_boma, 1.5);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.5);
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_START {
+                        STOP_CONTROL_LOOP = false;
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_LOOP {
+                        STOP_CONTROL_LOOP = false;
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_FALL {
+                        STOP_CONTROL_LOOP = false;
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_END {
+                        STOP_CONTROL_LOOP = false;
+                    }
             }}
             else {
                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
@@ -258,11 +341,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             else {
                                 MotionModule::set_rate(boss_boma, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                             }
-                        }
-
-                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_ENERGY_SHOT_START_UP {
-
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SATELLITE_GUN_START {
                             MotionModule::set_rate(boss_boma, 1.4);
@@ -274,8 +354,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             MotionModule::set_rate(boss_boma, 1.4);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBI_BEAM {
-                            //BOSS POSITION
                             //Boss Control Stick Movement
+                            MotionModule::set_rate(boss_boma, 2.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                 let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.2, y: 0.0, z: 0.0};
                                 PostureModule::add_pos(boss_boma, &pos);
@@ -298,6 +379,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WFINGER_BEAM_START {
                             //Boss Control Stick Movement
+                            MotionModule::set_rate(boss_boma, 1.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                 let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.5, y: 0.0, z: 0.0};
                                 PostureModule::add_pos(boss_boma, &pos);
@@ -416,6 +499,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIPPATAKU_HOLD {
                             MotionModule::set_rate(boss_boma, 1.2);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.2);
                             //Boss Control Stick Movement
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                 let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
@@ -600,16 +684,20 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DRILL_START {
-                            MotionModule::set_rate(boss_boma, 1.7);
+                            MotionModule::set_rate(boss_boma, 2.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DRILL_END {
                             MotionModule::set_rate(boss_boma, 2.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIKOUKI_START {
                             MotionModule::set_rate(boss_boma, 1.4);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.4);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIKOUKI {
                             MotionModule::set_rate(boss_boma, 1.4);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.4);
                             //Boss Control Stick Movement
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                 let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.2, y: 0.0, z: 0.0};
@@ -633,15 +721,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIKOUKI_END {
                             MotionModule::set_rate(boss_boma, 1.5);
-                        }
-                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_START {
-
-                        }
-                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_KENZAN_PRE_MOVE {
-
-                        }
-                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_KENZAN {
-
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.5);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_START {
                             STOP_CONTROL_LOOP = false;
@@ -655,12 +735,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_END {
                             STOP_CONTROL_LOOP = false;
                         }
-                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_FINDER {
-
-                        }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_TURN {
                             //Boss Control Stick Movement
                             MotionModule::set_rate(boss_boma, 2.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                 let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
                                 PostureModule::add_pos(boss_boma, &pos);
@@ -727,9 +805,21 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DRILL_ATTACK {
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
                                 MotionModule::set_rate(boss_boma, 4.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 4.0);
                             }
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) == false {
                                 MotionModule::set_rate(boss_boma, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DRILL_START {
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                MotionModule::set_rate(boss_boma, 3.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 3.0);
+                            }
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) == false {
+                                MotionModule::set_rate(boss_boma, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_START {
@@ -764,17 +854,21 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_END {
                             if MULTIPLE_BULLETS != 0 {
                                 MotionModule::set_rate(boss_boma, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                             }
                             if MULTIPLE_BULLETS == 0 {
                                 MotionModule::set_rate(boss_boma, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU {
                             if MULTIPLE_BULLETS != 0 {
-                                MotionModule::set_rate(boss_boma, 1.5);
+                                MotionModule::set_rate(boss_boma, 5.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 5.0);
                             }
                             if MULTIPLE_BULLETS == 0 {
                                 MotionModule::set_rate(boss_boma, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                             }
                         }
 
@@ -783,7 +877,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
 
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_START {
-                            MotionModule::set_rate(boss_boma, 1.5);
                             //Boss Control Stick Movement
                             MotionModule::set_rate(boss_boma, 2.0);
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
@@ -807,7 +900,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_HOMING {
-                            MotionModule::set_rate(boss_boma, 2.0);
                             //Boss Control Stick Movement
                             MotionModule::set_rate(boss_boma, 2.0);
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
@@ -835,13 +927,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_END {
                             MotionModule::set_rate(boss_boma, 2.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                         }
                         if StatusModule::status_kind(boss_boma) != *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT {
                             if STOP_CONTROL_LOOP == false {
 
                             }
                             else if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_TURN {
-                                MotionModule::set_rate(boss_boma, 2.0);
+
                             }
                             else {
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT, true);
@@ -994,6 +1087,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             else {
                                 MotionModule::set_rate(boss_boma, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                             }
                             if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD {
 
@@ -1017,9 +1111,15 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             //StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
                             }
                         }
+                        if TELEPORTED == true {
+                            MotionModule::set_rate(boss_boma, 1.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                        }
                         if STOP_CONTROL_LOOP == false {
                             if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT {
                                 if TELEPORTED == false {
+                                    MotionModule::set_rate(boss_boma, 0.0);
+                                    smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 0.0);
                                     //Boss Control Stick Movement
                                     if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                             let pos = Vector3f{x: -140.0, y: 0.0, z: 0.0};
@@ -1096,6 +1196,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             STOP_CONTROL_LOOP = false;
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
                                             if TELEPORTED == false {
+                                            MotionModule::set_rate(boss_boma, 0.0);
+                                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 0.0);
                                             //Boss Control Stick Movement
                                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                                     let pos = Vector3f{x: -140.0, y: 0.0, z: 0.0};
@@ -1225,7 +1327,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                 if PostureModule::pos_y(boss_boma) >= -25.0 {
                                                     if PostureModule::pos_x(boss_boma) <= 40.0 {
                                                         if PostureModule::pos_x(boss_boma) >= -40.0 {
-                                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_BARK, true);
+                                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_ELECTROSHOCK, true);
                                                         }
                                                         else {
                                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DRILL_START, true);
@@ -1248,6 +1350,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             let slap_y_pos_local = Vector3f{x: x, y: PostureModule::pos_y(boss_boma), z: z};
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_HIPPATAKU_HOLD, true);
                                             PostureModule::set_pos(boss_boma, &slap_y_pos_local);
+                                        }
+                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {
+                                            STOP_CONTROL_LOOP = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_GOOPAA, true);
                                         }
                                         if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_HI) {
                                             STOP_CONTROL_LOOP = false;

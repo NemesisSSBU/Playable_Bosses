@@ -98,6 +98,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    if sv_information::is_ready_go() == true {
+                        if STOP_CONTROL_LOOP == true {
+                            MotionModule::set_rate(boss_boma, 1.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                        }
+                    }
+
                     DamageModule::set_damage_lock(boss_boma,true);
                     WHOLE_HIT(fighter, *HIT_STATUS_XLU);
                     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
@@ -198,6 +205,20 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     ModelModule::set_scale(module_accessor,0.0001);
                                     HAVE_ITEM = true;
                                 }
+                            }
+                        }
+
+                        if sv_information::is_ready_go() == true {
+                            if STOP_CONTROL_LOOP == true {
+                                MotionModule::set_rate(boss_boma, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                            }
+                        }
+
+                        if sv_information::is_ready_go() == true {
+                            if STOP_CONTROL_LOOP == false {
+                                MotionModule::set_rate(boss_boma, 1.2);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.2);
                             }
                         }
     
