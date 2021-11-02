@@ -11,6 +11,9 @@ mod dracula;
 mod rathalos;
 mod galleom;
 mod ganon;
+mod tabuu;
+mod gigabowser;
+//mod debug_masterhand;
 //mod waluigi;
 //mod killdebug;
 
@@ -26,6 +29,9 @@ mod ganon;
        dracula::install();
        galleom::install();
        ganon::install();
+       tabuu::install();
+       gigabowser::install();
+       //debug_masterhand::install();
        //waluigi::install();
        //killdebug::install();
     }
