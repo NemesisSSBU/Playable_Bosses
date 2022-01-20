@@ -50,68 +50,84 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let z = PostureModule::pos_z(boss_boma);
                             let boss_pos = Vector3f{x: x, y: y + 7.0, z: z};
                             let fighter_pos_fix = Vector3f{x: x, y: y_owner + 7.0, z: z};
-                            if PostureModule::pos_y(boss_boma) >= 220.0 {
-                                let boss_y_pos_1 = Vector3f{x: x, y: 220.0, z: z};
+                            if PostureModule::pos_y(boss_boma) >= 100.0 {
+                                let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
                                 PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                if PostureModule::pos_y(boss_boma) <= -130.0 {
-                                    let boss_y_pos_2 = Vector3f{x: x, y: -130.0, z: z};
+                                PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                if PostureModule::pos_y(boss_boma) <= -100.0 {
+                                    let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                    PostureModule::set_pos(boss_boma, &boss_y_pos_2);
                                 }
                                 if PostureModule::pos_x(boss_boma) >= 130.0 {
-                                    let boss_x_pos_1 = Vector3f{x: 130.0, y: 220.0, z: z};
+                                    let boss_x_pos_1 = Vector3f{x: 130.0, y: 100.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                    PostureModule::set_pos(boss_boma, &boss_x_pos_1);
                                 }
                                 if PostureModule::pos_x(boss_boma) <= -100.0 {
-                                    let boss_x_pos_2 = Vector3f{x: -100.0, y: 220.0, z: z};
+                                    let boss_x_pos_2 = Vector3f{x: -100.0, y: 100.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                    PostureModule::set_pos(boss_boma, &boss_x_pos_2);
                                 }
                             }
-                            else if PostureModule::pos_y(boss_boma) <= -130.0 {
-                                let boss_y_pos_2 = Vector3f{x: x, y: -130.0, z: z};
+                            else if PostureModule::pos_y(boss_boma) <= -80.0 {
+                                let boss_y_pos_2 = Vector3f{x: x, y: -80.0, z: z};
                                 PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                if PostureModule::pos_x(boss_boma) >= 220.0 {
-                                    let boss_x_pos_1 = Vector3f{x: 220.0, y: -130.0, z: z};
+                                PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                    let boss_x_pos_1 = Vector3f{x: 200.0, y: -80.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                    PostureModule::set_pos(boss_boma, &boss_x_pos_1);
                                 }
-                                if PostureModule::pos_x(boss_boma) <= -220.0 {
-                                    let boss_x_pos_2 = Vector3f{x: -220.0, y: -130.0, z: z};
+                                if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                    let boss_x_pos_2 = Vector3f{x: -200.0, y: -80.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                    PostureModule::set_pos(boss_boma, &boss_x_pos_2);
                                 }
-                                if PostureModule::pos_y(boss_boma) >= 220.0 {
-                                    let boss_y_pos_1 = Vector3f{x: x, y: 220.0, z: z};
+                                if PostureModule::pos_y(boss_boma) >= 100.0 {
+                                    let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                    PostureModule::set_pos(boss_boma, &boss_y_pos_1);
                                 }
                             }
-                            else if PostureModule::pos_x(boss_boma) >= 220.0 {
-                                let boss_x_pos_1 = Vector3f{x: 220.0, y: y, z: z};
+                            else if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                let boss_x_pos_1 = Vector3f{x: 200.0, y: y, z: z};
                                 PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                if PostureModule::pos_x(boss_boma) <= -220.0 {
-                                    let boss_x_pos_2 = Vector3f{x: -220.0, y: y, z: z};
+                                PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                    let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                    PostureModule::set_pos(boss_boma, &boss_x_pos_2);
                                 }
-                                if PostureModule::pos_y(boss_boma) >= 220.0 {
-                                    let boss_y_pos_1 = Vector3f{x: 220.0, y: 220.0, z: z};
+                                if PostureModule::pos_y(boss_boma) >= 100.0 {
+                                    let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                    PostureModule::set_pos(boss_boma, &boss_y_pos_1);
                                 }
-                                if PostureModule::pos_y(boss_boma) <= -130.0 {
-                                    let boss_y_pos_2 = Vector3f{x: 220.0, y: -130.0, z: z};
+                                if PostureModule::pos_y(boss_boma) <= -80.0 {
+                                    let boss_y_pos_2 = Vector3f{x: x, y: -80.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                    PostureModule::set_pos(boss_boma, &boss_y_pos_2);
                                 }
                             }
-                            else if PostureModule::pos_x(boss_boma) <= -220.0 {
-                                let boss_x_pos_2 = Vector3f{x: -220.0, y: y, z: z};
+                            else if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
                                 PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                if PostureModule::pos_y(boss_boma) >= 220.0 {
-                                    let boss_y_pos_1 = Vector3f{x: -220.0, y: 220.0, z: z};
+                                PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                if PostureModule::pos_y(boss_boma) >= 100.0 {
+                                    let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                    PostureModule::set_pos(boss_boma, &boss_y_pos_1);
                                 }
-                                if PostureModule::pos_y(boss_boma) <= -130.0 {
-                                    let boss_y_pos_2 = Vector3f{x: -220.0, y: -130.0, z: z};
+                                if PostureModule::pos_y(boss_boma) <= -80.0 {
+                                    let boss_y_pos_2 = Vector3f{x: x, y: -80.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                    PostureModule::set_pos(boss_boma, &boss_y_pos_2);
                                 }
-                                if PostureModule::pos_x(boss_boma) >= 220.0 {
-                                    let boss_x_pos_1 = Vector3f{x: 220.0, y: y, z: z};
+                                if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                    let boss_x_pos_1 = Vector3f{x: 100.0, y: y, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                    PostureModule::set_pos(boss_boma, &boss_x_pos_1);
                                 }
                             }
                             else {
@@ -122,6 +138,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     PostureModule::set_pos(module_accessor, &boss_pos);
                                 }
                             }
+                            AttackModule::set_power_mul(boss_boma, 2.0);
                         }
                     }
                 }
@@ -232,6 +249,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 StatusModule::change_status_request_from_script(boss_boma,*ITEM_CRAZYHAND_STATUS_KIND_WAIT_FEINT,true);
                             }
                         }
+                    }
+                    if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                     }
 
                     if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WAIT {
@@ -747,6 +768,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_DOWN_END {
                             STOP_CONTROL_LOOP = false;
                         }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD {
+                            MotionModule::set_rate(boss_boma, 2.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
+                        }
                         if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_DIG_START {
                             MotionModule::set_rate(boss_boma, 1.175);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.175);
@@ -1206,7 +1231,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if CHARACTER_IS_TURNING == false {
                                         //Boss Moves
                                         if lua_bind::PostureModule::lr(boss_boma) == 1.0 { // right
-                                            if ControlModule::get_stick_x(module_accessor) < -0.1 {
+                                            if ControlModule::get_stick_x(module_accessor) < -0.9 {
                                                 if CHARACTER_IS_TURNING == false {
                                                     CHARACTER_IS_TURNING = true;
                                                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_TURN, true);
@@ -1214,7 +1239,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             }
                                         }
                                         if lua_bind::PostureModule::lr(boss_boma) == -1.0 { // left
-                                            if ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                            if ControlModule::get_stick_x(module_accessor) > 0.9 {
                                                 if CHARACTER_IS_TURNING == false {
                                                     CHARACTER_IS_TURNING = true;
                                                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_TURN, true);

@@ -101,6 +101,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     if sv_information::is_ready_go() == true {
+                        smash::app::boss_private::set_action_probability_mul(0,smash::phx::Hash40 { hash: 0 },0.0);
                         if STOP_CONTROL_LOOP == true {
                             MotionModule::set_rate(boss_boma, 1.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
@@ -515,7 +516,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             }
         }
     }
-                
 
 pub fn install() {
     acmd::add_custom_hooks!(once_per_fighter_frame);
