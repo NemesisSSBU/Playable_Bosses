@@ -14,7 +14,12 @@ static mut ENTRY_ID : usize = 0;
 static mut BOSS_ID : [u32; 8] = [0; 8];
 pub static mut FIGHTER_MANAGER: usize = 0;
 static mut DEAD : bool = false;
+static mut FULLY_DEAD : bool = false;
 static mut CONTROLLABLE : bool = true;
+static mut MULTIPLE_BULLETS : usize = 0;
+static mut JUMP_START : bool = false;
+static mut TELEPORTED : bool = false;
+
 
 pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
@@ -37,7 +42,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
                 if sv_information::is_ready_go() == false {
                     DEAD = false;
+                    FULLY_DEAD = false;
                     CONTROLLABLE = true;
+                    JUMP_START = false;
+                    TELEPORTED = false;
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                     ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
@@ -51,28 +59,31 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 }
 
                 //DAMAGE MODULES
+                
                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                 DamageModule::set_damage_lock(boss_boma, true);
-                WHOLE_HIT(fighter, *HIT_STATUS_XLU);
                 HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
-
-                if StopModule::is_damage(boss_boma) {
-                    if DamageModule::damage(module_accessor, 0) >= 359.0 {
+                WHOLE_HIT(fighter, *HIT_STATUS_XLU);
+                if DamageModule::damage(module_accessor, 0) >= 359.0 {
+                    if DEAD == false {
+                        DEAD = true;
+                        CONTROLLABLE = false;
+                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
+                        StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+                    }
+                }
+                if DamageModule::damage(module_accessor, 0) < 0.0 {
+                    if DamageModule::damage(module_accessor, 0) >= -1.0 {
                         if DEAD == false {
                             DEAD = true;
-                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
-                            StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
+                            CONTROLLABLE = false;
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
+                            StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
                         }
                     }
-                    if DamageModule::damage(module_accessor, 0) < 0.0 {
-                        if DamageModule::damage(module_accessor, 0) >= -1.0 {
-                            if DEAD == false {
-                                DEAD = true;
-                                StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
-                                StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
-                            }
-                        }
-                    }
+                }
+
+                if StopModule::is_damage(boss_boma) {
                     DamageModule::add_damage(module_accessor, 4.1, 0);
                     if StopModule::is_stop(module_accessor) {
                         StopModule::end_stop(module_accessor);
@@ -82,23 +93,653 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                 }
 
-                // DISABLES AI
-                
-                if sv_information::is_ready_go() == true {
-                    if DEAD == false {
-                        if CONTROLLABLE == true {
-                            if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_BORN {
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_BORN, true);
+                // DEATH CHECK
+
+                if DEAD == true {
+                    if sv_information::is_ready_go() == true {
+                        if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
+                            if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD {
+                                StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                             }
                         }
                     }
                 }
-                if CONTROLLABLE == false {
-                    if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
-                        CONTROLLABLE = true;
+
+                if DEAD == true {
+                    if FULLY_DEAD == false {
+                        if sv_information::is_ready_go() == true {
+                            if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == 0 {
+                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
+                                    ModelModule::set_scale(module_accessor, 1.0);
+                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+                                    FULLY_DEAD = true;
+                                }
+                            }
+                        }
                     }
-                    if MotionModule::end_frame(module_accessor) - MotionModule::frame(module_accessor) <= 5.0 {
-                        CONTROLLABLE = true;
+                }
+
+                // DISABLES AI
+
+                if DEAD == false {
+                    if sv_information::is_ready_go() == true {
+                        if JUMP_START == false {
+                            JUMP_START = true;
+                            CONTROLLABLE = false;
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TIME, true);
+                        }
+
+                        if DEAD == false {
+                            if CONTROLLABLE == true {
+                                if TELEPORTED == false {
+                                    if MotionModule::frame(boss_boma) >= 30.0 {
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
+                                    }
+                                }
+                            }
+                            if TELEPORTED == true {
+                                if MotionModule::frame(boss_boma) <= 140.0 {
+                                    TELEPORTED = false;
+                                }
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBI_BEAM {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.2, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.2, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.2, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.2, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WFINGER_BEAM_START {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.5, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.5, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.5, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.5, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW_LOOP {
+                            CONTROLLABLE = false;
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.5, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.5, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.5, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.5, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW {
+                            CONTROLLABLE = false;
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_START {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.2, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.2, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_HOLD {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.2, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.2, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_HOMING {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.2, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.2, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIPPATAKU_HOLD {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIPPATAKU {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_START {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 0.75, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 0.75, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAINT_BALL_START {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.5, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.5, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.5, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.5, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAINT_BALL {
+                            CONTROLLABLE = false;
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 0.75, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 0.75, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL_START {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL {
+                            CONTROLLABLE = false;
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.75, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.75, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.75, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.75, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIKOUKI {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.2, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.2, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.2, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.2, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIKOUKI_END {
+
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_START {
+                            CONTROLLABLE = false;
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_LOOP {
+                            CONTROLLABLE = false;
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_FALL {
+                            CONTROLLABLE = false;
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_END {
+                            CONTROLLABLE = false;
+                        }
+                        if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                            CONTROLLABLE = true;
+                            if MotionModule::frame(boss_boma) <= 5.0 {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_COMPOUND_ATTACK_WAIT {
+                            CONTROLLABLE = true;
+                            if MotionModule::frame(boss_boma) <= 5.0 {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW_START {
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WAIT_TIME {
+                            CONTROLLABLE = true;
+                            if MotionModule::frame(boss_boma) <= 5.0 {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_RND_WAIT {
+                            CONTROLLABLE = true;
+                            if MotionModule::frame(boss_boma) <= 5.0 {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE {
+                            CONTROLLABLE = true;
+                            if MotionModule::frame(boss_boma) <= 5.0 {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WAIT_TO_POINT {
+                            CONTROLLABLE = true;
+                            if MotionModule::frame(boss_boma) <= 5.0 {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WAIT_FEINT {
+                            CONTROLLABLE = true;
+                            if MotionModule::frame(boss_boma) <= 5.0 {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_HOMING {
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_HOLD, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_START {
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_END_START, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_HOMING {
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_END_START, true);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING {
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) == true {
+                                MULTIPLE_BULLETS = 2;
+                            }
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) == false {
+                                MULTIPLE_BULLETS = 0;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU, true);
+                            }
+                        }
+
+                        if StatusModule::status_kind(boss_boma) != *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU {
+                            if StatusModule::status_kind(boss_boma) != *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING {
+                                if MULTIPLE_BULLETS != 0 {
+                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU, true);
+                                    MULTIPLE_BULLETS = MULTIPLE_BULLETS - 1;
+                                }
+                            }
+                        }
+                        
+                        //if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_END {
+                        //    if MULTIPLE_BULLETS != 0 {
+                        //        MotionModule::set_rate(boss_boma, 1.0);
+                        //        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                        //    }
+                        //    if MULTIPLE_BULLETS == 0 {
+                        //        MotionModule::set_rate(boss_boma, 1.0);
+                        //        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                        //    }
+                        //}
+                        //if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU {
+                        //    if MULTIPLE_BULLETS != 0 {
+                        //        MotionModule::set_rate(boss_boma, 5.0);
+                        //        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 5.0);
+                        //    }
+                        //    if MULTIPLE_BULLETS == 0 {
+                        //        MotionModule::set_rate(boss_boma, 1.0);
+                        //        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                        //    }
+                        //}
+
+                        if CONTROLLABLE == true {
+                            MULTIPLE_BULLETS = 0;
+                        }
+
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_START {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_HOMING {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_NIGIRU_HOMING {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_END_START {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_ENERGY_SHOT_RUSH_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_NIGIRU_THROW_END_1 {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SATELLITE_GUN_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIPACCHIN_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_NIGIRU_MISS_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DRILL_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_KENZAN_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIKOUKI_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAINT_BALL_END {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT {
+                            CONTROLLABLE = true;
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WAIT {
+                            CONTROLLABLE = true;
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_TURN {
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * - 2.0 * ControlModule::get_stick_x(module_accessor), y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0 * ControlModule::get_stick_x(module_accessor), y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * - 2.0 * ControlModule::get_stick_y(module_accessor), z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0 * ControlModule::get_stick_y(module_accessor), z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT {
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
+                                CONTROLLABLE = true;
+                            }
+                        }
                     }
                 }
 
@@ -113,10 +754,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                                 let x = PostureModule::pos_x(boss_boma);
                                 let y = PostureModule::pos_y(boss_boma);
-                                let y_owner = PostureModule::pos_y(module_accessor);
                                 let z = PostureModule::pos_z(boss_boma);
-                                let boss_pos = Vector3f{x: x, y: y + 7.0, z: z};
-                                let fighter_pos_fix = Vector3f{x: x, y: y_owner + 7.0, z: z};
+                                let boss_pos = Vector3f{x: x, y: y , z: z};
                                 if PostureModule::pos_y(boss_boma) >= 220.0 {
                                     let boss_y_pos_1 = Vector3f{x: x, y: 220.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_y_pos_1);
@@ -182,12 +821,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     }
                                 }
                                 else {
-                                    if StatusModule::situation_kind(fighter.module_accessor) == *SITUATION_KIND_GROUND {
-                                        PostureModule::set_pos(module_accessor, &fighter_pos_fix);
-                                    }
-                                    else {
-                                        PostureModule::set_pos(module_accessor, &boss_pos);
-                                    }
+                                    PostureModule::set_pos(module_accessor, &boss_pos);
                                 }
                             }
                         }
@@ -221,6 +855,25 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0 * ControlModule::get_stick_y(module_accessor), z: 0.0};
                                         PostureModule::add_pos(boss_boma, &pos);
                                     }
+                                    // FACING LEFT OR RIGHT?
+                                    if StatusModule::status_kind(boss_boma) != *ITEM_MASTERHAND_STATUS_KIND_TURN {
+                                        if PostureModule::lr(boss_boma) == 1.0 { // RIGHT
+                                            if ControlModule::get_stick_x(module_accessor) < -0.9 {
+                                                if StatusModule::status_kind(boss_boma) != *ITEM_MASTERHAND_STATUS_KIND_TURN {
+                                                    CONTROLLABLE = false;
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_TURN, true);
+                                                }
+                                            }
+                                        }
+                                        if PostureModule::lr(boss_boma) == -1.0 { // LEFT
+                                            if ControlModule::get_stick_x(module_accessor) > 0.9 {
+                                                if StatusModule::status_kind(boss_boma) != *ITEM_MASTERHAND_STATUS_KIND_TURN {
+                                                    CONTROLLABLE = false;
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_TURN, true);
+                                                }
+                                            }
+                                        }
+                                    }
                                     // Boss Moves
                                     if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
                                         CONTROLLABLE = false;
@@ -228,6 +881,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     }
                                     if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) {
                                         CONTROLLABLE = false;
+                                        TELEPORTED = true;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TELEPORT, true);
                                     }
                                     if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
