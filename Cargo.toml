@@ -1,8 +1,8 @@
 [package]
-name = "playable_bosses"
-version = "1.0.0"
-authors = ["GamerSubzero <putsomeemailhere@someemailaddress>, Nemesis69 <pepeisnoice@gmail.com>, jam1garner <jam1.mcleod@hotmail.com>"]
-edition = "2018"
+name = "comp_boss"
+version = "0.9.5"
+authors = ["GamerSubzero <GamerSubzero@gmail.com>, Nemesis69 <PepeIsNoice@gmail.com>, Claude <ClaudeStrife@gmail.com>, jam1garner <jam1.mcleod@hotmail.com>"]
+edition = "2021"
 
 [package.metadata.skyline]
 titleid = "01006A800016E000"
@@ -14,11 +14,14 @@ crate-type = ["cdylib"]
 skyline = { git = "https://github.com/ultimate-research/skyline-rs.git" }
 skyline_smash = { git = "https://github.com/ultimate-research/skyline-smash.git" }
 acmd = { git = "https://github.com/ultimate-research/skyline-acmd.git" }
-serde = { version = "1.0", features = ["derive"] }
-parking_lot = "0.11.0"
-toml = "0.5.6"
-lazy_static = "1.4"
+serde = { version = "1.0.138", features = ["derive"] }
+parking_lot = "0.12.1"
+toml = "0.5.9"
+lazy_static = "1.4.0"
 smash_script = { git = "https://github.com/blu-dev/smash-script.git" }
+arcropolis-api = { git = "https://github.com/Raytwo/arcropolis_api" }
+bntx = { git = "https://github.com/ScanMountGoat/bntx.git", branch="main" }
+prc-rs = { git = "https://github.com/ultimate-research/prc-rs", features = ["indexmap-std"] }
 
 [profile.dev]
 panic = "abort"
