@@ -17,7 +17,7 @@ static mut ENTRY_ID : usize = 0;
 static mut BOSS_ID : [u32; 8] = [0; 8];
 static mut IS_BOSS_DEAD : bool = false;
 pub static mut FIGHTER_MANAGER: usize = 0;
-pub static mut FIGHTER_NAME: [u64;0] = [0;0];
+pub static mut FIGHTER_NAME: [u64;1] = [0;1];
 
 pub unsafe fn read_tag(addr: u64) -> String {
     let mut s: Vec<u8> = vec![];
@@ -84,15 +84,24 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
                     ModelModule::set_scale(module_accessor,0.0001);
                     ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
-                    StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
-                    StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_STANDBY,true);
                 }
             }
             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
             DamageModule::set_damage_lock(boss_boma,true);
             WHOLE_HIT(fighter, *HIT_STATUS_XLU);
             HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
+
+            if IS_BOSS_DEAD == false {
+                if sv_information::is_ready_go() == true {
+                    // SET POS AND STOPS OUT OF BOUNDS
+                    if ModelModule::scale(module_accessor) == 0.0001 {
+                        if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
+                            StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
+                        }
+                    }
+                }
+            }
 
             if IS_BOSS_DEAD == true {
                 if sv_information::is_ready_go() == true {

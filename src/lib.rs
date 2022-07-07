@@ -117,9 +117,6 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_koopa");
         }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
-        }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 74;
         }
@@ -157,9 +154,6 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
-        }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
         }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 75;
@@ -205,9 +199,6 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
-        }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 76;
         }
@@ -251,9 +242,6 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
-        }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
         }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 77;
@@ -299,9 +287,6 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
-        }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 78;
         }
@@ -345,9 +330,6 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
-        }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
         }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 79;
@@ -393,9 +375,6 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
-        }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 80;
         }
@@ -439,9 +418,6 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
-        }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
         }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 81;
@@ -487,9 +463,6 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
-        }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 82;
         }
@@ -534,9 +507,6 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
-        }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 83;
         }
@@ -580,9 +550,6 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
-        }
-        if *hash == to_hash40("color_num") {
-            *param.try_into_mut::<u8>().unwrap() = 1;
         }
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 83;
