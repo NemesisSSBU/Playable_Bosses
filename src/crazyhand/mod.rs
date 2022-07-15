@@ -35,7 +35,6 @@ pub unsafe fn read_tag(addr: u64) -> String {
         s.push(*(addr as *const u8));
         addr = addr.offset(1);
     }
-    // No null terminator needed
 
     std::str::from_utf8(&s).unwrap().to_owned()
 }
@@ -50,7 +49,7 @@ pub unsafe fn get_player_number(module_accessor:  &mut smash::app::BattleObjectM
     }
     else {
         let mut owner_module_accessor = &mut *sv_battle_object::module_accessor((WorkModule::get_int(module_accessor, *WEAPON_INSTANCE_WORK_ID_INT_LINK_OWNER)) as u32);
-        while get_category(owner_module_accessor) != *BATTLE_OBJECT_CATEGORY_FIGHTER { //Keep checking the owner of the boma we're working with until we've hit a boma that belongs to a fighter
+        while get_category(owner_module_accessor) != *BATTLE_OBJECT_CATEGORY_FIGHTER {
             owner_module_accessor = &mut *sv_battle_object::module_accessor((WorkModule::get_int(owner_module_accessor, *WEAPON_INSTANCE_WORK_ID_INT_LINK_OWNER)) as u32);
         }
         player_number = WorkModule::get_int(owner_module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
@@ -96,6 +95,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         ModelModule::set_scale(module_accessor, 0.0001);
                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
+                    }
+                }
+
+                if ModelModule::scale(module_accessor) == 0.0001 {
+                    let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                    if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                     }
                 }
 
@@ -1114,13 +1121,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     }
                                     if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
                                         CONTROLLABLE = false;
-                                        let x = PostureModule::pos_x(boss_boma);
-                                        let y = PostureModule::pos_y(boss_boma);
-                                        let z = PostureModule::pos_z(boss_boma);
-                                        let boss_pos = Vector3f{x: x, y: y, z: z};
-                                        if GroundModule::get_distance_to_floor(boss_boma, &boss_pos, 0.0, true) >= 5.0 {
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_DIG_START, true);
-                                        }
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_DIG_START, true);
                                     }
                                     if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
                                         CONTROLLABLE = false;

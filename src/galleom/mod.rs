@@ -96,6 +96,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                 }
 
+                if ModelModule::scale(module_accessor) == 0.0001 {
+                    let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                    if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY {
+                        MotionModule::set_rate(boss_boma, 4.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 4.0);
+                    }
+                }
+
                 if sv_information::is_ready_go() == true {
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                     let attack = WorkModule::get_int(boss_boma, *ITEM_INSTANCE_WORK_INT_ATTACK_KIND);
@@ -213,6 +221,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
                             if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
                                 CONTROLLABLE = false;
+                                if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY {
+                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                }
                             }
                             else {
                                 JostleModule::set_status(boss_boma, true);

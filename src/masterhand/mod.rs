@@ -96,7 +96,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         ModelModule::set_scale(module_accessor, 0.0001);
                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
-                        WorkModule::set_int(boss_boma, *ITEM_GEN_LEVEL_VERY_HARD, 0);
+                    }
+                }
+
+                if ModelModule::scale(module_accessor) == 0.0001 {
+                    let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                    if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                     }
                 }
 

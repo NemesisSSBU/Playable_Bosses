@@ -113,6 +113,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                 }
 
+                if ModelModule::scale(module_accessor) == 0.0001 {
+                    let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                    if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
+                    }
+                }
+
                 if DEAD == false {
                     if sv_information::is_ready_go() == true {
                         // SET POS AND STOPS OUT OF BOUNDS
@@ -229,7 +237,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
                     if FighterUtil::is_hp_mode(module_accessor) == false {
-                        if DamageModule::damage(module_accessor, 0) >= 359.0 {
+                        if DamageModule::damage(module_accessor, 0) >= 360.0 {
                             if DEAD == false {
                                 CONTROLLABLE = false;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
@@ -259,8 +267,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if DEAD == true {
                     if sv_information::is_ready_go() == true {
                         if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
-                            if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_STANDBY {
+                            if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD {
                                 StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+                            }
+                        }
+                        if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) <= 0 {
+                            if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_STANDBY {
+                                StatusModule::change_status_request_from_script(module_accessor, *ITEM_STATUS_KIND_STANDBY,true);
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY,true);
                             }
                         }
                     }
@@ -298,6 +312,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
                             if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
                                 CONTROLLABLE = false;
+                                if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY {
+                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                }
                             }
                             else {
                                 JostleModule::set_status(boss_boma, true);
