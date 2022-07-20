@@ -34,8 +34,6 @@ pub unsafe fn read_tag(addr: u64) -> String {
         s.push(*(addr as *const u8));
         addr = addr.offset(1);
     }
-    // No null terminator needed
-
     std::str::from_utf8(&s).unwrap().to_owned()
 }
 
@@ -62,7 +60,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
-        if fighter_kind == *FIGHTER_KIND_KOOPAG {
+        if fighter_kind == *FIGHTER_KIND_MARIO {
             pub unsafe fn entry_id(module_accessor: &mut BattleObjectModuleAccessor) -> usize {
                 let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                 return entry_id;
@@ -96,15 +94,24 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                 }
 
+                if sv_information::is_ready_go() == false {
+                    if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_ENTRY {
+                        ArticleModule::set_visibility_whole(module_accessor, *FIGHTER_MARIO_GENERATE_ARTICLE_PUMP, false, smash::app::ArticleOperationTarget(0));
+                        StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
+                    }
+                }
+
                 if sv_information::is_ready_go() == true {
-                    let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                    let attack = WorkModule::get_int(boss_boma, *ITEM_INSTANCE_WORK_INT_ATTACK_KIND);
-                    if CONTROLLABLE == true {
-                        MotionModule::change_motion(boss_boma,Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
-                        if attack != 0 {
-                            //boss_private::main_energy_from_param(lua_state,ItemKind(*ITEM_KIND_MASTERHAND),Hash40::new("energy_param_wait"),0.0);
-                            StatusModule::change_status_request_from_script(boss_boma,attack,false);
-                            WorkModule::set_int(boss_boma, 0, *ITEM_INSTANCE_WORK_INT_ATTACK_KIND);
+                    if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
+                        let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                        let attack = WorkModule::get_int(boss_boma, *ITEM_INSTANCE_WORK_INT_ATTACK_KIND);
+                        if CONTROLLABLE == true {
+                            MotionModule::change_motion(boss_boma,Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
+                            if attack != 0 {
+                                //boss_private::main_energy_from_param(lua_state,ItemKind(*ITEM_KIND_MARX),Hash40::new("energy_param_wait"),0.0);
+                                StatusModule::change_status_request_from_script(boss_boma,attack,false);
+                                WorkModule::set_int(boss_boma, 0, *ITEM_INSTANCE_WORK_INT_ATTACK_KIND);
+                            }
                         }
                     }
                 }
@@ -257,9 +264,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 
                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                 DamageModule::set_damage_lock(boss_boma, true);
-                HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
+                HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
-                if StopModule::is_damage(boss_boma) {
+                if StopModule::is_damage(boss_boma) | StopModule::is_damage(module_accessor) {
                     if FighterUtil::is_hp_mode(module_accessor) == true {
                         if DamageModule::damage(module_accessor, 0) < 1.0 {
                             if DEAD == false {
@@ -403,7 +410,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
                     if StatusModule::status_kind(boss_boma) == *ITEM_MARX_STATUS_KIND_ATTACK_FLY_OUT {
-                        if MotionModule::frame(boss_boma) == 27.0 {
+                        if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
                             CONTROLLABLE = true;
                         }
                     }
@@ -453,6 +460,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
                     if StatusModule::status_kind(boss_boma) == *ITEM_MARX_STATUS_KIND_ATTACK_4_CUTTER {
+                        MotionModule::set_rate(boss_boma, 2.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                         //Boss Control Stick Movement
                         if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                             let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};

@@ -3,7 +3,6 @@ use smash::app::lua_bind::*;
 use smash::lua2cpp::L2CFighterCommon;
 use smash::app::BattleObjectModuleAccessor;
 use smash::phx::Vector3f;
-use smash_script::macros::WHOLE_HIT;
 use smash::app::ItemKind;
 use smash::app::sv_battle_object;
 use std::u32;
@@ -57,7 +56,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
-        if fighter_kind == *FIGHTER_KIND_KOOPAG {
+        if fighter_kind == *FIGHTER_KIND_MARIO {
             pub unsafe fn entry_id(module_accessor: &mut BattleObjectModuleAccessor) -> usize {
                 let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                 return entry_id;
@@ -73,7 +72,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
             let name_base = text + 0x52c3758;
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
-            if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("") {
+            if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("WOL MASTER HAND") | hash40("") {
                 if ModelModule::scale(module_accessor) != 0.0001 {
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                     let lua_state = fighter.lua_state_agent;
@@ -86,10 +85,16 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
                 }
 
+                if sv_information::is_ready_go() == false {
+                    if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_ENTRY {
+                        ArticleModule::set_visibility_whole(module_accessor, *FIGHTER_MARIO_GENERATE_ARTICLE_PUMP, false, smash::app::ArticleOperationTarget(0));
+                        StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
+                    }
+                }
+
                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                 DamageModule::set_damage_lock(boss_boma,true);
-                WHOLE_HIT(fighter, *HIT_STATUS_XLU);
-                HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
+                HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
                 if IS_BOSS_DEAD == false {
                     if sv_information::is_ready_go() == true {
@@ -119,7 +124,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                 }
 
-                if StopModule::is_damage(boss_boma) {
+                if StopModule::is_damage(boss_boma) | StopModule::is_damage(module_accessor) {
                     if DamageModule::damage(module_accessor, 0) >= 299.0 {
                         if IS_BOSS_DEAD == false {
                             IS_BOSS_DEAD = true;
