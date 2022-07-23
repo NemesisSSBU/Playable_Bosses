@@ -173,6 +173,9 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_masterhand");
         }
+        if *hash == to_hash40("fighter_kind") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
+        }
         if *hash == to_hash40("ui_series_id") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
         }
@@ -216,6 +219,9 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 1;
+        }
+        if *hash == to_hash40("fighter_kind") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_crazyhand");
@@ -264,6 +270,9 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 1;
         }
+        if *hash == to_hash40("fighter_kind") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
+        }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_darz");
         }
@@ -310,6 +319,9 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 1;
+        }
+        if *hash == to_hash40("fighter_kind") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_kiila");
@@ -358,6 +370,9 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 1;
         }
+        if *hash == to_hash40("fighter_kind") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
+        }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_marx");
         }
@@ -404,6 +419,9 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 1;
+        }
+        if *hash == to_hash40("fighter_kind") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_ganonboss");
@@ -452,6 +470,9 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 1;
         }
+        if *hash == to_hash40("fighter_kind") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
+        }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_dracula");
         }
@@ -498,6 +519,9 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 1;
+        }
+        if *hash == to_hash40("fighter_kind") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_galleom");
@@ -546,6 +570,9 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 1;
         }
+        if *hash == to_hash40("fighter_kind") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
+        }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_rathalos");
         }
@@ -592,6 +619,9 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 1;
+        }
+        if *hash == to_hash40("fighter_kind") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_masterhandwol2");
@@ -1428,31 +1458,110 @@ fn callback_map_19(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//DIFFICULTY SET
+#[arc_callback]
+fn callback_map_20(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+    load_original_file(hash, &mut data);
+    let mut reader = std::io::Cursor::new(&mut data);
+    let mut root = prc::read_stream(&mut reader).unwrap();
+    let (db_root_hash, db_root) = &mut root.0[0];
+    assert_eq!(*db_root_hash, to_hash40("db_root"));
+    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_boss_final")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
+    charroot.0.iter_mut().for_each(|(hash, param)| {
+        if *hash == to_hash40("can_select") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+        if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+    });
+    let mut writer = std::io::Cursor::new(data);
+    write_stream(&mut writer, &root).unwrap();
+    return Some(writer.position() as usize);
+}
 
-//#[arc_callback]
-//fn callback_difficulty(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-//    load_original_file(hash, &mut data);
-//    let mut reader = std::io::Cursor::new(&mut data);
-//    let mut root = prc::read_stream(&mut reader).unwrap();
-//    let (db_root_hash, db_root) = &mut root.0[0];
-//    assert_eq!(*db_root_hash, to_hash40("param"));
-//    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-//    let charroot = db_root_list.0.iter_mut().find(|param| {
-//        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-//        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-//        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-//        *ui_chara_hash == to_hash40("difficulty")
-//    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-//    charroot.0.iter_mut().for_each(|(hash, param)| {
-//        if *hash == to_hash40("boss_level") {
-//            *param.try_into_mut::<u8>().unwrap() = 99;
-//        }
-//    });
-//    let mut writer = std::io::Cursor::new(data);
-//    write_stream(&mut writer, &root).unwrap();
-//    return Some(writer.position() as usize);
-//}
+#[arc_callback]
+fn callback_map_21(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+    load_original_file(hash, &mut data);
+    let mut reader = std::io::Cursor::new(&mut data);
+    let mut root = prc::read_stream(&mut reader).unwrap();
+    let (db_root_hash, db_root) = &mut root.0[0];
+    assert_eq!(*db_root_hash, to_hash40("db_root"));
+    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_boss_final2")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
+    charroot.0.iter_mut().for_each(|(hash, param)| {
+        if *hash == to_hash40("can_select") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+        if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+    });
+    let mut writer = std::io::Cursor::new(data);
+    write_stream(&mut writer, &root).unwrap();
+    return Some(writer.position() as usize);
+}
+
+#[arc_callback]
+fn callback_map_22(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+    load_original_file(hash, &mut data);
+    let mut reader = std::io::Cursor::new(&mut data);
+    let mut root = prc::read_stream(&mut reader).unwrap();
+    let (db_root_hash, db_root) = &mut root.0[0];
+    assert_eq!(*db_root_hash, to_hash40("db_root"));
+    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_boss_final3")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
+    charroot.0.iter_mut().for_each(|(hash, param)| {
+        if *hash == to_hash40("can_select") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+        if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+    });
+    let mut writer = std::io::Cursor::new(data);
+    write_stream(&mut writer, &root).unwrap();
+    return Some(writer.position() as usize);
+}
+
+#[arc_callback]
+fn callback_map_23(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+    load_original_file(hash, &mut data);
+    let mut reader = std::io::Cursor::new(&mut data);
+    let mut root = prc::read_stream(&mut reader).unwrap();
+    let (db_root_hash, db_root) = &mut root.0[0];
+    assert_eq!(*db_root_hash, to_hash40("db_root"));
+    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_kirby_pupupu64")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
+    charroot.0.iter_mut().for_each(|(hash, param)| {
+        if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+    });
+    let mut writer = std::io::Cursor::new(data);
+    write_stream(&mut writer, &root).unwrap();
+    return Some(writer.position() as usize);
+}
 
 const MAX_FILE_SIZE: usize = 0xFFFF;
 
@@ -1506,7 +1615,10 @@ const MAX_FILE_SIZE: usize = 0xFFFF;
        callback_map_17::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
        callback_map_18::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
        callback_map_19::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-       //callback_difficulty::install("ui/param/standard/standard_difficulty.prc", MAX_FILE_SIZE);
+       callback_map_20::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       callback_map_21::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       callback_map_22::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       callback_map_23::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
        //waluigi::install();
        //tabuu::install();
        //debug_masterhand::install();
