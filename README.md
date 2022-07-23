@@ -1,3 +1,5 @@
+## [Competitive Playable Bosses]
+
 *This mod is compatible with WOL*
 
 *Compatible with almost any other mod*
@@ -20,7 +22,7 @@ Drop this mod into your ARCropolis folder and you're good to go.
 *Step 1*
 - Unpack the .rar release file
 *Step 2*
-- Drag and drop the unpacked files ("Comp_Playable_Bosses" and "Ultimate") into the root of your Switch SD card
+- Drag and drop the unpacked files ("Bosses" and "Ultimate") into the root of your Switch SD card
 *Step 3*
 - Start the game and you should be good to go!
 
@@ -31,7 +33,7 @@ This mod is NOT compatable with a mod that changes the name of a character since
 
 This mod is NOT compatable with a mod that changes the announcers voice of a character since this could create conflicting audio files.
 
-Do not use this mod in a multiplayer environment unless the other player also has this mod installed.
+Do not use this mod in a multiplayer environment unless the other player(s) also have this mod installed.
 
 ## Credit
 GamerSubzero, Nemesis69 and Claude
