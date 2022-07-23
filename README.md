@@ -12,9 +12,9 @@
 
 *Boss duet moves*
 
-[Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html)
-* [Rust](https://www.rust-lang.org/install.html)
-* [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
+[Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html).
+* [Rust](https://www.rust-lang.org/install.html).
+* [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
 * [Cargo Skyline](https://github.com/jam1garner/cargo-skyline).
 
 ## Setup
@@ -40,9 +40,9 @@ GamerSubzero, Nemesis69 and Claude
 
 ## Skyline documents
 
-[Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html)
-* [Rust](https://www.rust-lang.org/install.html)
-* [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
+[Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html).
+* [Rust](https://www.rust-lang.org/install.html).
+* [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
 * [Cargo Skyline](https://github.com/jam1garner/cargo-skyline).
 * [acmd](https://github.com/ultimate-research/skyline-acmd.git).
 * [Smash Script](https://github.com/blu-dev/smash-script.git).
