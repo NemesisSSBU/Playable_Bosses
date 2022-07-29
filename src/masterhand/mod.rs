@@ -11,6 +11,7 @@ use smash::app::sv_information;
 use skyline::nn::ro::LookupSymbol;
 use smash::hash40;
 use smash::app::utility::get_category;
+use smash::app::lua_bind;
 
 static mut TELEPORTED : bool = false;
 static mut TURNING : bool = false;
@@ -24,6 +25,7 @@ static mut MULTIPLE_BULLETS : usize = 0;
 static mut DEAD : bool = false;
 static mut JUMP_START : bool = false;
 static mut RESULT_SPAWNED : bool = false;
+static mut STOP : bool = false;
 
 pub unsafe fn read_tag(addr: u64) -> String {
     let mut s: Vec<u8> = vec![];
@@ -36,7 +38,6 @@ pub unsafe fn read_tag(addr: u64) -> String {
         s.push(*(addr as *const u8));
         addr = addr.offset(1);
     }
-    // No null terminator needed
 
     std::str::from_utf8(&s).unwrap().to_owned()
 }
@@ -98,13 +99,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         ModelModule::set_joint_rotate(module_accessor, smash::phx::Hash40::new("root") , &mut Vector3f{x: -270.0, y: 180.0, z: -90.0}, smash::app::MotionNodeRotateCompose{_address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8}, ModelModule::rotation_order(module_accessor));
                     }
                 }
-                else {
+                else if smash::app::stage::get_stage_id() != 0x13A {
                     if sv_information::is_ready_go() == false {
                         DEAD = false;
                         CONTROLLABLE = true;
                         JUMP_START = false;
                         TELEPORTED = false;
                         TURNING = false;
+                        STOP = false;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
@@ -118,6 +120,55 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if FighterUtil::is_hp_mode(module_accessor) == true {
                                 DamageModule::add_damage(module_accessor, 1.1, 0);
                             }
+                        }
+                    }
+
+                    if sv_information::is_ready_go() == true {
+                        if DEAD == true {
+                            HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                            HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+                            if STOP == false {
+                                if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
+                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+                                }
+                                if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == 0 {
+                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+                                    STOP = true;
+                                }
+                            }
+                            if STOP == true {
+                                if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
+                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+                                }
+                            }
+                        }
+                    }
+
+                    if DEAD == true {
+                        if sv_information::is_ready_go() == true {
+                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                            if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD {
+                                if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_STANDBY {
+                                    if lua_bind::PostureModule::lr(boss_boma) == 1.0 { // right
+                                        let vec3 = Vector3f{x: 0.0, y: -180.0, z: 0.0};
+                                        PostureModule::set_rot(boss_boma,&vec3,0);
+                                    }
+                                    if MotionModule::frame(boss_boma) == 100.0 {
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if FighterManager::is_result_mode(fighter_manager) == true {
+                        if RESULT_SPAWNED == false {
+                            RESULT_SPAWNED = true;
+                            ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
+                            BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
+                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
                         }
                     }
 
@@ -239,7 +290,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                     DamageModule::set_damage_lock(boss_boma, true);
-                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
+                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
+                    HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
                     if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_ENERGY_SHOT_CHARGE_LOOP {
                         if SUMMONED == false {
@@ -252,13 +304,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_ENERGY_SHOT_RUSH_END {
                         SUMMONED = false;
                     }
-                    if sv_information::is_ready_go() == false {
+                    if sv_information::is_ready_go() == true {
                         if StopModule::is_damage(boss_boma) | StopModule::is_damage(module_accessor) {
                             if FighterUtil::is_hp_mode(module_accessor) == true {
-                                if DamageModule::damage(module_accessor, 0) == 0.0 {
+                                if DamageModule::damage(module_accessor, 0) < 1.0 {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                         DEAD = true;
                                     }
                                 }
@@ -267,7 +319,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if DamageModule::damage(module_accessor, 0) >= 359.0 {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                         DEAD = true;
                                     }
                                 }
@@ -291,34 +343,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     }
                                 }
                             }
-                        }
-                    }
-
-                    if DEAD == true {
-                        if sv_information::is_ready_go() == true {
-                            if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD {
-                                if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_STANDBY {
-                                    if MotionModule::frame(boss_boma) == 100.0 {
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
-                                    }
-                                }
-                            }
-                            if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
-                                if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_STANDBY {
-                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
-                                }
-                            }
-                        }
-                    }
-
-                    let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
-                    if FighterManager::is_result_mode(fighter_manager) == true {
-                        if RESULT_SPAWNED == false {
-                            RESULT_SPAWNED = true;
-                            ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
-                            BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
-                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
                         }
                     }
 
@@ -742,8 +766,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_TURN {
                             //Boss Control Stick Movement
-                            MotionModule::set_rate(boss_boma, 1.0);
-                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                            MotionModule::set_rate(boss_boma, 1.5);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.5);
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                 let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
                                 PostureModule::add_pos(boss_boma, &pos);
