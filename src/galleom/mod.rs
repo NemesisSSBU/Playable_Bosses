@@ -14,6 +14,7 @@ use smash::hash40;
 use smash::app::utility::get_category;
 
 static mut CONTROLLABLE : bool = true;
+static mut IS_ANGRY : bool = false;
 static mut ENTRY_ID : usize = 0;
 static mut BOSS_ID : [u32; 8] = [0; 8];
 pub static mut FIGHTER_MANAGER: usize = 0;
@@ -104,6 +105,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         JUMP_START = false;
                         STOP = false;
                         MOVING = false;
+                        IS_ANGRY = false;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
@@ -187,7 +189,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if FighterUtil::is_hp_mode(module_accessor) == false {
-                                if DamageModule::damage(module_accessor, 0) >= 359.0 {
+                                if DamageModule::damage(module_accessor, 0) >= 399.0 {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
@@ -275,14 +277,31 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    if DamageModule::damage(module_accessor, 0) >= 200.0 {
+                        if IS_ANGRY == false {
+                            CONTROLLABLE = false;
+                            IS_ANGRY = true;
+                            DamageModule::add_damage(module_accessor, 4.1, 0);
+                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_GALLEOM_STATUS_KIND_ANGER,true);
+                        }
+                    }
+
                     if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
 
                         if MotionModule::motion_kind(boss_boma) == smash::hash40("wait") {
                             CONTROLLABLE = true;
                         }
 
+                        if StatusModule::status_kind(boss_boma) == *ITEM_GALLEOM_STATUS_KIND_ANGER {
+                            CONTROLLABLE = false;
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 1.0 {
+                                CONTROLLABLE = true;
+                            }
+                        }
+
                         if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WAIT {
                             CONTROLLABLE = true;
+                            MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
                         }
 
                         if StatusModule::status_kind(boss_boma) == *ITEM_GALLEOM_STATUS_KIND_WAIT {

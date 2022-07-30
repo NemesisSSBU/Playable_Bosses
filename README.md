@@ -1,48 +1,96 @@
-## [Competitive Playable Bosses]
+# skyline-rs-template
 
-*This mod is compatible with WOL*
+A template for writing skyline plugins for modding switch games using Rust and skyline-rs.
 
-*Compatible with almost any other mod*
-
-*Compatible with any gamemode*
-
-*Compatible with almost any other mod*
-
-*The most stable playable boss mod known*
-
-*Boss duet moves*
-
-[Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html).
-* [Rust](https://www.rust-lang.org/install.html).
-* [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
-* [Cargo Skyline](https://github.com/jam1garner/cargo-skyline).
+[Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html)
 
 ## Setup
-Drop this mod into your ARCropolis folder and you're good to go.
-*Step 1*
-- Unpack the .rar release file
-*Step 2*
-- Drag and drop the unpacked files ("Bosses" and "Ultimate") into the root of your Switch SD card
-*Step 3*
-- Start the game and you should be good to go!
 
-## Warning
-This mod is NOT compatable with the Giga Bowser mod, hence we made Giga Bowser playable without the help of another mod.
+### Local
 
-This mod is NOT compatable with a mod that changes the name of a character since this could create conflicting prc files.
+#### Prerequisites
 
-This mod is NOT compatable with a mod that changes the announcers voice of a character since this could create conflicting audio files.
+* [Rust](https://www.rust-lang.org/install.html) - make sure rustup, cargo, and rustc (preferrably nightly) are installed.
+* [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
 
-Do not use this mod in a multiplayer environment unless the other player(s) also have this mod installed.
+Install [cargo skyline](https://github.com/jam1garner/cargo-skyline).
+```bash
+# inside a folder where you will dev all of your plugins going forward
+cargo install cargo-skyline
+cargo skyline new [your_plugin_name]
+```
 
-## Credit
-GamerSubzero, Nemesis69 and Claude
+### VS Code with Docker
 
-## Skyline documents
+#### Prerequisites
 
-[Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html).
-* [Rust](https://www.rust-lang.org/install.html).
-* [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
-* [Cargo Skyline](https://github.com/jam1garner/cargo-skyline).
-* [acmd](https://github.com/ultimate-research/skyline-acmd.git).
-* [Smash Script](https://github.com/blu-dev/smash-script.git).
+* [Docker](https://www.docker.com/get-started)
+* [Visual Studio Code](https://code.visualstudio.com/)
+* [Visual Studio Code Remote Development Extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.vscode-remote-extensionpack)
+* Copy [these files](https://gist.github.com/jugeeya/ebdf699e3dc442dc1706e4ee6587b86f) to a new directory called `.devcontainer` after cloning this repo.
+
+Simply run `Remote Containers: Reopen in Container` in the Command Palette. 
+
+## Creating and building a plugin
+
+To compile your plugin use the following command in the root of the project (beside the `Cargo.toml` file):
+```sh
+cargo skyline build
+```
+Your resulting plugin will be the `.nro` found in the folder
+```
+[plugin name]/target/aarch64-skyline-switch
+```
+To install (you must already have skyline installed on your switch), put the plugin on your SD at:
+```
+sd:/atmosphere/contents/[title id]/romfs/skyline/plugins
+```
+So, for example, smash plugins go in the following folder:
+```
+sd:/atmosphere/contents/01006A800016E000/romfs/skyline/plugins
+```
+
+`cargo skyline` can also automate some of this process via FTP. If you have an FTP client on your Switch, you can run:
+```sh
+cargo skyline set-ip [Switch IP]
+# install to the correct plugin folder on the Switch and listen for logs
+cargo skyline run 
+```
+
+## Troubleshooting
+
+**"Cannot be used on stable"**
+
+First, make sure you have a nightly installed:
+```
+rustup install nightly
+```
+Second, make sure it is your default channel:
+```
+rustup default nightly
+```
+---
+```
+thread 'main' panicked at 'called `Option::unwrap()` on a `None` value', src/bin/cargo-nro.rs:280:13
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+```
+
+Make sure you are *inside* the root of the plugin you created before running `cargo skyline build`
+
+Have a problem/solution that is missing here? Create an issue or a PR!
+
+## Updating
+
+For updating your dependencies such as skyline-rs:
+
+```
+cargo update
+```
+
+For updating your version of `rust-std-skyline-squashed`:
+
+```
+# From inside your plugins folder
+
+cargo skyline self-update
+```
