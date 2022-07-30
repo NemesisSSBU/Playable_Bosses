@@ -14,6 +14,7 @@
 
 ## Setup
 Drop this mod into your ARCropolis folder and you're good to go.
+
 -*Step 1*
 
 - Unpack the .rar release file
