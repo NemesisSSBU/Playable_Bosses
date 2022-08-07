@@ -21,7 +21,7 @@ static mut DEAD : bool = false;
 static mut MOVING : bool = false;
 static mut JUMP_START : bool = false;
 static mut RESULT_SPAWNED : bool = false;
-pub static mut FIGHTER_NAME: [u64;5] = [0;5];
+pub static mut FIGHTER_NAME: [u64;9] = [0;9];
 static mut STOP : bool = false;
 
 pub unsafe fn read_tag(addr: u64) -> String {
@@ -149,7 +149,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                     DamageModule::set_damage_lock(boss_boma, true);
-                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
+                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
                     HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
                     if sv_information::is_ready_go() == true {
@@ -257,7 +257,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     // SETS POWER
 
-                    AttackModule::set_power_mul(boss_boma, 1.75);
+                    AttackModule::set_power_mul(boss_boma, 1.5);
 
                     // FIXES SPAWN
 
@@ -265,20 +265,17 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if sv_information::is_ready_go() == true {
                             if JUMP_START == false {
                                 JUMP_START = true;
-                                CONTROLLABLE = false;
-                                MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
+                                if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
+                                    MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
+                                }
                             }
                         }
                     }
                     if sv_information::is_ready_go() == true {
                         if CONTROLLABLE == true {
-                            if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_WAIT {
-                                if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
-                                    CONTROLLABLE = false;
-                                    if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_FOR_BOSS_START {
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
-                                    }
-                                }
+                            if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_WALK_FRONT, true);
                             }
                         }
                     }

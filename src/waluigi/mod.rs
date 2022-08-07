@@ -14,7 +14,7 @@ use smash::app::utility::get_category;
 
 static mut ENTRY_ID : usize = 0;
 static mut ASSIST_ID : [u32; 8] = [0; 8];
-pub static mut FIGHTER_NAME: [u64;10] = [0;10];
+pub static mut FIGHTER_NAME: [u64;9] = [0;9];
 pub static mut FIGHTER_MANAGER: usize = 0;
 static mut JUMP_START : bool = false;
 static mut RESULT_SPAWNED : bool = false;

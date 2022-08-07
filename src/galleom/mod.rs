@@ -22,7 +22,7 @@ static mut DEAD : bool = false;
 static mut MOVING : bool = false;
 static mut JUMP_START : bool = false;
 static mut RESULT_SPAWNED : bool = false;
-pub static mut FIGHTER_NAME: [u64;7] = [0;7];
+pub static mut FIGHTER_NAME: [u64;9] = [0;9];
 static mut STOP : bool = false;
 
 pub unsafe fn read_tag(addr: u64) -> String {
@@ -174,7 +174,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                     DamageModule::set_damage_lock(boss_boma, true);
-                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
+                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
                     HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
                     if sv_information::is_ready_go() == true {
@@ -189,7 +189,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if FighterUtil::is_hp_mode(module_accessor) == false {
-                                if DamageModule::damage(module_accessor, 0) >= 399.0 {
+                                if DamageModule::damage(module_accessor, 0) >= 499.0 {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
@@ -277,11 +277,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    if DamageModule::damage(module_accessor, 0) >= 200.0 {
+                    if DamageModule::damage(module_accessor, 0) >= 99.0 {
                         if IS_ANGRY == false {
                             CONTROLLABLE = false;
                             IS_ANGRY = true;
-                            DamageModule::add_damage(module_accessor, 4.1, 0);
+                            DamageModule::add_damage(module_accessor, 1.0, 0);
                             StatusModule::change_status_request_from_script(boss_boma,*ITEM_GALLEOM_STATUS_KIND_ANGER,true);
                         }
                     }

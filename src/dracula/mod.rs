@@ -22,7 +22,7 @@ pub static mut FIGHTER_MANAGER: usize = 0;
 static mut DEAD : bool = false;
 static mut JUMP_START : bool = false;
 static mut RESULT_SPAWNED : bool = false;
-pub static mut FIGHTER_NAME: [u64;7] = [0;7];
+pub static mut FIGHTER_NAME: [u64;9] = [0;9];
 static mut STOP : bool = false;
 
 pub unsafe fn read_tag(addr: u64) -> String {
@@ -150,7 +150,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                     DamageModule::set_damage_lock(boss_boma, true);
-                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
+                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
                     HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
                     if sv_information::is_ready_go() == true {
@@ -165,7 +165,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if FighterUtil::is_hp_mode(module_accessor) == false {
-                                if DamageModule::damage(module_accessor, 0) >= 399.0 {
+                                if DamageModule::damage(module_accessor, 0) >= 499.0 {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
@@ -181,7 +181,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 StopModule::end_stop(boss_boma);
                             }
                             if TRANSFORMED_MODE == false {
-                                if DamageModule::damage(module_accessor, 0) >= 199.0 {
+                                if DamageModule::damage(module_accessor, 0) >= 149.0 {
                                     if StatusModule::status_kind(boss_boma) != *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
                                         CONTROLLABLE = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA_STATUS_KIND_CHANGE_START, true);
@@ -384,6 +384,20 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_TURN {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0  {
+                                CONTROLLABLE = true;
+                                MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
+                            }
+                        }
+
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_TURN_SLASH {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0  {
+                                CONTROLLABLE = true;
+                                MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
+                            }
+                        }
+
                         if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_FIRE_SHOT_END {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) {
                                 CONTROLLABLE = true;
@@ -391,7 +405,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_HOMING_SHOT_END {
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) {
                                 CONTROLLABLE = true;
                             }
                         }
@@ -399,6 +413,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                 CONTROLLABLE = true;
                             }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_HOMING_SHOT_LOOP {
+                            CONTROLLABLE = false;
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_FIRE_SHOT_LOOP {
+                            CONTROLLABLE = false;
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_ATTACK_RUSH_START {
                             CONTROLLABLE = false;
@@ -428,7 +448,34 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_ATTACK_TURN_3WAY_MAIN {
                             CONTROLLABLE = false;
                         }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_FRONT_JUMP {
+                            CONTROLLABLE = false;
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_BACK_JUMP {
+                            CONTROLLABLE = false;
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
+                                CONTROLLABLE = true;
+                            }
+                        }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_ATTACK_TURN_3WAY_END {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_STEP_STRIKE {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_SHOCK_WAVE {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
+                                CONTROLLABLE = true;
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA2_STATUS_KIND_SLASH_THREE {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                 CONTROLLABLE = true;
                             }
@@ -509,7 +556,24 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         }
                                         if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) {
                                             CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA_STATUS_KIND_TELEPORT_START, true);
+                                            if lua_bind::PostureModule::lr(boss_boma) == -1.0 { // left
+                                                if ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                                    CONTROLLABLE = false;
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_FRONT_JUMP, true);
+                                                }
+                                                else {
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_FRONT_JUMP, true);
+                                                }
+                                            }
+                                            if lua_bind::PostureModule::lr(boss_boma) == 1.0 { // right
+                                                if ControlModule::get_stick_x(module_accessor) < -0.1 {
+                                                    CONTROLLABLE = false;
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_BACK_JUMP, true);
+                                                }
+                                                else {
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA2_STATUS_KIND_FRONT_JUMP, true);
+                                                }
+                                            }
                                         }
                                         if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
                                             CONTROLLABLE = false;
