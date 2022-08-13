@@ -120,7 +120,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 15;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_koopa");
@@ -167,7 +167,7 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 87;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_masterhand");
@@ -217,7 +217,7 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 88;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -267,7 +267,7 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 89;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -317,7 +317,7 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 90;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -367,7 +367,7 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 91;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -417,7 +417,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 92;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -467,7 +467,7 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 93;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -517,7 +517,7 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 94;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -567,7 +567,7 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 95;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -617,7 +617,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 96;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
+            *param.try_into_mut::<i8>().unwrap() = 6;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -1562,53 +1562,6 @@ fn callback_map_23(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Bayonetta C## Test
-
-#[arc_callback]
-fn callback_bayonetta(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_chara_bayonetta ")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("c01_index") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("c03_index") {
-            *param.try_into_mut::<i8>().unwrap() = 1;
-        }
-        if *hash == to_hash40("c05_index") {
-            *param.try_into_mut::<i8>().unwrap() = 2;
-        }
-        if *hash == to_hash40("c07_index") {
-            *param.try_into_mut::<i8>().unwrap() = 3;
-        }
-        if *hash == to_hash40("c00_index") {
-            *param.try_into_mut::<i8>().unwrap() = 4;
-        }
-        if *hash == to_hash40("c02_index") {
-            *param.try_into_mut::<i8>().unwrap() = 5;
-        }
-        if *hash == to_hash40("c04_index") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
-        }
-        if *hash == to_hash40("c06_index") {
-            *param.try_into_mut::<i8>().unwrap() = 7;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
 const MAX_FILE_SIZE: usize = 0xFFFF;
 const MAX_FILE_SIZE_STAGE: usize = 0xFFFF;
 
@@ -1624,7 +1577,6 @@ const MAX_FILE_SIZE_STAGE: usize = 0xFFFF;
        galleom::install();
        ganon::install();
        gigabowser::install();
-       callback_bayonetta::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
        callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
        callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
        callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);

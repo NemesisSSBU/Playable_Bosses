@@ -134,12 +134,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             if CONTROLLABLE == true {
                                 if MotionModule::motion_kind(boss_boma) != smash::hash40("wait") {
+                                    if StatusModule::status_kind(boss_boma) != ITEM_STATUS_KIND_WAIT {
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                    }
                                     if StatusModule::status_kind(boss_boma) != ITEM_MARX_STATUS_KIND_ATTACK_BLACK_HOLE_END {
                                         MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
                                     }
-                                }
-                                if StatusModule::status_kind(boss_boma) != ITEM_STATUS_KIND_WAIT {
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
                                 }
                             }
                             if CONTROLLABLE == false {
@@ -465,8 +465,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MARX_STATUS_KIND_ATTACK_PLANT_GROWS {
-                            CONTROLLABLE = false;
-                            if MotionModule::frame(boss_boma) == 20.0 {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 2.0 {
                                 CONTROLLABLE = true;
                             }
                         }
