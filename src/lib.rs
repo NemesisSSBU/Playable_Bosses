@@ -15,10 +15,6 @@ mod rathalos;
 mod galleom;
 mod ganon;
 mod gigabowser;
-//mod waluigi;
-//mod tabuu;
-//mod debug_masterhand;
-//mod killdebug;
 
 pub fn to_hash40(word: &str) -> Hash40 {
     Hash40(crc32_with_len(word))
@@ -76,6 +72,7 @@ const _CRC_TABLE: [u32; 256] = [
 #[arc_callback]
 fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
+    // These comments are from the great people over on the SSBU Modding Discord Server
     // with the param data ready,
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -1618,8 +1615,4 @@ const MAX_FILE_SIZE_STAGE: usize = 0xFFFF;
        callback_map_21::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
        callback_map_22::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
        callback_map_23::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       //waluigi::install();
-       //tabuu::install();
-       //debug_masterhand::install();
-       //killdebug::install();
     }
