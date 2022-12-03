@@ -1051,7 +1051,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                      ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_LW) ||
                                      ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_HI) || ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_S_L) ||
                                      ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_S_R) {
-                                        RECOVERY_2 += 1;
+                                        RECOVERY += 1;
                                     }
                                 }
                             }
