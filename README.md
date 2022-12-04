@@ -1,4 +1,4 @@
-## [Competitive Playable Bosses]
+## Competitive Playable Bosses
 *This mod is compatible with WOL*
 *Compatible with any gamemode*
 *Compatible with many other mods*
