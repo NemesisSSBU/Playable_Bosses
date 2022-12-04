@@ -1,7 +1,7 @@
 [package]
 name = "comp_boss"
 version = "0.9.7"
-authors = ["GamerSubzero <GamerSubzero@gmail.com>, Nemesis69 <PepeIsNoice@gmail.com>, Claude <supermariomasterbro@gmail.com>, jam1garner <jam1.mcleod@hotmail.com>"]
+authors = ["GamerSubzero <GamerSubzero@gmail.com>, NemesisSSBU <PepeIsNoice@gmail.com>, ClaudeRiegan <supermariomasterbro@gmail.com>, jam1garner <jam1.mcleod@hotmail.com>"]
 edition = "2021"
 
 [package.metadata.skyline]
