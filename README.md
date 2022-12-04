@@ -2,8 +2,6 @@
 
 *This mod is compatible with WOL*
 
-*Compatible with almost any other mod*
-
 *Compatible with any gamemode*
 
 *Compatible with many other mods*
