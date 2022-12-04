@@ -4,7 +4,6 @@
 *Compatible with many other mods*
 *Lightweight*
 *Boss duet moves*
-
 ## Setup
 Drop this mod into your ARCropolis folder and you're good to go.
 
@@ -14,12 +13,11 @@ Drop this mod into your ARCropolis folder and you're good to go.
 
 *Step 2*
 
-- Drag and drop the unpacked files ("atmosphere" and "Ultimate") into the root of your Switch SD card
+- Drag and drop the unpacked files ("atmosphere" and "ultimate") into the root of your Switch SD card
 
 *Step 3*
 
 - Start the game and you should be good to go!
-
 ## Warning
 This mod is NOT compatable with the Giga Bowser mod, hence we made Giga Bowser playable without the help of another mod.
 
@@ -34,11 +32,9 @@ We are NOT responsible for what happens to your Nintendo account if you fail to 
 - [NemesisSSBU](https://github.com/NemesisSSBU)
 - [GamerSubzero](https://github.com/GamerSubzero?tab=overview&from=2022-12-01&to=2022-12-03)
 - [ClaudeRiegan](https://github.com/ClaudevonRiegan)
-
 ## Credit for Giga Bowser CSS
 Thanks to [KyoDusk](https://gamebanana.com/members/1834863) for the beautiful CSS of Giga Bowser!
 - Check out their Game Banana page here: https://gamebanana.com/mods/368969
-
 ## Skyline documents
 [Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html)
 * [Rust](https://www.rust-lang.org/install.html)
