@@ -27,7 +27,9 @@ This mod is NOT compatable with a mod that changes the announcers voice of a cha
 This mod is NOT compatable in a multiplayer environment unless the other player(s) also have this mod installed.
 
 ## Credit
-GamerSubzero, Nemesis69 and Claude
+- [NemesisSSBU](https://github.com/NemesisSSBU)
+- [GamerSubzero](https://github.com/GamerSubzero?tab=overview&from=2022-12-01&to=2022-12-03)
+- [ClaudeRiegan](https://github.com/ClaudevonRiegan)
 
 ## Credit for Giga Bowser CSS
 - Thanks to [KyoDusk](https://gamebanana.com/members/1834863) for the beautiful CSS of Giga Bowser!
