@@ -1,13 +1,8 @@
 ## [Competitive Playable Bosses]
-
 *This mod is compatible with WOL*
-
 *Compatible with any gamemode*
-
 *Compatible with many other mods*
-
 *Lightweight*
-
 *Boss duet moves*
 
 ## Setup
@@ -27,18 +22,18 @@ Drop this mod into your ARCropolis folder and you're good to go.
 
 ## Warning
 This mod is NOT compatable with the Giga Bowser mod, hence we made Giga Bowser playable without the help of another mod.
-
 This mod is NOT compatable with a mod that changes the name of a character since this could create conflicting prc files.
-
 This mod is NOT compatable with a mod that changes the announcers voice of a character since this could create conflicting audio files.
-
 This mod is NOT compatable in a multiplayer environment unless the other player(s) also have this mod installed.
 
 ## Credit
 GamerSubzero, Nemesis69 and Claude
 
-## Skyline documents
+## Credit for Giga Bowser CSS
+- Thanks to [KyoDusk](https://gamebanana.com/members/1834863) for the beautiful CSS of Giga Bowser!
+- Check out their Game Banana page here: https://gamebanana.com/mods/368969
 
+## Skyline documents
 [Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html)
 * [Rust](https://www.rust-lang.org/install.html)
 * [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
