@@ -29,6 +29,7 @@ This mod is NOT compatable with a mod that changes the announcers voice of a cha
 
 This mod is NOT compatable in a multiplayer environment unless the other player(s) also have this mod installed.
 
+We are NOT responsible for what happens to your Nintendo account if you fail to take precautions.
 ## Credit
 - [NemesisSSBU](https://github.com/NemesisSSBU)
 - [GamerSubzero](https://github.com/GamerSubzero?tab=overview&from=2022-12-01&to=2022-12-03)
