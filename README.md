@@ -15,11 +15,11 @@ Drop this mod into your ARCropolis folder and you're good to go.
 
 *Step 1*
 
-- Unpack the .rar release file
+- Unpack the .zip release file
 
 *Step 2*
 
-- Drag and drop the unpacked files ("Bosses" and "Ultimate") into the root of your Switch SD card
+- Drag and drop the unpacked files ("atmosphere" and "Ultimate") into the root of your Switch SD card
 
 *Step 3*
 
