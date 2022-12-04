@@ -1,0 +1,69 @@
+{
+  "new_dir_files": {
+    "ui/replace/chara/chara_0": [
+      "ui/replace/chara/chara_0/chara_0_mewtwo_masterhand_00.bntx"
+    ],
+    "ui/replace/chara/chara_1": [
+      "ui/replace/chara/chara_1/chara_1_mewtwo_masterhand_00.bntx"
+    ],
+    "ui/replace/chara/chara_2": [
+      "ui/replace/chara/chara_2/chara_2_masterhand_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_crazyhand_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_darz_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_kiila_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_dracula_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_lioleus_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_galleom_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_marx_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_ganonboss_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_koopag_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_mewtwo_masterhand_00.bntx"
+    ],
+    "ui/replace/chara/chara_3": [
+      "ui/replace/chara/chara_3/chara_3_mewtwo_masterhand_00.bntx"
+    ],
+    "ui/replace/chara/chara_4": [
+      "ui/replace/chara/chara_4/chara_4_masterhand_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_crazyhand_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_darz_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_kiila_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_dracula_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_lioleus_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_galleom_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_marx_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_ganonboss_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_koopag_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_mewtwo_masterhand_00.bntx"
+    ],
+    "ui/replace/chara/chara_7": [
+      "ui/replace/chara/chara_7/chara_7_masterhand_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_crazyhand_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_darz_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_kiila_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_dracula_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_lioleus_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_galleom_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_marx_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_ganonboss_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_koopag_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_mewtwo_masterhand_00.bntx"
+    ],
+    "ui/param/standard": [
+      "ui/replace/standard/standard_route_masterhand.prc",
+      "ui/replace/standard/standard_route_crazyhand.prc",
+      "ui/replace/standard/standard_route_darz.prc",
+      "ui/replace/standard/standard_route_kiila.prc",
+      "ui/replace/standard/standard_route_lioleus.prc",
+      "ui/replace/standard/standard_route_galleom.prc",
+      "ui/replace/standard/standard_route_dracula.prc",
+      "ui/replace/standard/standard_route_galleom.prc",
+      "ui/replace/standard/standard_route_marx.prc",
+      "ui/replace/standard/standard_route_ganonboss.prc",
+      "ui/replace/standard/standard_route_mewtwo_masterhand.prc",
+      "ui/replace/standard/standard_route_koopag.prc"
+    ],
+	"ui/param/standard": [
+	  "ui/replace/chara/chara_12/chara_12_mewtwo_masterhand_00.bntx"
+    ]
+  }
+}
