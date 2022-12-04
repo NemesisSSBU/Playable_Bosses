@@ -5,6 +5,8 @@
 *Lightweight*
 *Boss duet moves*
 ## Setup
+Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
+
 Drop this mod into your ARCropolis folder and you're good to go.
 
 *Step 1*
