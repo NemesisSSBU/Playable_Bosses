@@ -1,9 +1,15 @@
 ## Competitive Playable Bosses
+
 *This mod is compatible with WOL*
+
 *Compatible with any gamemode*
+
 *Compatible with many other mods*
-*Lightweight*
-*Boss duet moves*
+
+*Easy to use*
+
+*Smooth as butter*
+
 ## Setup
 Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
 
