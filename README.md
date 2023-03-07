@@ -21,7 +21,7 @@ Drop this mod into your ARCropolis folder and you're good to go.
 
 *Step 2*
 
-- Drag and drop the unpacked files ("atmosphere" and "ultimate") into the root of your Switch SD card
+- Drag and drop the unpacked files ("atmosphere" and "Ultimate") into the root of your Switch SD card
 
 *Step 3*
 
