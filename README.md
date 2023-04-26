@@ -36,6 +36,17 @@ This mod is NOT compatable with a mod that changes the announcers voice of a cha
 This mod is NOT compatable in a multiplayer environment unless the other player(s) also have this mod installed.
 
 We are NOT responsible for what happens to your Nintendo account if you fail to take precautions.
+
+## Troubleshooting
+
+*Is the game not starting?*
+
+- Try clearing out other mods that you believe may be conflicting with this mod
+
+*Why doesn't this work on Ryujinx?*
+
+- Ryujinx is a little different as their mod folder is located within %appdata% --> sdcard --> atmosphere --> contents --> 01006a800016e000 --> romfs --> skyline --> (drag .nro files into here). Our mod is already simplified so that all you need to do is go into: %appdata% --> sdcard. While in the sdcard folder, drag and drop the mod files in, if you installed skyline previously it'll ask to replace some files so that's up to you whether or not you want to replace your previous ARCropolis folder or not with the one that comes prepackaged within our mod. Once it's dragged in you're ready to go!
+
 ## Credit
 - [NemesisSSBU](https://github.com/NemesisSSBU)
 - [GamerSubzero](https://github.com/GamerSubzero?tab=overview&from=2022-12-01&to=2022-12-03)
