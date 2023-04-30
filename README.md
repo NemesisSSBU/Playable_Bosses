@@ -6,10 +6,6 @@
 
 *Compatible with many other mods*
 
-*Easy to use*
-
-*Smooth as butter*
-
 ## Setup
 Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
 
@@ -37,13 +33,25 @@ This mod is NOT compatable in a multiplayer environment unless the other player(
 
 We are NOT responsible for what happens to your Nintendo account if you fail to take precautions.
 
+## Boss Stats
+- Master Hand: 360 HP
+- Crazy Hand: 360 HP
+- Dharkon: 400 HP
+- Galeem: 400 HP
+- Marx: 300 HP
+- Ganon: 400 HP
+- Dracula: 400 HP
+- Rathalos: 400 HP
+- Galleom: 400 HP
+- WOL Master Hand: 300 HP
+
 ## Troubleshooting
 
 *Is the game not starting?*
 
 - Try clearing out other mods that you believe may be conflicting with this mod
 
-*Why doesn't this work on Ryujinx?*
+*Does this work with Ryujinx?*
 
 - Ryujinx is a little different as their mod folder is located within %appdata% --> sdcard --> atmosphere --> contents --> 01006a800016e000 --> romfs --> skyline --> (drag .nro files into here). Our mod is already simplified so that all you need to do is go into: %appdata% --> sdcard. While in the sdcard folder, drag and drop the mod files in, if you installed skyline previously it'll ask to replace some files so that's up to you whether or not you want to replace your previous ARCropolis folder or not with the one that comes prepackaged within our mod. Once it's dragged in you're ready to go!
 
