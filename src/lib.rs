@@ -634,7 +634,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Remove DLC's that bring unblance (aka get the CSS down to 91 characters)
+//Remove DLC's (aka get the CSS down to 91 characters)
 
 #[arc_callback]
 fn callback_hero(hash: u64, mut data: &mut [u8]) -> Option<usize> {
