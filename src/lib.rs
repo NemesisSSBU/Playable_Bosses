@@ -67,7 +67,7 @@ const _CRC_TABLE: [u32; 256] = [
     0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d,
 ];
 
-//Giga Bowser
+// Giga Bowser
 
 #[arc_callback]
 fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -117,7 +117,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 15;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_koopa");
@@ -134,7 +134,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Master Hand
+// Master Hand
 
 #[arc_callback]
 fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -164,7 +164,7 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 87;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_masterhand");
@@ -184,7 +184,7 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Crazy Hand
+// Crazy Hand
 
 #[arc_callback]
 fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -214,7 +214,7 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 88;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -234,7 +234,7 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Dharkon
+// Dharkon
 
 #[arc_callback]
 fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -264,7 +264,7 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 89;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -284,7 +284,7 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Galeem
+// Galeem
 
 #[arc_callback]
 fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -314,7 +314,7 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 90;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -334,7 +334,7 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Marx
+// Marx
 
 #[arc_callback]
 fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -364,7 +364,7 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 91;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -384,7 +384,7 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Ganon
+// Ganon
 
 #[arc_callback]
 fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -414,7 +414,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 92;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -434,7 +434,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Dracula
+// Dracula
 
 #[arc_callback]
 fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -464,7 +464,7 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 93;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -484,7 +484,7 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Galleom
+// Galleom
 
 #[arc_callback]
 fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -514,7 +514,7 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 94;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -534,7 +534,7 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Rathalos
+// Rathalos
 
 #[arc_callback]
 fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -564,7 +564,7 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 95;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -584,7 +584,7 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//WOL Master Hand
+// WOL Master Hand
 
 #[arc_callback]
 fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -614,7 +614,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 96;
         }
         if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 6;
+            *param.try_into_mut::<i8>().unwrap() = 1;
         }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
@@ -634,7 +634,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//Remove DLC's (aka get the CSS down to 91 characters)
+// Remove some DLC's (get the CSS down to 91 characters, maybe one day there won't be a 91 CSS limit)
 
 #[arc_callback]
 fn callback_hero(hash: u64, mut data: &mut [u8]) -> Option<usize> {
@@ -825,7 +825,7 @@ fn callback_joker(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-//UNLOCKS HIDDEN MAPS
+// UNLOCKS HIDDEN MAPS
 
 #[arc_callback]
 fn callback_map_1(hash: u64, mut data: &mut [u8]) -> Option<usize> {
