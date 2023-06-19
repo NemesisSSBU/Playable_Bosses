@@ -63,7 +63,7 @@ We are NOT responsible for what happens to your Nintendo account if you fail to 
 - [epicmartin7](https://github.com/epicmartin7)
 ## Credit for Giga Bowser CSS
 Thanks to [KyoDusk](https://gamebanana.com/members/1834863) for the beautiful CSS of Giga Bowser!
-- Check out their Game Banana page here: https://gamebanana.com/mods/368969\
+- Check out their Game Banana page here: https://gamebanana.com/mods/368969
 ## Skyline documents
 [Documentation for skyline-rs](https://ultimate-research.github.io/skyline-rs-template/doc/skyline/index.html)
 * [Rust](https://www.rust-lang.org/install.html)
