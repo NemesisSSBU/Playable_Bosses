@@ -62,7 +62,7 @@ NEVER play this mod in an online environment without someone else using this sam
 - Please open up a "New Issue" in the issues tab on GitHub and describe the issue to the best of your ability.
 ```
 ## I want to make mods! Do you know how?
-- If you're interested in knowing how to make these types of mods, a widely known Smash Modder named PiNE has created [this guide](https://docs.google.com/document/d/1y_JX5LNsQ8jUBfrghRkL8VkvfMWUIXSrrscM5qj7s6U/edit) that details all the necessary steps to begin creating your own mods for Smash.
+- If you're interested in knowing how to make these types of mods, a widely known Smash Modder named [PiNE](https://github.com/FaultyPine) has created [this guide](https://docs.google.com/document/d/1y_JX5LNsQ8jUBfrghRkL8VkvfMWUIXSrrscM5qj7s6U/edit) that details all the necessary steps to begin creating your own mods for Smash.
 ## Credit
 - [NemesisSSBU](https://github.com/NemesisSSBU)
 - [GamerSubzero](https://github.com/GamerSubzero?tab=overview&from=2022-12-01&to=2022-12-03)
