@@ -32,7 +32,7 @@ This mod is NOT compatable with a mod that changes the announcers voice of a cha
 
 This mod is NOT compatable in a multiplayer environment unless the other player(s) also have this mod installed.
 ```
-$${\color{white}We \space \color{white}are \space \color{red}NOT \space \color{white}responsible \space \color{white}for \space \color{white}what \space \color{white}happens \space \color{white}to \space \color{white}your \space \color{white}Nintendo \space \color{white}account! \space \color{white}Please \space \color{white}take \space \color{white}precautions!}$$
+We are NOT responsible for what happens to your Nintendo account! Please take precautions!
 
 ## Precautions to take
 ```
