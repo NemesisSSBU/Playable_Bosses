@@ -1,4 +1,7 @@
 ## Competitive Playable Bosses
+
+![alt text](https://github.com/NemesisSSBU/NemesisSSBU/blob/main/CompBossImg.png?raw=true)
+
 *This mod is compatible with WOL*
 
 *Compatible with any gamemode*
