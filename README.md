@@ -39,7 +39,7 @@ We are NOT responsible for what happens to your Nintendo account if you fail to 
 - Galeem: 400 HP
 - Marx: 300 HP
 - Ganon: 400 HP
-- Dracula: 400 HP
+- Dracula: 500 HP
 - Rathalos: 400 HP
 - Galleom: 400 HP
 - WOL Master Hand: 300 HP
