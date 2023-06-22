@@ -116,6 +116,9 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 15;
         }
+        if *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 15;
+        }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
@@ -126,7 +129,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_mario");
         }
         if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
     let mut writer = std::io::Cursor::new(data);
@@ -155,12 +158,15 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 87;
+        }
+        if *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 87;
         }
         if *hash == to_hash40("save_no") {
@@ -169,14 +175,14 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_masterhand");
         }
+        if *hash == to_hash40("fighter_type") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
+        }
         if *hash == to_hash40("fighter_kind") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("ui_series_id") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
-        }
-        if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
         }
     });
     let mut writer = std::io::Cursor::new(data);
@@ -213,6 +219,9 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 88;
         }
+        if *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 88;
+        }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
@@ -226,7 +235,7 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
         }
         if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
     let mut writer = std::io::Cursor::new(data);
@@ -263,6 +272,9 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 89;
         }
+        if *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 89;
+        }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
@@ -276,7 +288,7 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
         }
         if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
     let mut writer = std::io::Cursor::new(data);
@@ -313,6 +325,9 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 90;
         }
+        if *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 90;
+        }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
@@ -326,7 +341,7 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
         }
         if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
     let mut writer = std::io::Cursor::new(data);
@@ -363,6 +378,9 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 91;
         }
+        if *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 91;
+        }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
@@ -376,7 +394,7 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_kirby");
         }
         if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
     let mut writer = std::io::Cursor::new(data);
@@ -413,6 +431,9 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 92;
         }
+        if *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 92;
+        }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
@@ -426,7 +447,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_zelda");
         }
         if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
     let mut writer = std::io::Cursor::new(data);
@@ -463,6 +484,9 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 93;
         }
+        if *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 93;
+        }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
@@ -476,7 +500,7 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_castlevania");
         }
         if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
     let mut writer = std::io::Cursor::new(data);
@@ -513,6 +537,9 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 94;
         }
+        if *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 94;
+        }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
@@ -526,7 +553,7 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
         }
         if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
     let mut writer = std::io::Cursor::new(data);
@@ -563,6 +590,9 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 95;
         }
+        if *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 95;
+        }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
@@ -576,7 +606,7 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
         }
         if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
     let mut writer = std::io::Cursor::new(data);
@@ -613,6 +643,9 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 96;
         }
+        if *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 96;
+        }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
@@ -626,7 +659,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
         }
         if *hash == to_hash40("fighter_type") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
     let mut writer = std::io::Cursor::new(data);
