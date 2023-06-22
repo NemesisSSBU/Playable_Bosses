@@ -114,7 +114,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-                        if MotionModule::frame(module_accessor) >= 2.0 {
+                        if MotionModule::frame(module_accessor) >= 5.0 {
                             if ModelModule::scale(module_accessor) != 0.0001 {
                                 RESULT_SPAWNED = false;
                                 ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
@@ -145,8 +145,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if ModelModule::scale(module_accessor) == 0.0001 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY {
-                            MotionModule::set_rate(boss_boma, 4.0);
-                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 4.0);
+                            MotionModule::set_rate(boss_boma, 7.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 7.0);
                         }
                     }
 

@@ -123,7 +123,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_koopa");
         }
         if *hash == to_hash40("ui_series_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_mario");
         }
         if *hash == to_hash40("fighter_type") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
@@ -373,7 +373,7 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_marx");
         }
         if *hash == to_hash40("ui_series_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_kirby");
         }
         if *hash == to_hash40("fighter_type") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
@@ -423,7 +423,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_ganonboss");
         }
         if *hash == to_hash40("ui_series_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_zelda");
         }
         if *hash == to_hash40("fighter_type") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");
@@ -473,7 +473,7 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_dracula");
         }
         if *hash == to_hash40("ui_series_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_mario");
         }
         if *hash == to_hash40("fighter_type") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_other");

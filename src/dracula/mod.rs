@@ -107,15 +107,17 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-                        if ModelModule::scale(module_accessor) != 0.0001 {
-                            RESULT_SPAWNED = false;
-                            ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA), 0, 0, false, false);
-                            BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
-                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                            ModelModule::set_scale(module_accessor, 0.0001);
-                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
-                            if FighterUtil::is_hp_mode(module_accessor) == true {
-                                DamageModule::add_damage(module_accessor, 1.1, 0);
+                        if MotionModule::frame(module_accessor) >= 2.0 {
+                            if ModelModule::scale(module_accessor) != 0.0001 {
+                                RESULT_SPAWNED = false;
+                                ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA), 0, 0, false, false);
+                                BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
+                                let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                                ModelModule::set_scale(module_accessor, 0.0001);
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
+                                if FighterUtil::is_hp_mode(module_accessor) == true {
+                                    DamageModule::add_damage(module_accessor, 1.1, 0);
+                                }
                             }
                         }
                     }

@@ -21,21 +21,28 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             .as_ptr(),
         );
         if fighter_kind == *FIGHTER_KIND_KOOPAG {
-            let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
-            MotionModule::set_rate(module_accessor, 1.0);
-            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(module_accessor, 1.0);
-            if sv_information::is_ready_go() == false {
-                DEAD = false;
+            if smash::app::stage::get_stage_id() == 0x139 {
+                // if MotionModule::motion_kind(boss_boma) != smash::hash40("wait") {
+                //     MotionModule::change_motion(module_accessor,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
+                // }
             }
-            if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
-                DEAD = true;
-            }
-            // DEATH CHECK
-            if DEAD == true {
-                if sv_information::is_ready_go() == true {
-                    if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
-                        if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
-                            StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+            else {
+                let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
+                MotionModule::set_rate(module_accessor, 1.0);
+                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(module_accessor, 1.0);
+                if sv_information::is_ready_go() == false {
+                    DEAD = false;
+                }
+                if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
+                    DEAD = true;
+                }
+                // DEATH CHECK
+                if DEAD == true {
+                    if sv_information::is_ready_go() == true {
+                        if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
+                            if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
+                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+                            }
                         }
                     }
                 }
