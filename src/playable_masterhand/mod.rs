@@ -391,6 +391,31 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 CONTROLLABLE = true;
                             }
                         }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING {
+                            //Boss Control Stick Movement
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 5.0 {
+                                CONTROLLABLE = true;
+                            }
+                        }
                         if StatusModule::status_kind(boss_boma) == *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_TURN {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 5.0 {
                                 CONTROLLABLE = true;
