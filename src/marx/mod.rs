@@ -520,8 +520,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MARX_STATUS_KIND_ATTACK_BLACK_HOLE_END {
-                            if MotionModule::frame(boss_boma) == 14.0 {
+                            CONTROLLABLE = false;
+                            if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) {
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_MARX_STATUS_KIND_MOVE_TELEPORT, true);
+                                CONTROLLABLE = true;
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MARX_STATUS_KIND_ATTACK_FOLLOW_EYE_END {

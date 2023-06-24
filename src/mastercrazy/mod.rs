@@ -2518,7 +2518,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_GRAVITY_BALL_END {
-                                if MotionModule::frame(boss_boma_2) == MotionModule::end_frame(boss_boma_2) - 2.0 {
+                                if MotionModule::frame(boss_boma_2) == MotionModule::end_frame(boss_boma_2) {
                                     CONTROLLABLE_2 = true;
                                 }
                             }
