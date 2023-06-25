@@ -92,12 +92,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         ModelModule::set_scale(module_accessor, 0.0001);
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         ModelModule::set_scale(boss_boma, 0.04);
-                        MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("hovering"),0.0,1.0,false,0.0,false,false);
+                        MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("hovering_move"),0.0,1.0,false,0.0,false,false);
                     }
                     if ModelModule::scale(module_accessor) == 0.0001 {
                         MotionModule::change_motion(module_accessor,smash::phx::Hash40::new("none"),0.0,1.0,false,0.0,false,false);
-                        PostureModule::set_rot(module_accessor,&Vector3f{x: 70.0, y: 0.0, z: 0.0},0);
-                        PostureModule::set_pos(module_accessor, &Vector3f{x: PostureModule::pos_x(module_accessor), y: 2.0, z: PostureModule::pos_z(module_accessor)});
+                        ModelModule::set_joint_rotate(module_accessor, smash::phx::Hash40::new("root") , &mut Vector3f{x: -270.0, y: 180.0, z: -90.0}, smash::app::MotionNodeRotateCompose{_address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8}, ModelModule::rotation_order(module_accessor));
                     }
                 }
                 else if smash::app::stage::get_stage_id() != 0x13A {
@@ -140,9 +139,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             if CONTROLLABLE == true {
                                 if GROUNDED == true {
-                                    if MotionModule::motion_kind(boss_boma) != smash::hash40("wait") {
+                                    if MotionModule::motion_kind(boss_boma) != smash::hash40("wait") && StatusModule::status_kind(boss_boma) != *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT {
                                         MotionModule::set_rate(boss_boma, 1.0);
                                         smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
                                         MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
                                     }
                                 }
@@ -150,6 +150,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if MotionModule::motion_kind(boss_boma) != smash::hash40("hovering") {
                                         MotionModule::set_rate(boss_boma, 1.0);
                                         smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_DEBUG_CONTROL, true);
                                         MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("hovering"),0.0,1.0,false,0.0,false,false);
                                     }
                                 }
@@ -372,7 +373,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     // SETS POWER
 
-                    AttackModule::set_power_mul(boss_boma, 1.5);
+                    AttackModule::set_power_mul(boss_boma, 2.5);
 
                     // FIXES SPAWN
 
