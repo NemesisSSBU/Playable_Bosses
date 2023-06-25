@@ -165,7 +165,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if FighterUtil::is_hp_mode(module_accessor) == false {
-                                if DamageModule::damage(module_accessor, 0) >= 499.0 {
+                                if DamageModule::damage(module_accessor, 0) >= 599.0 {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
@@ -181,7 +181,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 StopModule::end_stop(boss_boma);
                             }
                             if TRANSFORMED_MODE == false {
-                                if DamageModule::damage(module_accessor, 0) >= 149.0 {
+                                if DamageModule::damage(module_accessor, 0) >= 200.0 {
                                     if StatusModule::status_kind(boss_boma) != *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
                                         CONTROLLABLE = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA_STATUS_KIND_CHANGE_START, true);
@@ -205,7 +205,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
                                 StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
                                 ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
-                                    BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
+                                BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                                 StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_ENTRY, true);
@@ -216,6 +216,35 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_TRANS_PHASE {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 1.0 {
                                 CONTROLLABLE = true;
+                            }
+                        }
+                    }
+
+                    if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 1.0 {
+                                let x = PostureModule::pos_x(boss_boma);
+                                let y = PostureModule::pos_y(boss_boma);
+                                let z = PostureModule::pos_z(boss_boma);
+                                let boss_pos = Vector3f{x: x, y: y, z: z};
+                                TRANSFORMED_MODE = true;
+                                PostureModule::set_pos(module_accessor, &boss_pos);
+                                PostureModule::set_pos(boss_boma, &boss_pos);
+                                ModelModule::set_scale(module_accessor, 1.0);
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
+                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
+                                ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
+                                BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
+                                let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+                                ModelModule::set_scale(module_accessor, 0.0001);
+                            }
+                        }
+
+                        if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_TRANS_PHASE {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 1.0 {
+                                CONTROLLABLE = false;
                             }
                         }
                     }

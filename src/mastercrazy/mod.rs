@@ -332,7 +332,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
                     if sv_information::is_ready_go() == true {
-                        if DamageModule::damage(module_accessor, 0) >= 150.0 {
+                        if DamageModule::damage(module_accessor, 0) >= 200.0 {
                             if STUNNED == false {
                                 CONTROLLABLE = false;
                                 STUNNED = true;
@@ -350,7 +350,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if FighterUtil::is_hp_mode(module_accessor) == false {
-                                if DamageModule::damage(module_accessor, 0) >= 359.0 {
+                                if DamageModule::damage(module_accessor, 0) >= 399.0 {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
@@ -1094,12 +1094,17 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING {
-                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) == true {
-                                MULTIPLE_BULLETS = 2;
+                            if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
+                                if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) == true {
+                                    MULTIPLE_BULLETS = 2;
+                                }
+                                if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) == false {
+                                    MULTIPLE_BULLETS = 0;
+                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU, true);
+                                }
                             }
-                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) == false {
-                                MULTIPLE_BULLETS = 0;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU, true);
+                            else {
+                                MULTIPLE_BULLETS = 2;
                             }
                         }
 
@@ -1726,7 +1731,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     HitModule::set_whole(boss_boma_2, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
                     if sv_information::is_ready_go() == true {
-                        if DamageModule::damage(module_accessor, 0) >= 150.0 {
+                        if DamageModule::damage(module_accessor, 0) >= 200.0 {
                             if STUNNED_2 == false {
                                 CONTROLLABLE_2 = false;
                                 STUNNED_2 = true;
@@ -1744,7 +1749,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if FighterUtil::is_hp_mode(module_accessor) == false {
-                                if DamageModule::damage(module_accessor, 0) >= 359.0 {
+                                if DamageModule::damage(module_accessor, 0) >= 399.0 {
                                     if DEAD_2 == false {
                                         CONTROLLABLE_2 = false;
                                         StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_DEAD, true);

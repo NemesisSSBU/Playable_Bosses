@@ -151,7 +151,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     DamageModule::set_damage_lock(boss_boma, true);
                     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
                     HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
-
+                    
                     if sv_information::is_ready_go() == true {
                         if StopModule::is_damage(boss_boma) | StopModule::is_damage(module_accessor) {
                             if FighterUtil::is_hp_mode(module_accessor) == true {
@@ -164,7 +164,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if FighterUtil::is_hp_mode(module_accessor) == false {
-                                if DamageModule::damage(module_accessor, 0) >= 399.0 {
+                                if DamageModule::damage(module_accessor, 0) >= 499.0 {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);

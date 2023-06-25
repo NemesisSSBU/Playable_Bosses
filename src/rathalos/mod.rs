@@ -141,11 +141,15 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLABLE == true {
                                 if GROUNDED == true {
                                     if MotionModule::motion_kind(boss_boma) != smash::hash40("wait") {
+                                        MotionModule::set_rate(boss_boma, 1.0);
+                                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                                         MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
                                     }
                                 }
                                 else {
                                     if MotionModule::motion_kind(boss_boma) != smash::hash40("hovering") {
+                                        MotionModule::set_rate(boss_boma, 1.0);
+                                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                                         MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("hovering"),0.0,1.0,false,0.0,false,false);
                                     }
                                 }
@@ -182,87 +186,89 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     let y = PostureModule::pos_y(boss_boma);
                                     let z = PostureModule::pos_z(boss_boma);
                                     let boss_pos = Vector3f{x: x, y: y, z: z};
-                                    if PostureModule::pos_y(boss_boma) >= 150.0 {
-                                        let boss_y_pos_1 = Vector3f{x: x, y: 150.0, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                        PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                        if PostureModule::pos_y(boss_boma) <= -100.0 {
-                                            let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                        }
-                                        if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                            let boss_x_pos_1 = Vector3f{x: 200.0, y: 100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                        }
-                                        if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                            let boss_x_pos_2 = Vector3f{x: -200.0, y: 100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        }
-                                    }
-                                    else if PostureModule::pos_y(boss_boma) <= -100.0 {
-                                        let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                        PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                        if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                            let boss_x_pos_1 = Vector3f{x: 200.0, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                        }
-                                        if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                            let boss_x_pos_2 = Vector3f{x: -200.0, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        }
-                                        if PostureModule::pos_y(boss_boma) >= 100.0 {
-                                            let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                        }
-                                    }
-                                    else if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                        let boss_x_pos_1 = Vector3f{x: 200.0, y: y, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                        PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                        if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                            let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        }
+                                    if CONTROLLABLE == true {
                                         if PostureModule::pos_y(boss_boma) >= 150.0 {
                                             let boss_y_pos_1 = Vector3f{x: x, y: 150.0, z: z};
                                             PostureModule::set_pos(module_accessor, &boss_y_pos_1);
                                             PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                            if PostureModule::pos_y(boss_boma) <= -100.0 {
+                                                let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                                let boss_x_pos_1 = Vector3f{x: 200.0, y: 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                                let boss_x_pos_2 = Vector3f{x: -200.0, y: 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                            }
                                         }
-                                        if PostureModule::pos_y(boss_boma) <= -100.0 {
+                                        else if PostureModule::pos_y(boss_boma) <= -100.0 {
                                             let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
                                             PostureModule::set_pos(module_accessor, &boss_y_pos_2);
                                             PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                            if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                                let boss_x_pos_1 = Vector3f{x: 200.0, y: -100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                                let boss_x_pos_2 = Vector3f{x: -200.0, y: -100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                            }
+                                            if PostureModule::pos_y(boss_boma) >= 100.0 {
+                                                let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                            }
                                         }
-                                    }
-                                    else if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                        let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                        PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        if PostureModule::pos_y(boss_boma) >= 100.0 {
-                                            let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                        }
-                                        if PostureModule::pos_y(boss_boma) <= -100.0 {
-                                            let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                        }
-                                        if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                        else if PostureModule::pos_x(boss_boma) >= 200.0 {
                                             let boss_x_pos_1 = Vector3f{x: 200.0, y: y, z: z};
                                             PostureModule::set_pos(module_accessor, &boss_x_pos_1);
                                             PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                            if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                                let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                            }
+                                            if PostureModule::pos_y(boss_boma) >= 150.0 {
+                                                let boss_y_pos_1 = Vector3f{x: x, y: 150.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                            }
+                                            if PostureModule::pos_y(boss_boma) <= -100.0 {
+                                                let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                            }
                                         }
+                                        else if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                            let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
+                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                            PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                            if PostureModule::pos_y(boss_boma) >= 100.0 {
+                                                let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                            }
+                                            if PostureModule::pos_y(boss_boma) <= -100.0 {
+                                                let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                                let boss_x_pos_1 = Vector3f{x: 200.0, y: y, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                            }
+                                        }
+                                        PostureModule::set_pos(module_accessor, &boss_pos);
                                     }
-                                    PostureModule::set_pos(module_accessor, &boss_pos);
                                 }
                             }
                         }
@@ -276,7 +282,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
                     if sv_information::is_ready_go() == true {
-                        if DamageModule::damage(module_accessor, 0) >= 150.0 {
+                        if DamageModule::damage(module_accessor, 0) >= 300.0 {
                             if STUNNED == false {
                                 CONTROLLABLE = false;
                                 STUNNED = true;
@@ -295,7 +301,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     }
                                 }
                                 if FighterUtil::is_hp_mode(module_accessor) == false {
-                                    if DamageModule::damage(module_accessor, 0) >= 399.0 {
+                                    if DamageModule::damage(module_accessor, 0) >= 599.0 {
                                         if DEAD == false {
                                             CONTROLLABLE = false;
                                             DEAD = true;
@@ -490,7 +496,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_CHARGE_FIREBALL_END {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
-                                CONTROLLABLE = true;
+                                // CONTROLLABLE = true;
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_FLY_END {
@@ -714,12 +720,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_AIR {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) {
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT_AIR, true);
+                                CONTROLLABLE = true;
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_GROUND {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) {
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT, true);
+                                CONTROLLABLE = true;
                             }
                         }
 
@@ -742,126 +748,113 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
-                        if CONTROLLABLE == true {
-                            if GROUNDED == true {
-                                if DEAD == false {
-                                    if sv_information::is_ready_go() == true {
-                                        //Boss Moves
-                                        if StatusModule::status_kind(module_accessor) != *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_GROUND {
-                                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {
-                                                CONTROLLABLE = false;
-                                                GROUNDED = false;
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_AIR, true);
-                                            }
-                                        }
-                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_BACK_JUMP_FIREBALL, true);
-                                        }
-                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_TURN, true);
-                                        }
-                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_START, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_HOWLING, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_HOWLING, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_BACK_JUMP_FIREBALL2, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_LW3 != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_START, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_START, true);
-                                        }
-                                    }
-                                }
+                        if CONTROLLABLE == true && GROUNDED == true && DEAD == false && sv_information::is_ready_go() == true {
+                            //Boss Moves
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {
+                                CONTROLLABLE = false;
+                                GROUNDED = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_AIR, true);
                             }
-                            if GROUNDED == false {
-                                if DEAD == false {
-                                    if sv_information::is_ready_go() == true {
-                                        //Boss Control Stick Movement
-                                        if ControlModule::get_stick_x(module_accessor) <= 0.001 {
-                                            let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
-                                            PostureModule::add_pos(boss_boma, &pos);
-                                        }
-                                    
-                                        if ControlModule::get_stick_x(module_accessor) >= -0.001 {
-                                            let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
-                                            PostureModule::add_pos(boss_boma, &pos);
-                                        }
-                                    
-                                        if ControlModule::get_stick_y(module_accessor) <= 0.001 {
-                                            let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
-                                            PostureModule::add_pos(boss_boma, &pos);
-                                        }
-                                    
-                                        if ControlModule::get_stick_y(module_accessor) >= -0.001 {
-                                            let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
-                                            PostureModule::add_pos(boss_boma, &pos);
-                                        }
-                                        //Boss Moves
-                                        if StatusModule::status_kind(module_accessor) != *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_AIR {
-                                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {
-                                                CONTROLLABLE = false;
-                                                GROUNDED = true;
-                                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_GROUND, true);
-                                            }
-                                        }
-                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_KIZETSU_START, true);
-                                        }
-                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_TURN_AIR, true);
-                                        }
-                                        if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL_AIR, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_AIR_START, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_HOWLING_AIR, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_NAIL_AIR, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_LW3 != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_HOWLING_AIR, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_AIR_START, true);
-                                        }
-                                        if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_CHARGE_FIREBALL_START_AIR, true);
-                                        }
-                                    }
-                                }
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_BACK_JUMP_FIREBALL, true);
+                            }
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_TURN, true);
+                            }
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_START, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_HOWLING, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_ASSAULT_START, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_BACK_JUMP_FIREBALL2, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_LW3 != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_START, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_START, true);
+                            }
+                        }
+
+                        if CONTROLLABLE == true && GROUNDED == false && DEAD == false && sv_information::is_ready_go() == true {
+                            //Boss Control Stick Movement
+                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                        
+                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
+                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
+                                PostureModule::add_pos(boss_boma, &pos);
+                            }
+                            //Boss Moves
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) {
+                                CONTROLLABLE = false;
+                                GROUNDED = true;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_GROUND, true);
+                            }
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_CHARGE_FIREBALL_START_AIR, true);
+                            }
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_TURN_AIR, true);
+                            }
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL_AIR, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_GLIDE_START, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_HOWLING_AIR, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_NAIL_AIR, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_LW3 != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_HOWLING_AIR, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_AIR_START, true);
+                            }
+                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_AIR_START, true);
                             }
                         }
                     }

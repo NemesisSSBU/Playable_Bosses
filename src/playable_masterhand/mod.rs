@@ -166,7 +166,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if sv_information::is_ready_go() == true {
                         if StopModule::is_damage(boss_boma) | StopModule::is_damage(module_accessor) {
-                            if DamageModule::damage(module_accessor, 0) >= 299.0 {
+                            if DamageModule::damage(module_accessor, 0) >= 399.0 {
                                 if DEAD == false {
                                     DEAD = true;
                                     StatusModule::change_status_request_from_script(boss_boma,*ITEM_STATUS_KIND_DEAD,true);
