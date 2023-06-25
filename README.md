@@ -40,16 +40,16 @@ NEVER play this mod in an online environment without someone else using this sam
 ```
 ## Boss Stats
 ```
-- Master Hand: 360 HP
-- Crazy Hand: 360 HP
+- Master Hand: 400 HP
+- Crazy Hand: 400 HP
 - Dharkon: 400 HP
 - Galeem: 400 HP
-- Marx: 300 HP
-- Ganon: 400 HP
-- Dracula: 500 HP
-- Rathalos: 400 HP
-- Galleom: 400 HP
-- WOL Master Hand: 300 HP
+- Marx: 400 HP
+- Ganon: 500 HP
+- Dracula: 600 HP
+- Rathalos: 600 HP
+- Galleom: 700 HP
+- WOL Master Hand: 400 HP
 ```
 ## Troubleshooting
 ```
