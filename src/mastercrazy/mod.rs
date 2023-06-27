@@ -142,9 +142,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
-                            if FighterUtil::is_hp_mode(module_accessor) == true {
-                                DamageModule::add_damage(module_accessor, 1.1, 0);
-                            }
                         }
                     }
 
@@ -166,7 +163,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if STOP == true {
                                 if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
-                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
                                     MASTER_EXISTS = false;
                                 }
                             }
@@ -229,10 +226,24 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if sv_information::is_ready_go() == true {
                             // SET POS AND STOPS OUT OF BOUNDS
                             if ModelModule::scale(module_accessor) == 0.0001 {
-                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
+                                let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY && FighterUtil::is_hp_mode(module_accessor) == false {
                                     StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
                                 }
-                                let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY && FighterUtil::is_hp_mode(module_accessor) == true {
+                                    FighterManager::set_cursor_whole(fighter_manager,false);
+                                    fighter.set_situation(SITUATION_KIND_AIR.into());
+                                    MotionModule::change_motion(module_accessor,smash::phx::Hash40::new("fall"),0.0,1.0,false,0.0,false,false);
+                                }
+                                if FighterUtil::is_hp_mode(module_accessor) == true {
+                                    if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
+                                        if DEAD == false {
+                                            CONTROLLABLE = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
+                                            DEAD = true;
+                                        }
+                                    }
+                                }
                                 if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_STANDBY {
                                     let x = PostureModule::pos_x(boss_boma);
                                     let y = PostureModule::pos_y(boss_boma);
@@ -328,7 +339,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                     DamageModule::set_damage_lock(boss_boma, true);
-                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
+                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
                     HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
                     if sv_information::is_ready_go() == true {
@@ -340,15 +351,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StopModule::is_damage(boss_boma) | StopModule::is_damage(module_accessor) {
-                            if FighterUtil::is_hp_mode(module_accessor) == true {
-                                if DamageModule::damage(module_accessor, 0) < 1.0 {
-                                    if DEAD == false {
-                                        CONTROLLABLE = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
-                                        DEAD = true;
-                                    }
-                                }
-                            }
                             if FighterUtil::is_hp_mode(module_accessor) == false {
                                 if DamageModule::damage(module_accessor, 0) >= 399.0 {
                                     if DEAD == false {
@@ -1047,13 +1049,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                         // TESTING DISTANCE
 
-                        let x = PostureModule::pos_x(module_accessor);
-                        let y = PostureModule::pos_y(module_accessor);
-                        let z = PostureModule::pos_z(module_accessor);
-                        let module_accessor_pos = Vector3f{x: x, y: y, z: z};
+                        // let x = PostureModule::pos_x(module_accessor);
+                        // let y = PostureModule::pos_y(module_accessor);
+                        // let z = PostureModule::pos_z(module_accessor);
+                        // let module_accessor_pos = Vector3f{x: x, y: y, z: z};
 
-                        println!("[Comp. Playable Bosses] Distance: {:?}", GroundModule::get_distance_to_floor(module_accessor, &module_accessor_pos, 1.0, true));
-                        println!("[Comp. Playable Bosses] Border: {:?}", CameraModule::get_main_camera_range(module_accessor));
+                        // println!("[Comp. Playable Bosses] Distance: {:?}", GroundModule::get_distance_to_floor(module_accessor, &module_accessor_pos, 1.0, true));
+                        // println!("[Comp. Playable Bosses] Border: {:?}", CameraModule::get_main_camera_range(module_accessor));
 
                         if TURNING == true {
                             MotionModule::set_rate(boss_boma, 1.0);
@@ -1594,6 +1596,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             }
         }
     }
+}
+pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -1652,9 +1656,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
-                            if FighterUtil::is_hp_mode(module_accessor) == true {
-                                DamageModule::add_damage(module_accessor, 1.1, 0);
-                            }
                         }
                     }
 
@@ -1674,7 +1675,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if STOP_2 == true {
                                 if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
-                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
                                 }
                             }
                         }
@@ -1739,15 +1740,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StopModule::is_damage(boss_boma_2) | StopModule::is_damage(module_accessor) {
-                            if FighterUtil::is_hp_mode(module_accessor) == true {
-                                if DamageModule::damage(module_accessor, 0) < 1.0 {
-                                    if DEAD_2 == false {
-                                        CONTROLLABLE_2 = false;
-                                        StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_DEAD, true);
-                                        DEAD_2 = true;
-                                    }
-                                }
-                            }
                             if FighterUtil::is_hp_mode(module_accessor) == false {
                                 if DamageModule::damage(module_accessor, 0) >= 399.0 {
                                     if DEAD_2 == false {
@@ -1786,10 +1778,24 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if sv_information::is_ready_go() == true {
                             // SET POS AND STOPS OUT OF BOUNDS
                             if ModelModule::scale(module_accessor) == 0.0001 {
-                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
+                                let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
+                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY && FighterUtil::is_hp_mode(module_accessor) == false {
                                     StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
                                 }
-                                let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
+                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY && FighterUtil::is_hp_mode(module_accessor) == true {
+                                    FighterManager::set_cursor_whole(fighter_manager,false);
+                                    fighter.set_situation(SITUATION_KIND_AIR.into());
+                                    MotionModule::change_motion(module_accessor,smash::phx::Hash40::new("fall"),0.0,1.0,false,0.0,false,false);
+                                }
+                                if FighterUtil::is_hp_mode(module_accessor) == true {
+                                    if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
+                                        if DEAD_2 == false {
+                                            CONTROLLABLE_2 = false;
+                                            StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_DEAD, true);
+                                            DEAD_2 = true;
+                                        }
+                                    }
+                                }
                                 if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_STANDBY {
                                     let x = PostureModule::pos_x(boss_boma_2);
                                     let y = PostureModule::pos_y(boss_boma_2);
@@ -2997,4 +3003,5 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
 pub fn install() {
     acmd::add_custom_hooks!(once_per_fighter_frame);
+    acmd::add_custom_hooks!(once_per_fighter_frame_2);
 }
