@@ -685,7 +685,7 @@ fn callback_map_1(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("training");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("bossstage_final1");
         }
         if *hash == to_hash40("secret_command_id") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
@@ -1176,39 +1176,6 @@ fn callback_map_16(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_dracula_castle")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("bossstage_dracula");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_17(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_stage_jack_mementoes")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
@@ -1231,7 +1198,7 @@ fn callback_map_17(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_18(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_17(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -1264,7 +1231,7 @@ fn callback_map_18(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_19(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_18(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -1297,7 +1264,7 @@ fn callback_map_19(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_20(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_19(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -1308,7 +1275,7 @@ fn callback_map_20(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_boss_final")
+        *ui_chara_hash == to_hash40("ui_stage_training")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
@@ -1324,7 +1291,7 @@ fn callback_map_20(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_21(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_20(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -1351,7 +1318,7 @@ fn callback_map_21(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_22(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_21(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -1378,7 +1345,7 @@ fn callback_map_22(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_23(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_22(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -1449,5 +1416,4 @@ const MAX_FILE_SIZE_STAGE: usize = 0xFFFF;
        callback_map_20::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
        callback_map_21::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
        callback_map_22::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_23::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
     }

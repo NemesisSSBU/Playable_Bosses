@@ -77,7 +77,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
             let name_base = text + 0x52c3758;
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
-            if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("MARX") {
+            if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("MARX")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("マルク")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("MAX")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("MARK")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("魔噜酷")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("魔嚕酷")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("마르크")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("МАРКС") {
                 if smash::app::stage::get_stage_id() == 0x139 {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -119,6 +126,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if sv_information::is_ready_go() == false {
                         if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_ENTRY {
+                            FighterManager::set_cursor_whole(fighter_manager,false);
                             ArticleModule::set_visibility_whole(module_accessor, *FIGHTER_MARIO_GENERATE_ARTICLE_PUMP, false, smash::app::ArticleOperationTarget(0));
                             StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
                         }
@@ -214,10 +222,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             // SET POS AND STOPS OUT OF BOUNDS
                             if ModelModule::scale(module_accessor) == 0.0001 {
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY && FighterUtil::is_hp_mode(module_accessor) == false {
-                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
-                                }
-                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY && FighterUtil::is_hp_mode(module_accessor) == true {
+                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
                                     FighterManager::set_cursor_whole(fighter_manager,false);
                                     fighter.set_situation(SITUATION_KIND_AIR.into());
                                     MotionModule::change_motion(module_accessor,smash::phx::Hash40::new("fall"),0.0,1.0,false,0.0,false,false);
@@ -231,91 +236,81 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         }
                                     }
                                 }
-                                if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_STANDBY {
-                                    let x = PostureModule::pos_x(boss_boma);
-                                    let y = PostureModule::pos_y(boss_boma);
-                                    let z = PostureModule::pos_z(boss_boma);
-                                    let boss_pos = Vector3f{x: x, y: y + 20.0, z: z};
-                                    if PostureModule::pos_y(boss_boma) >= 150.0 {
-                                        let boss_y_pos_1 = Vector3f{x: x, y: 150.0, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                        PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                        if PostureModule::pos_y(boss_boma) <= -100.0 {
-                                            let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                        }
-                                        if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                            let boss_x_pos_1 = Vector3f{x: 200.0, y: 100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                        }
-                                        if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                            let boss_x_pos_2 = Vector3f{x: -200.0, y: 100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        }
-                                    }
-                                    else if PostureModule::pos_y(boss_boma) <= -100.0 {
-                                        let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                        PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                        if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                            let boss_x_pos_1 = Vector3f{x: 200.0, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                        }
-                                        if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                            let boss_x_pos_2 = Vector3f{x: -200.0, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        }
-                                        if PostureModule::pos_y(boss_boma) >= 100.0 {
-                                            let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                        }
-                                    }
-                                    else if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                        let boss_x_pos_1 = Vector3f{x: 200.0, y: y, z: z};
+                                let x = PostureModule::pos_x(boss_boma);
+                                let y = PostureModule::pos_y(boss_boma);
+                                let z = PostureModule::pos_z(boss_boma);
+                                let boss_pos = Vector3f{x: x, y: y + 20.0, z: z};
+                                if PostureModule::pos_y(boss_boma) >= 100.0 {
+                                    let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
+                                    PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                    PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                    if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                        let boss_x_pos_1 = Vector3f{x: 200.0, y: 100.0, z: z};
                                         PostureModule::set_pos(module_accessor, &boss_x_pos_1);
                                         PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                        if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                            let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        }
-                                        if PostureModule::pos_y(boss_boma) >= 150.0 {
-                                            let boss_y_pos_1 = Vector3f{x: x, y: 150.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                        }
-                                        if PostureModule::pos_y(boss_boma) <= -100.0 {
-                                            let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                        }
                                     }
-                                    else if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                    if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                        let boss_x_pos_2 = Vector3f{x: -200.0, y: 100.0, z: z};
+                                        PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                        PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                    }
+                                }
+                                else if PostureModule::pos_y(boss_boma) <= -100.0 {
+                                    let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
+                                    PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                    PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                    if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                        let boss_x_pos_1 = Vector3f{x: 200.0, y: -100.0, z: z};
+                                        PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                        PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                    }
+                                    if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                        let boss_x_pos_2 = Vector3f{x: -200.0, y: -100.0, z: z};
+                                        PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                        PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                    }
+                                }
+                                else if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                    let boss_x_pos_1 = Vector3f{x: 200.0, y: y, z: z};
+                                    PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                    PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                    if PostureModule::pos_x(boss_boma) <= -200.0 {
                                         let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
                                         PostureModule::set_pos(module_accessor, &boss_x_pos_2);
                                         PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        if PostureModule::pos_y(boss_boma) >= 100.0 {
-                                            let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                        }
-                                        if PostureModule::pos_y(boss_boma) <= -100.0 {
-                                            let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                        }
-                                        if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                            let boss_x_pos_1 = Vector3f{x: 200.0, y: y, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                        }
                                     }
+                                    if PostureModule::pos_y(boss_boma) >= 100.0 {
+                                        let boss_y_pos_1 = Vector3f{x: 200.0, y: 100.0, z: z};
+                                        PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                        PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                    }
+                                    if PostureModule::pos_y(boss_boma) <= -100.0 {
+                                        let boss_y_pos_2 = Vector3f{x: 200.0, y: -100.0, z: z};
+                                        PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                        PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                    }
+                                }
+                                else if PostureModule::pos_x(boss_boma) <= -200.0 {
+                                    let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
+                                    PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                    PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                    if PostureModule::pos_y(boss_boma) >= 100.0 {
+                                        let boss_y_pos_1 = Vector3f{x: -200.0, y: 100.0, z: z};
+                                        PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                        PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                    }
+                                    if PostureModule::pos_y(boss_boma) <= -100.0 {
+                                        let boss_y_pos_2 = Vector3f{x: -200.0, y: -100.0, z: z};
+                                        PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                        PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                    }
+                                    if PostureModule::pos_x(boss_boma) >= 200.0 {
+                                        let boss_x_pos_1 = Vector3f{x: 200.0, y: y, z: z};
+                                        PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                        PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                    }
+                                }
+                                else {
                                     PostureModule::set_pos(module_accessor, &boss_pos);
                                 }
                             }

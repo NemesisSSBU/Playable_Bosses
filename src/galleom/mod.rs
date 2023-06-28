@@ -80,7 +80,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
             let name_base = text + 0x52c3758;
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
-            if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("GALLEOM") {
+            if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("GALLEOM")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("ガレオム")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("GALÉON")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("加雷欧姆")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("가레옴")
+            || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("ГАЛЛЕОМ") {
                 if smash::app::stage::get_stage_id() == 0x139 {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -123,6 +128,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if sv_information::is_ready_go() == false {
                         if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_ENTRY {
+                            FighterManager::set_cursor_whole(fighter_manager,false);
                             ArticleModule::set_visibility_whole(module_accessor, *FIGHTER_MARIO_GENERATE_ARTICLE_PUMP, false, smash::app::ArticleOperationTarget(0));
                             StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
                         }
