@@ -27,6 +27,11 @@ static mut STUNNED : bool = false;
 static mut RECOVERY : usize = 0;
 static mut Y_POS: f32 = 0.0;
 static mut FRESH_CONTROL : bool = false;
+static mut EXISTS_PUBLIC : bool = false;
+
+pub unsafe fn check_status() -> bool {
+    return EXISTS_PUBLIC;
+}
 
 pub unsafe fn read_tag(addr: u64) -> String {
     let mut s: Vec<u8> = vec![];
@@ -120,6 +125,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if ModelModule::scale(module_accessor) != 0.0001 {
+                            EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_GANONBOSS), 0, 0, false, false);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
@@ -235,6 +241,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD {
                                 if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_STANDBY {
                                     if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) {
+                                        EXISTS_PUBLIC = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
                                     }
                                 }
@@ -245,6 +252,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
                     if FighterManager::is_result_mode(fighter_manager) == true {
                         if RESULT_SPAWNED == false {
+                            EXISTS_PUBLIC = false;
                             RESULT_SPAWNED = true;
                             MOVING = false;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_GANONBOSS), 0, 0, false, false);

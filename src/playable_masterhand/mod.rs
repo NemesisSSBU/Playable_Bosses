@@ -20,6 +20,11 @@ static mut DEAD : bool = false;
 static mut RESULT_SPAWNED : bool = false;
 pub static mut FIGHTER_MANAGER: usize = 0;
 pub static mut FIGHTER_NAME: [u64;9] = [0;9];
+static mut EXISTS_PUBLIC : bool = false;
+
+pub unsafe fn check_status() -> bool {
+    return EXISTS_PUBLIC;
+}
 
 pub unsafe fn read_tag(addr: u64) -> String {
     let mut s: Vec<u8> = vec![];
@@ -108,6 +113,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 }
                 else if smash::app::stage::get_stage_id() != 0x13A {
                     if ModelModule::scale(module_accessor) != 0.0001 {
+                        EXISTS_PUBLIC = true;
                         CONTROLLABLE = true;
                         DEAD = false;
                         RESULT_SPAWNED = false;
@@ -158,6 +164,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
                                         if DEAD == false {
                                             CONTROLLABLE = false;
+                                            EXISTS_PUBLIC = false;
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                             DEAD = true;
                                         }
@@ -279,6 +286,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                         if FighterManager::is_result_mode(fighter_manager) == true {
                             if RESULT_SPAWNED == false {
+                                EXISTS_PUBLIC = false;
                                 RESULT_SPAWNED = true;
                                 ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
                                 BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;

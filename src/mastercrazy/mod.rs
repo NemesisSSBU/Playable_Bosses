@@ -29,6 +29,7 @@ static mut STOP : bool = false;
 static mut STUNNED : bool = false;
 static mut MASTER_EXISTS : bool = false;
 static mut RECOVERY : usize = 0;
+static mut EXISTS_PUBLIC : bool = false;
 
 static mut TELEPORTED_2 : bool = false;
 static mut TURNING_2 : bool = false;
@@ -46,6 +47,15 @@ static mut STOP_2 : bool = false;
 static mut STUNNED_2 : bool = false;
 static mut CRAZY_EXISTS : bool = false;
 static mut RECOVERY_2 : usize = 0;
+static mut EXISTS_PUBLIC_2 : bool = false;
+
+pub unsafe fn check_status() -> bool {
+    return EXISTS_PUBLIC;
+}
+
+pub unsafe fn check_status_2() -> bool {
+    return EXISTS_PUBLIC_2;
+}
 
 pub unsafe fn read_tag(addr: u64) -> String {
     let mut s: Vec<u8> = vec![];
@@ -143,6 +153,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if ModelModule::scale(module_accessor) != 0.0001 {
+                            EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             MASTER_EXISTS = true;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
@@ -197,6 +208,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         PostureModule::set_rot(boss_boma,&vec3,0);
                                     }
                                     if MotionModule::frame(boss_boma) == 100.0 {
+                                        EXISTS_PUBLIC = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
                                     }
                                 }
@@ -206,6 +218,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if FighterManager::is_result_mode(fighter_manager) == true {
                         if RESULT_SPAWNED == false {
+                            EXISTS_PUBLIC = false;
                             RESULT_SPAWNED = true;
                             MASTER_EXISTS = false;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
@@ -253,22 +266,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 let y = PostureModule::pos_y(boss_boma);
                                 let z = PostureModule::pos_z(boss_boma);
                                 let boss_pos = Vector3f{x: x, y: y + 20.0, z: z};
-                                if PostureModule::pos_y(boss_boma) >= 100.0 {
-                                    let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                    PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                    if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                        let boss_x_pos_1 = Vector3f{x: 200.0, y: 100.0, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                        PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                    }
-                                    if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                        let boss_x_pos_2 = Vector3f{x: -200.0, y: 100.0, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                        PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                    }
-                                }
-                                else if PostureModule::pos_y(boss_boma) <= -100.0 {
+                                if PostureModule::pos_y(boss_boma) <= -100.0 {
                                     let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_y_pos_2);
                                     PostureModule::set_pos(boss_boma, &boss_y_pos_2);
@@ -297,8 +295,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         PostureModule::set_pos(module_accessor, &boss_y_pos_1);
                                         PostureModule::set_pos(boss_boma, &boss_y_pos_1);
                                     }
-                                    if PostureModule::pos_y(boss_boma) <= -100.0 {
-                                        let boss_y_pos_2 = Vector3f{x: 200.0, y: -100.0, z: z};
+                                    if PostureModule::pos_y(boss_boma) <= -50.0 {
+                                        let boss_y_pos_2 = Vector3f{x: 200.0, y: -50.0, z: z};
                                         PostureModule::set_pos(module_accessor, &boss_y_pos_2);
                                         PostureModule::set_pos(boss_boma, &boss_y_pos_2);
                                     }
@@ -312,8 +310,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         PostureModule::set_pos(module_accessor, &boss_y_pos_1);
                                         PostureModule::set_pos(boss_boma, &boss_y_pos_1);
                                     }
-                                    if PostureModule::pos_y(boss_boma) <= -100.0 {
-                                        let boss_y_pos_2 = Vector3f{x: -200.0, y: -100.0, z: z};
+                                    if PostureModule::pos_y(boss_boma) <= -50.0 {
+                                        let boss_y_pos_2 = Vector3f{x: -200.0, y: -50.0, z: z};
                                         PostureModule::set_pos(module_accessor, &boss_y_pos_2);
                                         PostureModule::set_pos(boss_boma, &boss_y_pos_2);
                                     }
@@ -1652,6 +1650,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if ModelModule::scale(module_accessor) != 0.0001 {
+                            EXISTS_PUBLIC_2 = true;
                             RESULT_SPAWNED_2 = false;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_CRAZYHAND), 0, 0, false, false);
                             BOSS_ID_2[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
@@ -1693,6 +1692,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         PostureModule::set_rot(boss_boma_2,&vec3,0);
                                     }
                                     if MotionModule::frame(boss_boma_2) == 100.0 {
+                                        EXISTS_PUBLIC = false;
                                         StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_STANDBY, true);
                                     }
                                 }
@@ -1702,6 +1702,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
 
                     if FighterManager::is_result_mode(fighter_manager) == true {
                         if RESULT_SPAWNED_2 == false {
+                            EXISTS_PUBLIC_2 = false;
                             RESULT_SPAWNED_2 = true;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_CRAZYHAND), 0, 0, false, false);
                             BOSS_ID_2[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
@@ -1799,22 +1800,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 let y = PostureModule::pos_y(boss_boma_2);
                                 let z = PostureModule::pos_z(boss_boma_2);
                                 let boss_pos = Vector3f{x: x, y: y + 20.0, z: z};
-                                if PostureModule::pos_y(boss_boma_2) >= 100.0 {
-                                    let boss_y_pos_1 = Vector3f{x: x, y: 100.0, z: z};
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                    PostureModule::set_pos(boss_boma_2, &boss_y_pos_1);
-                                    if PostureModule::pos_x(boss_boma_2) >= 200.0 {
-                                        let boss_x_pos_1 = Vector3f{x: 200.0, y: 100.0, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                        PostureModule::set_pos(boss_boma_2, &boss_x_pos_1);
-                                    }
-                                    if PostureModule::pos_x(boss_boma_2) <= -200.0 {
-                                        let boss_x_pos_2 = Vector3f{x: -200.0, y: 100.0, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                        PostureModule::set_pos(boss_boma_2, &boss_x_pos_2);
-                                    }
-                                }
-                                else if PostureModule::pos_y(boss_boma_2) <= -100.0 {
+                                if PostureModule::pos_y(boss_boma_2) <= -100.0 {
                                     let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
                                     PostureModule::set_pos(module_accessor, &boss_y_pos_2);
                                     PostureModule::set_pos(boss_boma_2, &boss_y_pos_2);
@@ -1843,8 +1829,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         PostureModule::set_pos(module_accessor, &boss_y_pos_1);
                                         PostureModule::set_pos(boss_boma_2, &boss_y_pos_1);
                                     }
-                                    if PostureModule::pos_y(boss_boma_2) <= -100.0 {
-                                        let boss_y_pos_2 = Vector3f{x: 200.0, y: -100.0, z: z};
+                                    if PostureModule::pos_y(boss_boma_2) <= -50.0 {
+                                        let boss_y_pos_2 = Vector3f{x: 200.0, y: -50.0, z: z};
                                         PostureModule::set_pos(module_accessor, &boss_y_pos_2);
                                         PostureModule::set_pos(boss_boma_2, &boss_y_pos_2);
                                     }
@@ -1858,8 +1844,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         PostureModule::set_pos(module_accessor, &boss_y_pos_1);
                                         PostureModule::set_pos(boss_boma_2, &boss_y_pos_1);
                                     }
-                                    if PostureModule::pos_y(boss_boma_2) <= -100.0 {
-                                        let boss_y_pos_2 = Vector3f{x: -200.0, y: -100.0, z: z};
+                                    if PostureModule::pos_y(boss_boma_2) <= -50.0 {
+                                        let boss_y_pos_2 = Vector3f{x: -200.0, y: -50.0, z: z};
                                         PostureModule::set_pos(module_accessor, &boss_y_pos_2);
                                         PostureModule::set_pos(boss_boma_2, &boss_y_pos_2);
                                     }

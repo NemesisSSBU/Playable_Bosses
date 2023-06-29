@@ -4,6 +4,10 @@
 use prc::*;
 use prc::hash40::Hash40;
 use arcropolis_api::*;
+use smash::lib::lua_const::*;
+use smash::app::lua_bind::*;
+use skyline::nn::ro::LookupSymbol;
+use smash::lua2cpp::L2CFighterCommon;
 
 mod mastercrazy;
 mod playable_masterhand;
@@ -15,6 +19,82 @@ mod rathalos;
 mod galleom;
 mod ganon;
 mod gigabowser;
+
+static mut ENTRY_ID : usize = 0;
+pub static mut FIGHTER_MANAGER: usize = 0;
+
+static mut ENTRY_ID_2 : usize = 0;
+pub static mut FIGHTER_MANAGER_2: usize = 0;
+
+pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
+    unsafe {
+        let lua_state = fighter.lua_state_agent;
+        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+        let fighter_kind = smash::app::utility::get_kind(module_accessor);
+        ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        LookupSymbol(
+            &mut FIGHTER_MANAGER,
+            "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
+            .as_bytes()
+            .as_ptr(),
+        );
+        let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
+        if fighter_kind == *FIGHTER_KIND_PEACH {
+            if FighterManager::is_final(fighter_manager) {
+                if mastercrazy::check_status()
+                || mastercrazy::check_status_2()
+                || playable_masterhand::check_status()
+                || galeem::check_status()
+                || dharkon::check_status()
+                || marx::check_status()
+                || dracula::check_status()
+                || rathalos::check_status()
+                || galleom::check_status()
+                || ganon::check_status() {
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_IS_DISCRETION_FINAL_USED);
+                }
+            }
+        }
+    }
+}
+
+pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
+    unsafe {
+        let lua_state = fighter.lua_state_agent;
+        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+        let fighter_kind = smash::app::utility::get_kind(module_accessor);
+        ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        LookupSymbol(
+            &mut FIGHTER_MANAGER_2,
+            "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
+            .as_bytes()
+            .as_ptr(),
+        );
+        let fighter_manager = *(FIGHTER_MANAGER_2 as *mut *mut smash::app::FighterManager);
+        if fighter_kind == *FIGHTER_KIND_DAISY {
+            if FighterManager::is_final(fighter_manager) {
+                if mastercrazy::check_status()
+                || mastercrazy::check_status_2()
+                || playable_masterhand::check_status()
+                || galeem::check_status()
+                || dharkon::check_status()
+                || marx::check_status()
+                || dracula::check_status()
+                || rathalos::check_status()
+                || galleom::check_status()
+                || ganon::check_status() {
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_IS_DISCRETION_FINAL_USED);
+                }
+            }
+        }
+    }
+}
 
 pub fn to_hash40(word: &str) -> Hash40 {
     Hash40(crc32_with_len(word))
@@ -1373,6 +1453,8 @@ const MAX_FILE_SIZE_STAGE: usize = 0xFFFF;
 
 #[skyline::main(name = "comp_boss")]
  pub fn main() {
+       acmd::add_custom_hooks!(once_per_fighter_frame);
+       acmd::add_custom_hooks!(once_per_fighter_frame_2);
        mastercrazy::install();
        playable_masterhand::install();
        galeem::install();
