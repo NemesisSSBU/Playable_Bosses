@@ -63,6 +63,9 @@ NEVER play this mod in an online environment without someone else using this sam
 *There's other issues!*
 - Please open up a "New Issue" in the issues tab on GitHub and describe the issue to the best of your ability.
 ```
+## Note to those that want to include this mod in their own mod pack
+- Feel free to include this mod in your mod pack but you must also credit all of the people listed below in "Credit" and link this mod.
+
 ## I want to make mods! Do you know how?
 - If you're interested in knowing how to make these types of mods, a widely known Smash Modder named [PiNE](https://github.com/FaultyPine) has created [this guide](https://docs.google.com/document/d/1y_JX5LNsQ8jUBfrghRkL8VkvfMWUIXSrrscM5qj7s6U/edit) that details all the necessary steps to begin creating your own mods for Smash.
 ## Credit
