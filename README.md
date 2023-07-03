@@ -17,7 +17,7 @@ Drop this mod into your sd card root folder and you're good to go.
 - Unpack the .zip release file
 
 *Step 2*
-- Drag and drop the unpacked files ("atmosphere" and "Ultimate") into the root of your Switch SD card
+- Drag and drop the unpacked files ("atmosphere" and "ultimate") into the root of your Switch SD card
 
 *Step 3*
 - Start the game and you should be good to go!
