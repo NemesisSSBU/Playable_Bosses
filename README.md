@@ -23,21 +23,20 @@ Drop this mod into your sd card root folder and you're good to go.
 - Start the game and you should be good to go!
 ```
 ## Warning
-```
+
 This mod is NOT compatable with the Giga Bowser mod, hence why we made Giga Bowser playable without the help of another mod.
 
 This mod is NOT compatable with a mod that changes the announcers voice of a character since this could create conflicting audio files (edit the audio file that comes with this mod if you have a seperate announcer voice file).
 
 This mod is NOT compatable in a multiplayer environment unless the other player(s) also have this mod installed.
-```
+
 We are NOT responsible for what happens to your Nintendo account! Please take precautions!
 
 ## Precautions to take
-```
-If you feel on edge about using this mod, disconnect from WiFi while using mods in general.
+- If you feel on edge about using this mod, disconnect from WiFi while using mods in general.
 
-NEVER play this mod in an online environment without someone else using this same exact mod installed along with your other installed mods!
-```
+- NEVER play this mod in an online environment without someone else using this same exact mod installed along with your other installed mods!
+
 ## Boss Stats
 ```
 - Master Hand: 400 HP (Stuns at 200 HP)
@@ -52,17 +51,17 @@ NEVER play this mod in an online environment without someone else using this sam
 - Galleom: 700 HP (Rage at 200 HP)
 - WOL Master Hand: 400 HP
 ```
-## Troubleshooting
-```
+# Troubleshooting
+
 *Is the game not starting?*
 - Try clearing out other mods that you believe may be conflicting with this mod
 
 *Does this work with Ryujinx?*
 - Ryujinx is a little different as their mod folder is located within %appdata% --> sdcard --> atmosphere --> contents --> 01006a800016e000 --> romfs --> skyline --> (drag .nro files into here). Our mod is already simplified so that all you need to do is go into: %appdata% --> sdcard. While in the sdcard folder, drag and drop the mod files in, if you installed skyline previously it'll ask to replace some files so that's up to you whether or not you want to replace your previous ARCropolis folder or not with the one that comes prepackaged within our mod. Once it's dragged in you're ready to go!
 
-*There's other issues!*
+*If there's other issues*
 - Please open up a "New Issue" in the issues tab on GitHub and describe the issue to the best of your ability.
-```
+
 ## Note to those that want to include this mod in their own mod pack
 - Feel free to include this mod in your mod pack but you must also credit all of the people listed below in "Credit" and link this mod.
 
