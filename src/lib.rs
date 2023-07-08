@@ -51,10 +51,17 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 || rathalos::check_status()
                 || galleom::check_status()
                 || ganon::check_status() {
+                    WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_BG);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_FLASH);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_CHARGE);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_IS_DISCRETION_FINAL_USED);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_INFINITY_SMASH_HOLD);
+                    FighterManager::set_visible_finalbg(fighter_manager, false);
+                    DamageModule::heal(module_accessor, -0.01, 0);
                 }
             }
         }
@@ -86,10 +93,17 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                 || rathalos::check_status()
                 || galleom::check_status()
                 || ganon::check_status() {
+                    WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_BG);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_FLASH);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_CHARGE);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_IS_DISCRETION_FINAL_USED);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_INFINITY_SMASH_HOLD);
+                    FighterManager::set_visible_finalbg(fighter_manager, false);
+                    DamageModule::heal(module_accessor, -0.01, 0);
                 }
             }
         }
@@ -761,19 +775,16 @@ fn callback_map_1(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_battle_field")
+        *ui_chara_hash == to_hash40("ui_stage_boss_final")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("bossstage_final1");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
+        if *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+        if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
     });
@@ -794,19 +805,16 @@ fn callback_map_2(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_battle_field_l")
+        *ui_chara_hash == to_hash40("ui_stage_boss_final2")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("homeruncontest");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
+        if *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+        if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
     });
@@ -827,19 +835,16 @@ fn callback_map_3(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_end")
+        *ui_chara_hash == to_hash40("ui_stage_boss_final3")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("settingstage");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
+        if *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+        if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
     });
@@ -860,19 +865,16 @@ fn callback_map_4(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_mario_castle64")
+        *ui_chara_hash == to_hash40("ui_stage_boss_ganon")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("resultstage");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
+        if *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+        if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
     });
@@ -893,19 +895,16 @@ fn callback_map_5(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_dk_jungle")
+        *ui_chara_hash == to_hash40("ui_stage_boss_rathalos")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("spiritsroulette");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
+        if *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+        if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
     });
@@ -926,19 +925,16 @@ fn callback_map_6(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_zelda_hyrule")
+        *ui_chara_hash == to_hash40("ui_stage_boss_marx")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("bossstage_ganonboss");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
+        if *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+        if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
     });
@@ -959,19 +955,16 @@ fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_yoshi_story")
+        *ui_chara_hash == to_hash40("ui_stage_boss_galleom")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("bonusgame");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
+        if *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
+            *param.try_into_mut::<bool>().unwrap() = true;
+        }
+        if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
     });
@@ -992,454 +985,16 @@ fn callback_map_8(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_kirby_pupupu64")
+        *ui_chara_hash == to_hash40("ui_stage_boss_dracula")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("bossstage_marx");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
+        if *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_9(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_poke_yamabuki")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("staffroll");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_10(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_mario_past64")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("sp_edit");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_11(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_mario_castledx")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("photostage");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_12(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_zelda_temple")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("bossstage_rathalos");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_13(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_mg_shadowmoses")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("bossstage_galleom");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_14(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_punchoutsb")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("punchoutw");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_15(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_dracula_castle")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("bossstage_dracula");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_16(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_jack_mementoes")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("resultstage_jack");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_17(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_ff_cave")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("resultstage_edge");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_18(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_battle_field_s")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("secret_stage_place_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("shamfight");
-        }
-        if *hash == to_hash40("secret_command_id") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("secret_command_id_joycon") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("define_secret_command_l");
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_19(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_training")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_20(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_boss_final2")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("can_select") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_21(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_boss_final3")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("can_select") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_22(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_kirby_pupupu64")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("is_usable") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
     });
@@ -1484,18 +1039,4 @@ const MAX_FILE_SIZE_STAGE: usize = 0xFFFF;
        callback_map_6::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
        callback_map_7::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
        callback_map_8::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_9::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_10::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_11::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_12::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_13::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_14::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_15::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_16::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_17::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_18::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_19::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_20::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_21::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_22::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
     }

@@ -18,16 +18,18 @@ static mut IS_ANGRY : bool = false;
 static mut ENTRY_ID : usize = 0;
 static mut RANDOM_ATTACK : i32 = 0;
 static mut BOSS_ID : [u32; 8] = [0; 8];
-static mut BOSS_ID_2 : [u32; 8] = [0; 8];
 pub static mut FIGHTER_MANAGER: usize = 0;
 static mut DEAD : bool = false;
 static mut JUMP_START : bool = false;
 static mut RESULT_SPAWNED : bool = false;
 pub static mut FIGHTER_NAME: [u64;9] = [0;9];
 static mut STOP : bool = false;
-static mut STUNNED : bool = false;
-static mut RECOVERY : usize = 0;
 static mut EXISTS_PUBLIC : bool = false;
+
+extern "C" {
+    #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
+    pub fn dead_range(lua_state: u64) -> smash::phx::Vector4f;
+}
 
 pub unsafe fn check_status() -> bool {
     return EXISTS_PUBLIC;
@@ -99,7 +101,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if smash::app::stage::get_stage_id() == 0x139 {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-                    if ModelModule::scale(module_accessor) != 0.0001 {
+                    SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
+                    if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
                         ItemModule::remove_all(module_accessor);
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
@@ -122,8 +125,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         JUMP_START = false;
                         IS_ANGRY = false;
                         STOP = false;
-                        STUNNED = false;
-                        RECOVERY = 0;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
@@ -131,18 +132,59 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if ModelModule::scale(module_accessor) != 0.0001 {
                                 EXISTS_PUBLIC = true;
                                 RESULT_SPAWNED = false;
-                                ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
-                                BOSS_ID_2[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
-                                let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
-                                ModelModule::set_scale(boss_boma_2, 0.0001);
-                                StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_MASTERHAND_STATUS_KIND_WAIT_FEINT, true);
                                 ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
                                 ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
                                 BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                                WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                                 ModelModule::set_scale(module_accessor, 0.0001);
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
+                                WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+                                WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+                                WorkModule::set_int(boss_boma, *ITEM_BOSS_MODE_ADVENTURE_HARD_FINAL_BATTLE_2ND, *ITEM_INSTANCE_WORK_INT_BOSS_MODE);
+                                WorkModule::set_int(boss_boma, *ITEM_VARIATION_DARZ_KIILA, *ITEM_INSTANCE_WORK_INT_VARIATION);
                             }
+                        }
+                    }
+
+                    if DEAD == false {
+                        if sv_information::is_ready_go() == true {
+                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                            if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_DOWN_LOOP {
+                                MotionModule::set_rate(boss_boma, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                                StatusModule::change_status_request_from_script(boss_boma,*ITEM_DARZ_STATUS_KIND_DOWN_END,true);
+                                CONTROLLABLE = false;
+                            }
+                        }
+                    }
+
+                    // SET FIGHTER LOOP
+
+                    if sv_information::is_ready_go() == true {
+                        if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_LANDING);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_SPECIAL);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_ITEM);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_SPECIAL);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_JUMP_AERIAL);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_TREAD_JUMP);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_ITEM_THROW);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_ATTACK);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_WALL_JUMP);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_ESCAPE);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_CATCH);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_JUMP);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_GUARD);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_ATTACK);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_ESCAPE);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_CLIFF);
+                            WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_LASSO);
+                            FighterManager::set_cursor_whole(fighter_manager,false);
+                            fighter.set_situation(SITUATION_KIND_AIR.into());
+                            GroundModule::set_correct(module_accessor, smash::app::GroundCorrectKind(*GROUND_CORRECT_KIND_AIR));
+                            MotionModule::change_motion(module_accessor,smash::phx::Hash40::new("fall"),0.0,1.0,false,0.0,false,false);
                         }
                     }
 
@@ -153,8 +195,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             JUMP_START = false;
                             IS_ANGRY = false;
                             STOP = false;
-                            STUNNED = false;
-                            RECOVERY = 0;
                             let lua_state = fighter.lua_state_agent;
                             let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                             ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
@@ -165,10 +205,31 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                            WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                            WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+                            WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+                            WorkModule::set_int(boss_boma, *ITEM_VARIATION_DARZ_KIILA, *ITEM_INSTANCE_WORK_INT_VARIATION);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
                             ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
                         }
+                    }
+
+                    // Flags and new damage stuff
+
+                    if sv_information::is_ready_go() == true {
+                        let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                        if WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP) != 999.0 {
+                            let sub_hp = 999.0 - WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP);
+                            DamageModule::add_damage(module_accessor, sub_hp, 0);
+                            WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+                        }
+                        if CONTROLLABLE {
+                            WorkModule::off_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_AI_SOON_TO_BE_ATTACK);
+                            WorkModule::off_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_BOSS_KEYOFF_BGM);
+                            WorkModule::off_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_AI_IS_IN_EFFECT);
+                        }
+                        JostleModule::set_status(module_accessor, false);
                     }
 
                     if sv_information::is_ready_go() == false {
@@ -192,14 +253,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             // SET POS AND STOPS OUT OF BOUNDS
                             if ModelModule::scale(module_accessor) == 0.0001 {
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY && FighterUtil::is_hp_mode(module_accessor) == false {
-                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
-                                }
-                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY && FighterUtil::is_hp_mode(module_accessor) == true {
-                                    FighterManager::set_cursor_whole(fighter_manager,false);
-                                    fighter.set_situation(SITUATION_KIND_AIR.into());
-                                    MotionModule::change_motion(module_accessor,smash::phx::Hash40::new("fall"),0.0,1.0,false,0.0,false,false);
-                                }
                                 if FighterUtil::is_hp_mode(module_accessor) == true {
                                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
                                         if DEAD == false {
@@ -209,72 +262,168 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         }
                                     }
                                 }
-                                if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_STANDBY || FighterUtil::is_hp_mode(module_accessor) == true {
+                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
                                     let x = PostureModule::pos_x(boss_boma);
                                     let y = PostureModule::pos_y(boss_boma);
                                     let z = PostureModule::pos_z(boss_boma);
                                     let boss_pos = Vector3f{x: x, y: y, z: z};
-                                    if PostureModule::pos_y(boss_boma) <= -100.0 {
-                                        let boss_y_pos_2 = Vector3f{x: x, y: -100.0, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                        PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                        if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                            let boss_x_pos_1 = Vector3f{x: 200.0, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                        }
-                                        if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                            let boss_x_pos_2 = Vector3f{x: -200.0, y: -100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        }
-                                    }
-                                    else if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                        let boss_x_pos_1 = Vector3f{x: 200.0, y: y, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                        PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                        if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                            let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        }
-                                        if PostureModule::pos_y(boss_boma) >= 100.0 {
-                                            let boss_y_pos_1 = Vector3f{x: 200.0, y: 100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                        }
-                                        if PostureModule::pos_y(boss_boma) <= -50.0 {
-                                            let boss_y_pos_2 = Vector3f{x: 200.0, y: -50.0, z: z};
+                                    if !CONTROLLABLE || FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
+                                        if PostureModule::pos_y(boss_boma) <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0 {
+                                            let boss_y_pos_2 = Vector3f{x: x, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
                                             PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                            if PostureModule::pos_x(boss_boma) >= dead_range(fighter.lua_state_agent).x.abs() - 100.0 {
+                                                let boss_x_pos_1 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0 {
+                                                let boss_x_pos_2 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                            }
                                         }
-                                    }
-                                    else if PostureModule::pos_x(boss_boma) <= -200.0 {
-                                        let boss_x_pos_2 = Vector3f{x: -200.0, y: y, z: z};
-                                        PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                        PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                        if PostureModule::pos_y(boss_boma) >= 100.0 {
-                                            let boss_y_pos_1 = Vector3f{x: -200.0, y: 100.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                        }
-                                        if PostureModule::pos_y(boss_boma) <= -50.0 {
-                                            let boss_y_pos_2 = Vector3f{x: -200.0, y: -50.0, z: z};
-                                            PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                            PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                        }
-                                        if PostureModule::pos_x(boss_boma) >= 200.0 {
-                                            let boss_x_pos_1 = Vector3f{x: 200.0, y: y, z: z};
+                                        else if PostureModule::pos_x(boss_boma) >= dead_range(fighter.lua_state_agent).x.abs() - 100.0 {
+                                            let boss_x_pos_1 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: y, z: z};
                                             PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                            PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                            if PostureModule::pos_x(boss_boma) <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0 {
+                                                let boss_x_pos_2 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: y, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                            }
+                                            if PostureModule::pos_y(boss_boma) >= dead_range(fighter.lua_state_agent).y.abs() - 100.0 {
+                                                let boss_y_pos_1 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: dead_range(fighter.lua_state_agent).y.abs() - 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                            }
+                                            if PostureModule::pos_y(boss_boma) <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0 {
+                                                let boss_y_pos_2 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                            }
+                                        }
+                                        else if PostureModule::pos_x(boss_boma) <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0 {
+                                            let boss_x_pos_2 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: y, z: z};
+                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                            if PostureModule::pos_y(boss_boma) >= dead_range(fighter.lua_state_agent).y.abs() - 100.0 {
+                                                let boss_y_pos_1 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: dead_range(fighter.lua_state_agent).y.abs() - 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                            }
+                                            if PostureModule::pos_y(boss_boma) <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0 {
+                                                let boss_y_pos_2 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) >= dead_range(fighter.lua_state_agent).x.abs() - 100.0 {
+                                                let boss_x_pos_1 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: y, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                            }
+                                        }
+                                        else if PostureModule::pos_y(boss_boma) >= dead_range(fighter.lua_state_agent).y.abs() - 100.0 {
+                                            let boss_y_pos_1 = Vector3f{x: x, y: dead_range(fighter.lua_state_agent).y.abs() - 100.0, z: z};
+                                            PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                            if PostureModule::pos_y(boss_boma) <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0 {
+                                                let boss_y_pos_2 = Vector3f{x: x, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) >= dead_range(fighter.lua_state_agent).x.abs() - 100.0 {
+                                                let boss_x_pos_1 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: dead_range(fighter.lua_state_agent).y.abs() - 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0 {
+                                                let boss_x_pos_2 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: dead_range(fighter.lua_state_agent).y.abs() - 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                            }
+                                        }
+                                        else {
+                                            PostureModule::set_pos(module_accessor, &boss_pos);
                                         }
                                     }
                                     else {
-                                        PostureModule::set_pos(module_accessor, &boss_pos);
+                                        if PostureModule::pos_y(boss_boma) <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0 {
+                                            let boss_y_pos_2 = Vector3f{x: x, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                            PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                            PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                            if PostureModule::pos_x(boss_boma) >= dead_range(fighter.lua_state_agent).x.abs() - 100.0 {
+                                                let boss_x_pos_1 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0 {
+                                                let boss_x_pos_2 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                            }
+                                        }
+                                        else if PostureModule::pos_x(boss_boma) >= dead_range(fighter.lua_state_agent).x.abs() - 100.0 {
+                                            let boss_x_pos_1 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: y, z: z};
+                                            PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                            PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                            if PostureModule::pos_x(boss_boma) <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0 {
+                                                let boss_x_pos_2 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: y, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                            }
+                                            if PostureModule::pos_y(boss_boma) >= dead_range(fighter.lua_state_agent).y.abs() - 100.0 {
+                                                let boss_y_pos_1 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: dead_range(fighter.lua_state_agent).y.abs() - 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                            }
+                                            if PostureModule::pos_y(boss_boma) <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0 {
+                                                let boss_y_pos_2 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                            }
+                                        }
+                                        else if PostureModule::pos_x(boss_boma) <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0 {
+                                            let boss_x_pos_2 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: y, z: z};
+                                            PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                            PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                            if PostureModule::pos_y(boss_boma) >= dead_range(fighter.lua_state_agent).y.abs() - 100.0 {
+                                                let boss_y_pos_1 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: dead_range(fighter.lua_state_agent).y.abs() - 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                            }
+                                            if PostureModule::pos_y(boss_boma) <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0 {
+                                                let boss_y_pos_2 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) >= dead_range(fighter.lua_state_agent).x.abs() - 100.0 {
+                                                let boss_x_pos_1 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: y, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                            }
+                                        }
+                                        else if PostureModule::pos_y(boss_boma) >= dead_range(fighter.lua_state_agent).y.abs() - 100.0 {
+                                            let boss_y_pos_1 = Vector3f{x: x, y: dead_range(fighter.lua_state_agent).y.abs() - 100.0, z: z};
+                                            PostureModule::set_pos(module_accessor, &boss_y_pos_1);
+                                            PostureModule::set_pos(boss_boma, &boss_y_pos_1);
+                                            if PostureModule::pos_y(boss_boma) <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0 {
+                                                let boss_y_pos_2 = Vector3f{x: x, y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_y_pos_2);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) >= dead_range(fighter.lua_state_agent).x.abs() - 100.0 {
+                                                let boss_x_pos_1 = Vector3f{x: dead_range(fighter.lua_state_agent).x.abs() - 100.0, y: dead_range(fighter.lua_state_agent).y.abs() - 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_1);
+                                            }
+                                            if PostureModule::pos_x(boss_boma) <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0 {
+                                                let boss_x_pos_2 = Vector3f{x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0, y: dead_range(fighter.lua_state_agent).y.abs() - 100.0, z: z};
+                                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
+                                                PostureModule::set_pos(boss_boma, &boss_x_pos_2);
+                                            }
+                                        }
+                                        else {
+                                            PostureModule::set_pos(module_accessor, &boss_pos);
+                                        }
                                     }
                                 }
                             }
                         }
+                    }
+
+                    if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
+                        let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                        let x = PostureModule::pos_x(boss_boma);
+                        let y = PostureModule::pos_y(boss_boma);
+                        let z = PostureModule::pos_z(boss_boma);
+                        let boss_pos = Vector3f{x: x, y: y, z: z};
+                        PostureModule::set_pos(module_accessor, &boss_pos);
                     }
                     
                     if FighterManager::is_result_mode(fighter_manager) == true {
@@ -291,42 +440,21 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == true {
                         // DAMAGE MODULES
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                        DamageModule::set_damage_lock(boss_boma, true);
                         HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
                         HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
-                        let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
-                        if smash::app::smashball::is_training_mode() == false {
-                            DamageModule::set_damage_lock(boss_boma_2, true);
-                            HitModule::set_whole(boss_boma_2, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+                        for i in 0..10 {
+                            if AttackModule::is_attack(boss_boma, i, false) {
+                                AttackModule::set_target_category(boss_boma, i, *COLLISION_CATEGORY_MASK_ALL as u32);
+                            }
                         }
                         if sv_information::is_ready_go() == true {
-                            if DamageModule::damage(module_accessor, 0) >= 100.0 && !DEAD {
-                                if STUNNED == false {
-                                    CONTROLLABLE = false;
-                                    STUNNED = true;
-                                    StatusModule::change_status_request_from_script(boss_boma,*ITEM_DARZ_STATUS_KIND_DOWN_START,true);
-                                }
-                            }
                             if FighterUtil::is_hp_mode(module_accessor) == false {
                                 if DamageModule::damage(module_accessor, 0) >= 399.0 {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("dead"),0.0,1.0,false,0.0,false,false);
-                                        if smash::app::smashball::is_training_mode() == false {
-                                            StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_STANDBY,true);
-                                        }
                                         DEAD = true;
                                     }
-                                }
-                            }
-                            if StopModule::is_damage(boss_boma) | StopModule::is_damage(module_accessor) {
-                                DamageModule::add_damage(module_accessor, 4.1, 0);
-                                WorkModule::set_flag(boss_boma, true, *ITEM_STATUS_WORK_FLAG_HIT);
-                                if StopModule::is_stop(module_accessor) {
-                                    StopModule::end_stop(module_accessor);
-                                }
-                                if StopModule::is_stop(boss_boma) {
-                                    StopModule::end_stop(boss_boma);
                                 }
                             }
                         }
@@ -337,33 +465,19 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if DEAD == true {
                                 HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                                let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
                                 HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
-                                if smash::app::smashball::is_training_mode() == false {
-                                    HitModule::set_whole(boss_boma_2, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
-                                }
                                 if STOP == false && smash::app::smashball::is_training_mode() == false {
                                     if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
                                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
-                                        if smash::app::smashball::is_training_mode() == false {
-                                            StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_STANDBY,true);
-                                        }
                                     }
                                     if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == 0 {
-                                        StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
-                                        if smash::app::smashball::is_training_mode() == false {
-                                            StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_STANDBY,true);
-                                        }
-                                        ItemModule::remove_all(module_accessor);
+                                        StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
                                         STOP = true;
                                     }
                                 }
                                 if STOP == true && smash::app::smashball::is_training_mode() == false {
                                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
                                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
-                                        if smash::app::smashball::is_training_mode() == false {
-                                            StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_STANDBY,true);
-                                        }
                                     }
                                 }
                             }
@@ -382,20 +496,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
-                        // SETS POWER
-
-                        AttackModule::set_power_mul(boss_boma, 1.5);
-
-                        if sv_information::is_ready_go() == true && smash::app::smashball::is_training_mode() == false && !DEAD {
-                            let x = PostureModule::pos_x(boss_boma);
-                            let y = PostureModule::pos_y(boss_boma);
-                            let z = PostureModule::pos_z(boss_boma);
-                            let boss_pos = Vector3f{x: x, y: y, z: z};
-                            let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
-                            PostureModule::set_pos(boss_boma_2, &boss_pos);
-                            StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_MASTERHAND_STATUS_KIND_WAIT_FEINT, true);
-                        }
-
                         // FIXES SPAWN
 
                         if DEAD == false {
@@ -411,32 +511,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     PostureModule::set_rot(boss_boma,&vec3,0);
                                 }
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_DARZ_STATUS_KIND_MANAGER_WAIT, true);
-                            }
-                        }
-
-                        if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
-                            if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_DOWN_START {
-                                RECOVERY = 0;
-                            }
-                            if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_DOWN_LOOP {
-                                if RECOVERY >= 150 {
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_DARZ_STATUS_KIND_DOWN_END, true);
-                                }
-                                else {
-                                    if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) ||
-                                     ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) || ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) ||
-                                     ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 ||
-                                     ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 || 
-                                     ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 ||
-                                     ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_LW3 != 0 ||
-                                     ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 ||
-                                     ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 ||
-                                     ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_LW) ||
-                                     ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_HI) || ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_S_L) ||
-                                     ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_S_R) {
-                                        RECOVERY += 1;
-                                    }
-                                }
                             }
                         }
                         
@@ -513,7 +587,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.2);
                         }
 
-                        if DamageModule::damage(module_accessor, 0) >= 200.0 && !DEAD {
+                        if DamageModule::damage(module_accessor, 0) >= 220.0 && !DEAD {
                             if IS_ANGRY == false {
                                 CONTROLLABLE = false;
                                 IS_ANGRY = true;
@@ -526,7 +600,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             CONTROLLABLE = true;
                             MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
                         }
-
+                        if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_DOWN_START {
+                            CONTROLLABLE = false;
+                        }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_MANAGER_WAIT {
                             CONTROLLABLE = true;
                             MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
@@ -734,10 +810,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_TORRENT {
-                            MotionModule::set_rate(boss_boma, 1.0);
-                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                            MotionModule::set_rate(boss_boma, 2.5);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.5);
                             CONTROLLABLE = false;
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 2.0 {
                                 CONTROLLABLE = true;
                             }
                         }
