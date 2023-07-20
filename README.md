@@ -8,6 +8,22 @@
 
 *Compatible with many other mods*
 
+## Boss Stats
+```
+ALL BOSSES HAVE ONE(1) LIFE
+- Master Hand: 400 HP
+- Crazy Hand: 400 HP
+- Dharkon: 400 HP (Rage at 220 HP)
+- Galeem: 400 HP (Rage at 220 HP)
+- Marx: 400 HP
+- Giga Bowser 500 HP (No Knockback)
+- Ganon: 600 HP
+- Dracula: 700 HP (Phase 1 dies at 220 HP, Phase 2 dies at 500 HP. If you want to play Dracula in Stamina mode, always play Dracula with above 200 HP or else he won't reach phase 2)
+- Rathalos: 600 HP
+- Galleom: 700 HP (Rage at 220 HP)
+- WOL Master Hand: 400 HP
+```
+
 ## Setup
 Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
 
@@ -37,20 +53,9 @@ We are NOT responsible for what happens to your Nintendo account! Please take pr
 
 - NEVER play this mod in an online environment without someone else using this same exact mod installed along with your other installed mods!
 
-## Boss Stats
-```
-- Master Hand: 400 HP (Stuns at 200 HP)
-- Crazy Hand: 400 HP (Stuns at 200 HP)
-- Dharkon: 400 HP (Stuns at 100 HP, Rage at 200 HP)
-- Galeem: 400 HP (Stuns at 100 HP, Rage at 200 HP)
-- Marx: 400 HP (Receives reduced damage)
-- Giga Bowser 500 HP (No Knockback)
-- Ganon: 600 HP (Stuns at 200 HP)
-- Dracula: 700 HP (Phase 1 dies at 200 HP, Phase 2 dies at 500 HP. Keep in mind that if you want to play Dracula in Stamina mode, always play Dracula with above or equal to 250 HP if you want him to reach phase 2 without immediately dying)
-- Rathalos: 600 HP (Stuns at 300 HP)
-- Galleom: 700 HP (Rage at 200 HP)
-- WOL Master Hand: 400 HP
-```
+# GameBanana Page
+Checkout the [GameBanana Page](https://gamebanana.com/mods/457095)!
+
 # Troubleshooting
 
 *Is the game not starting?*
