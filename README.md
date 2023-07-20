@@ -40,8 +40,6 @@ Drop this mod into your sd card root folder and you're good to go.
 ```
 ## Warning
 
-This mod is NOT compatable with the Giga Bowser mod, hence why we made Giga Bowser playable without the help of another mod.
-
 This mod is NOT compatable with a mod that changes the announcers voice of a character since this could create conflicting audio files (edit the audio file that comes with this mod if you have a seperate announcer voice file).
 
 This mod is NOT compatable in a multiplayer environment unless the other player(s) also have this mod installed.
