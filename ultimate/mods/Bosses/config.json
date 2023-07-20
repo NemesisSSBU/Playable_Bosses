@@ -108,8 +108,26 @@
       "ui/replace/standard/standard_route_mewtwo_masterhand.prc",
       "ui/replace/standard/standard_route_koopag.prc"
     ],
-	"ui/param/standard": [
-	  "ui/replace/chara/chara_12/chara_12_mewtwo_masterhand_00.bntx"
+	  "ui/param/standard": [
+	    "ui/replace/chara/chara_12/chara_12_mewtwo_masterhand_00.bntx"
+    ],
+    "ui/replace/stage/stage_1": [
+	    "ui/replace/stage/stage_1/stage_1_bossstage_final1.bntx",
+      "ui/replace/stage/stage_1/stage_1_bossstage_final2.bntx",
+      "ui/replace/stage/stage_1/stage_1_bossstage_final3.bntx",
+      "ui/replace/stage/stage_1/stage_1_bossstage_galleom.bntx",
+      "ui/replace/stage/stage_1/stage_1_bossstage_ganonboss.bntx",
+      "ui/replace/stage/stage_1/stage_1_bossstage_marx.bntx",
+      "ui/replace/stage/stage_1/stage_1_bossstage_rathalos.bntx"
+    ],
+    "ui/replace/stage/stage_2": [
+	    "ui/replace/stage/stage_2/stage_2_bossstage_final1.bntx",
+      "ui/replace/stage/stage_2/stage_2_bossstage_final2.bntx",
+      "ui/replace/stage/stage_2/stage_2_bossstage_final3.bntx",
+      "ui/replace/stage/stage_2/stage_2_bossstage_galleom.bntx",
+      "ui/replace/stage/stage_2/stage_2_bossstage_ganonboss.bntx",
+      "ui/replace/stage/stage_2/stage_2_bossstage_marx.bntx",
+      "ui/replace/stage/stage_2/stage_2_bossstage_rathalos.bntx"
     ]
   }
 }
