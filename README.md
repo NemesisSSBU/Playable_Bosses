@@ -65,7 +65,7 @@ Checkout the [GameBanana Page](https://gamebanana.com/mods/457095)!
 - Ryujinx is a little different as their mod folder is located within %appdata% --> sdcard --> atmosphere --> contents --> 01006a800016e000 --> romfs --> skyline --> (drag .nro files into here). Our mod is already simplified so that all you need to do is go into: %appdata% --> sdcard. While in the sdcard folder, drag and drop the mod files in, if you installed skyline previously it'll ask to replace some files so that's up to you whether or not you want to replace your previous ARCropolis folder or not with the one that comes prepackaged within our mod. Once it's dragged in you're ready to go!
 
 *If there's other issues*
-- Please open up a "New Issue" in the issues tab on GitHub and describe the issue to the best of your ability.
+- Please check the latest release descriptions. If your issue is not mentioned in those descriptions, open up a "New Issue" in the issues tab on GitHub and describe the issue to the best of your ability.
 
 ## Note to those that want to include this mod in their own mod pack
 - Feel free to include this mod in your mod pack but you must also credit all of the people listed below in "Credit" and link this mod.
