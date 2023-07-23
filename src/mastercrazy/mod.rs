@@ -960,7 +960,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIPPATAKU_HOLD {
                             MotionModule::set_rate(boss_boma, 1.2);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.2);
-                            WorkModule::set_float(boss_boma, Y_POS, *ITEM_MASTERHAND_INSTANCE_WORK_FLOAT_HIPPATAKU_GA_HEIGHT);
+                            PostureModule::set_pos(boss_boma, &Vector3f{x: PostureModule::pos_x(boss_boma), y: Y_POS, z: PostureModule::pos_z(boss_boma)});
                             //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_MASTER < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_MASTER >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
@@ -1018,7 +1018,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             PostureModule::add_pos(boss_boma, &pos);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_HIPPATAKU {
-                            WorkModule::set_float(boss_boma, Y_POS, *ITEM_MASTERHAND_INSTANCE_WORK_FLOAT_HIPPATAKU_GA_HEIGHT);
+                            PostureModule::set_pos(boss_boma, &Vector3f{x: PostureModule::pos_x(boss_boma), y: Y_POS, z: PostureModule::pos_z(boss_boma)});
                             //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_MASTER < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_MASTER >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
@@ -2051,7 +2051,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         }
                                         if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
                                             Y_POS = PostureModule::pos_y(boss_boma);
-                                            WorkModule::set_float(boss_boma, Y_POS, *ITEM_MASTERHAND_INSTANCE_WORK_FLOAT_HIPPATAKU_GA_HEIGHT);
                                             CONTROLLABLE = false;
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_HIPPATAKU_HOLD, true);
                                         }
@@ -3298,7 +3297,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_HIPPATAKU_HOLD {
                             MotionModule::set_rate(boss_boma_2, 1.2);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.2);
-                            WorkModule::set_float(boss_boma_2, Y_POS, *ITEM_CRAZYHAND_INSTANCE_WORK_FLOAT_HIPPATAKU_GA_HEIGHT);
+                            PostureModule::set_pos(boss_boma_2, &Vector3f{x: PostureModule::pos_x(boss_boma_2), y: Y_POS_2, z: PostureModule::pos_z(boss_boma_2)});
                             //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
@@ -3355,7 +3354,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             PostureModule::add_pos(boss_boma_2, &pos);
                         }
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_HIPPATAKU {
-                            WorkModule::set_float(boss_boma_2, Y_POS, *ITEM_CRAZYHAND_INSTANCE_WORK_FLOAT_HIPPATAKU_GA_HEIGHT);
+                            PostureModule::set_pos(boss_boma_2, &Vector3f{x: PostureModule::pos_x(boss_boma_2), y: Y_POS_2, z: PostureModule::pos_z(boss_boma_2)});
                             //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
@@ -3970,7 +3969,6 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                             }
                                             else {
                                                 Y_POS_2 = PostureModule::pos_y(boss_boma_2);
-                                                WorkModule::set_float(boss_boma_2, Y_POS, *ITEM_CRAZYHAND_INSTANCE_WORK_FLOAT_HIPPATAKU_GA_HEIGHT);
                                                 StatusModule::change_status_request(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_HIPPATAKU_HOLD, true);
                                             }
                                         }
@@ -4006,7 +4004,6 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         }
                                         if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
                                             Y_POS_2 = PostureModule::pos_y(boss_boma_2);
-                                            WorkModule::set_float(boss_boma_2, Y_POS, *ITEM_CRAZYHAND_INSTANCE_WORK_FLOAT_HIPPATAKU_GA_HEIGHT);
                                             CONTROLLABLE_2 = false;
                                             StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_HIPPATAKU_HOLD, true);
                                         }
