@@ -1048,9 +1048,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                             let pos = Vector3f{x: CONTROLLER_X, y: CONTROLLER_Y, z: 0.0};
                             PostureModule::add_pos(boss_boma, &pos);
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
-                                CONTROLLABLE = true;
-                            }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_TEAR_UP {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
