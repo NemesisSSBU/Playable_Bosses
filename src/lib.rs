@@ -775,36 +775,6 @@ fn callback_map_1(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
         let (_, ui_chara_id) = &ui_chara_struct.0[0];
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-        *ui_chara_hash == to_hash40("ui_stage_boss_final")
-    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("is_usable") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-        if *hash == to_hash40("can_select") {
-            *param.try_into_mut::<bool>().unwrap() = true;
-        }
-    });
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
-}
-
-#[arc_callback]
-fn callback_map_2(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list.0.iter_mut().find(|param| {
-        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-        let (_, ui_chara_id) = &ui_chara_struct.0[0];
-        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_stage_boss_final2")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
@@ -817,6 +787,9 @@ fn callback_map_2(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
+        if *hash == to_hash40("ui_series_id") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
+        }
     });
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -824,7 +797,7 @@ fn callback_map_2(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_3(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_2(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -847,6 +820,9 @@ fn callback_map_3(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
+        if *hash == to_hash40("ui_series_id") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
+        }
     });
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -854,7 +830,7 @@ fn callback_map_3(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_4(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_3(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -877,6 +853,9 @@ fn callback_map_4(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
+        if *hash == to_hash40("ui_series_id") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_zelda");
+        }
     });
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -884,7 +863,7 @@ fn callback_map_4(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_5(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_4(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -907,6 +886,9 @@ fn callback_map_5(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
+        if *hash == to_hash40("ui_series_id") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
+        }
     });
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -914,7 +896,7 @@ fn callback_map_5(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_6(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_5(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -937,6 +919,9 @@ fn callback_map_6(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
+        if *hash == to_hash40("ui_series_id") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_kirby");
+        }
     });
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -944,7 +929,7 @@ fn callback_map_6(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_6(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -967,6 +952,9 @@ fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
+        if *hash == to_hash40("ui_series_id") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
+        }
     });
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -974,7 +962,7 @@ fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 #[arc_callback]
-fn callback_map_8(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
@@ -997,6 +985,9 @@ fn callback_map_8(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
+        if *hash == to_hash40("ui_series_id") {
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_castlevania");
+        }
     });
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -1004,7 +995,6 @@ fn callback_map_8(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 }
 
 const MAX_FILE_SIZE: usize = 0xFFFF;
-const MAX_FILE_SIZE_STAGE: usize = 0xFFFF;
 
 #[skyline::main(name = "comp_boss")]
  pub fn main() {
@@ -1032,11 +1022,10 @@ const MAX_FILE_SIZE_STAGE: usize = 0xFFFF;
        callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
        callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
        callback_map_1::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-       callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_3::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_4::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_5::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_6::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_7::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
-       callback_map_8::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE_STAGE);
+       callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       callback_map_3::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       callback_map_4::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       callback_map_5::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       callback_map_6::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       callback_map_7::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
     }

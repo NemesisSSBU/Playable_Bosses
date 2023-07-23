@@ -12,6 +12,7 @@ use smash::app::lua_bind;
 use skyline::nn::ro::LookupSymbol;
 use smash::hash40;
 use smash::app::utility::get_category;
+use smash::phx::Hash40;
 
 static mut CONTROLLABLE : bool = true;
 static mut IS_ANGRY : bool = false;
@@ -29,6 +30,11 @@ static mut EXISTS_PUBLIC : bool = false;
 
 pub unsafe fn check_status() -> bool {
     return EXISTS_PUBLIC;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_ZN3app2ai4rankEP9lua_State"]
+    pub fn cpu_level(lua_state: u64) -> f32;
 }
 
 pub unsafe fn read_tag(addr: u64) -> String {
@@ -102,7 +108,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         ModelModule::set_scale(module_accessor, 0.0001);
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         ModelModule::set_scale(boss_boma, 0.04);
-                        MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("tank_attack_loop"),0.0,1.0,false,0.0,false,false);
+                        MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
                     }
                     if ModelModule::scale(module_accessor) == 0.0001 {
                         MotionModule::change_motion(module_accessor,smash::phx::Hash40::new("none"),0.0,1.0,false,0.0,false,false);
@@ -127,7 +133,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_GALLEOM), 0, 0, false, false);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                            WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                            if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
+                                WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                                WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+                            }
+                            else {
+                                WorkModule::set_float(boss_boma, cpu_level(fighter.lua_state_agent) + 1.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                                WorkModule::set_float(boss_boma, (cpu_level(fighter.lua_state_agent) * 0.1) + 0.1, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+                            }
                             WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
@@ -138,7 +151,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     // Flags and new damage stuff
 
-                    if sv_information::is_ready_go() == true {
+                    if sv_information::is_ready_go() {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         if WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP) != 999.0 {
                             let sub_hp = 999.0 - WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP);
@@ -351,6 +364,18 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
                         }
+                        SoundModule::stop_se(module_accessor, Hash40::new("se_common_swing_05"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("vc_mario_013"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("se_common_swing_09"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("se_common_punch_kick_swing_l"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("vc_mario_win02"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("se_mario_win2"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("vc_mario_014"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("se_mario_win2"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("vc_mario_win03"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("vc_mario_015"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("se_mario_jump01"), 0);
+                        SoundModule::stop_se(module_accessor, Hash40::new("se_mario_landing02"), 0);
                     }
 
                     // FIXES SPAWN

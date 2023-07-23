@@ -25,15 +25,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             .as_ptr(),
         );
         if fighter_kind == *FIGHTER_KIND_KOOPAG {
-            if smash::app::stage::get_stage_id() == 0x139 {
-                // if MotionModule::motion_kind(boss_boma) != smash::hash40("wait") {
-                //     MotionModule::change_motion(module_accessor,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
-                // }
-            }
-            else {
+            if smash::app::stage::get_stage_id() != 0x139 {
                 let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
-                MotionModule::set_rate(module_accessor, 1.0);
-                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(module_accessor, 1.0);
                 if sv_information::is_ready_go() == false {
                     DEAD = false;
                     STOP = false;
@@ -44,6 +37,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 }
                 if sv_information::is_ready_go() == true {
                     DamageModule::set_reaction_mul(module_accessor, 0.0);
+                    DamageModule::set_reaction_mul_2nd(module_accessor, 0.0);
+                    DamageModule::set_reaction_mul_4th(module_accessor, 0.0);
                     if DamageModule::damage(module_accessor, 0) >= 499.0 && FighterUtil::is_hp_mode(module_accessor) == false {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
                     }
