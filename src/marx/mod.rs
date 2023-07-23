@@ -672,6 +672,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MARX_STATUS_KIND_ATTACK_ICE_BOMB_LOOP {
+                            if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
+                                if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) == false {
+                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MARX_STATUS_KIND_ATTACK_ICE_BOMB_SHOOT, true);
+                                }
+                                else {
+                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MARX_STATUS_KIND_ATTACK_ICE_BOMB_LOOP, true);
+                                }
+                            }
                             //Boss Control Stick Movement
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                 let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 3.0, y: 0.0, z: 0.0};

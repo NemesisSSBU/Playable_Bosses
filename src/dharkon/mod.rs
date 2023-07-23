@@ -695,64 +695,178 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                 CONTROLLABLE = true;
                             }
-                            //Boss Control Stick Movement
-                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            // X Controllable
+                            if CONTROLLER_X < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X <= 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 0.75, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X -= CONTROL_SPEED_MUL_2;
                             }
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X += CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X < 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X > 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_X < 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            // Y Controllable
+                            if CONTROLLER_Y < ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y >= 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y <= 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y -= CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y += CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            let pos = Vector3f{x: CONTROLLER_X, y: CONTROLLER_Y, z: 0.0};
+                            PostureModule::add_pos(boss_boma, &pos);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_TEAR_UP {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                 CONTROLLABLE = true;
                             }
                             //Boss Control Stick Movement
-                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            // X Controllable
+                            if CONTROLLER_X < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X <= 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 0.75, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X -= CONTROL_SPEED_MUL_2;
                             }
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X += CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X < 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X > 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_X < 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            // Y Controllable
+                            if CONTROLLER_Y < ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y >= 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y <= 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y -= CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y += CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            let pos = Vector3f{x: CONTROLLER_X, y: CONTROLLER_Y, z: 0.0};
+                            PostureModule::add_pos(boss_boma, &pos);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_SPACE_RUSH_LOOP {
                             CONTROLLABLE = false;
                             //Boss Control Stick Movement
-                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            // X Controllable
+                            if CONTROLLER_X < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 2.0, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X <= 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X -= CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
-                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 2.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X += CONTROL_SPEED_MUL_2;
                             }
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X < 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X > 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_X < 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            // Y Controllable
+                            if CONTROLLER_Y < ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y >= 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y <= 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y -= CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y += CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            let pos = Vector3f{x: CONTROLLER_X, y: CONTROLLER_Y, z: 0.0};
+                            PostureModule::add_pos(boss_boma, &pos);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_SPACE_RUSH_END {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
@@ -766,59 +880,174 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_GATLING_LOOP {
                             //Boss Control Stick Movement
-                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            // X Controllable
+                            if CONTROLLER_X < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X <= 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 0.75, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X -= CONTROL_SPEED_MUL_2;
                             }
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X += CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X < 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X > 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_X < 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            // Y Controllable
+                            if CONTROLLER_Y < ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y >= 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y <= 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y -= CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y += CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            let pos = Vector3f{x: CONTROLLER_X, y: CONTROLLER_Y, z: 0.0};
+                            PostureModule::add_pos(boss_boma, &pos);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_GATLING_HOLD_LOOP {
                             //Boss Control Stick Movement
-                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            // X Controllable
+                            if CONTROLLER_X < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 0.75, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X <= 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 0.75, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X -= CONTROL_SPEED_MUL_2;
                             }
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X += CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X < 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X > 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_X < 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            // Y Controllable
+                            if CONTROLLER_Y < ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y >= 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y <= 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y -= CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y += CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            let pos = Vector3f{x: CONTROLLER_X, y: CONTROLLER_Y, z: 0.0};
+                            PostureModule::add_pos(boss_boma, &pos);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_CHASE_HAMMER {
                             //Boss Control Stick Movement
-                            if ControlModule::get_stick_x(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            // X Controllable
+                            if CONTROLLER_X < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_x(module_accessor) >= -0.001 {
-                                let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 1.0, y: 0.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X <= 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_y(module_accessor) <= 0.001 {
-                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X -= CONTROL_SPEED_MUL_2;
                             }
-                        
-                            if ControlModule::get_stick_y(module_accessor) >= -0.001 {
-                                let pos = Vector3f{x: 0.0, y: ControlModule::get_stick_y(module_accessor) * 1.0, z: 0.0};
-                                PostureModule::add_pos(boss_boma, &pos);
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                CONTROLLER_X += CONTROL_SPEED_MUL_2;
                             }
+                            if CONTROLLER_X > 0.0 && CONTROLLER_X < 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X < 0.0 && CONTROLLER_X > 0.02 {
+                                CONTROLLER_X = 0.0;
+                            }
+                            if CONTROLLER_X > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_X < 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                CONTROLLER_X += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            // Y Controllable
+                            if CONTROLLER_Y < ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y >= 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y <= 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y -= CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                CONTROLLER_Y += CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.02 {
+                                CONTROLLER_Y = 0.0;
+                            }
+                            if CONTROLLER_Y > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+                            if CONTROLLER_Y < 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                CONTROLLER_Y += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                            }
+
+                            let pos = Vector3f{x: CONTROLLER_X, y: CONTROLLER_Y, z: 0.0};
+                            PostureModule::add_pos(boss_boma, &pos);
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                 CONTROLLABLE = true;
                             }
