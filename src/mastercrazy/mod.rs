@@ -291,6 +291,14 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         JostleModule::set_status(module_accessor, false);
                     }
 
+                    if sv_information::is_ready_go() {
+                        let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_BARK && !CRAZY_USABLE {
+                            BARK = false;
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_FEINT, true);
+                        }
+                    }
+
                     // Team Attack Trigger
                     if sv_information::is_ready_go() == true && !DEAD {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
