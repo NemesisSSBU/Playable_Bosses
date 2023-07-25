@@ -310,8 +310,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if lua_bind::PostureModule::lr(boss_boma) == -1.0 && CRAZY_FACING_RIGHT // Master Hand Facing left but Crazy Hand facing right, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma) == 1.0 && !CRAZY_FACING_RIGHT {
                                         CONTROLLABLE = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_BARK, true);
                                         BARK = true;
+                                        PUNCH = false;
+                                        SHOCK = false;
+                                        LASER = false;
+                                        SCRATCH_BLOW = false;
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_BARK, true);
                                     }
                                 }
                             }
@@ -321,6 +325,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if lua_bind::PostureModule::lr(boss_boma) == -1.0 && CRAZY_FACING_RIGHT // Master Hand Facing left but Crazy Hand facing right, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma) == 1.0 && !CRAZY_FACING_RIGHT {
                                         CONTROLLABLE = false;
+                                        BARK = false;
+                                        PUNCH = false;
+                                        SHOCK = false;
+                                        LASER = false;
                                         SCRATCH_BLOW = true;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW_START, true);
                                     }
@@ -332,7 +340,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if lua_bind::PostureModule::lr(boss_boma) == -1.0 && CRAZY_FACING_RIGHT // Master Hand Facing left but Crazy Hand facing right, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma) == 1.0 && !CRAZY_FACING_RIGHT {
                                         CONTROLLABLE = false;
+                                        BARK = false;
+                                        PUNCH = false;
                                         SHOCK = true;
+                                        LASER = false;
+                                        SCRATCH_BLOW = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_ELECTROSHOCK_START, true);
                                     }
                                 }
@@ -877,11 +889,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     PostureModule::set_pos(boss_boma, &master_pos);
                                 }
                             }
-                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_MASTERHAND_STATUS_KIND_GOOPAA,true);
+                            StatusModule::change_status_request_from_script(boss_boma,*ITEM_MASTERHAND_STATUS_KIND_GOOPAA, true);
                         }
                         if PUNCH && !DEAD && StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_GOOPAA && MASTER_USABLE {
-                            MotionModule::set_rate(boss_boma, 1.0);
-                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                            MotionModule::set_rate(boss_boma, 1.15);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.15);
                             if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
                                 let master_pos = Vector3f{x: MASTER_X_POS, y: CRAZY_Y_POS + 15.0, z: CRAZY_Z_POS};
                                 PostureModule::set_pos(boss_boma, &master_pos);
@@ -1448,7 +1460,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW {
                                 if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                     CONTROLLABLE = true;
-                                    SCRATCH_BLOW = false;
                                     println!("STOPPED AT 1014");
                                 }
                             }
@@ -1859,7 +1870,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let pos = Vector3f{x: CONTROLLER_X_MASTER, y: CONTROLLER_Y_MASTER, z: 0.0};
                             PostureModule::add_pos(boss_boma, &pos);
                             if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
-                                if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 2.0 {
+                                if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                     MotionModule::set_rate(boss_boma, 1.0);
                                     smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                                     CONTROLLABLE = true;
@@ -1868,7 +1879,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
-                                if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 2.0 {
+                                if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                     MotionModule::set_rate(boss_boma, 1.0);
                                     smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
                                 }
@@ -1979,7 +1990,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                 if lua_bind::PostureModule::lr(boss_boma) == -1.0 && CRAZY_FACING_RIGHT // Master Hand Facing left but Crazy Hand facing right, next line is opposite
                                                 || lua_bind::PostureModule::lr(boss_boma) == 1.0 && !CRAZY_FACING_RIGHT {
                                                     CONTROLLABLE = false;
+                                                    BARK = false;
+                                                    PUNCH = false;
                                                     SHOCK = true;
+                                                    LASER = false;
+                                                    SCRATCH_BLOW = false;
                                                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_ELECTROSHOCK_START, true);
                                                 }
                                             }
@@ -2043,8 +2058,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                 if lua_bind::PostureModule::lr(boss_boma) == -1.0 && CRAZY_FACING_RIGHT // Master Hand Facing left but Crazy Hand facing right, next line is opposite
                                                 || lua_bind::PostureModule::lr(boss_boma) == 1.0 && !CRAZY_FACING_RIGHT {
                                                     CONTROLLABLE = false;
-                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_BARK, true);
                                                     BARK = true;
+                                                    PUNCH = false;
+                                                    SHOCK = false;
+                                                    LASER = false;
+                                                    SCRATCH_BLOW = false;
+                                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_BARK, true);
                                                 }
                                             }
                                         }
@@ -2053,6 +2072,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                 if lua_bind::PostureModule::lr(boss_boma) == -1.0 && CRAZY_FACING_RIGHT // Master Hand Facing left but Crazy Hand facing right, next line is opposite
                                                 || lua_bind::PostureModule::lr(boss_boma) == 1.0 && !CRAZY_FACING_RIGHT {
                                                     CONTROLLABLE = false;
+                                                    BARK = false;
+                                                    PUNCH = false;
+                                                    SHOCK = false;
+                                                    LASER = false;
                                                     SCRATCH_BLOW = true;
                                                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW_START, true);
                                                 }
@@ -2266,7 +2289,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_DOWN_FALL
                                 && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_DOWN_LOOP
                                 && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_DOWN_END
-                                && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_TURN {
+                                && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_TURN
+                                && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_START
+                                && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_LOOP
+                                && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW {
                                     MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
                                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
                                     TURNING_2 = false;
@@ -2277,7 +2303,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_DOWN_FALL
                                 && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_DOWN_LOOP
                                 && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_DOWN_END
-                                && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_TURN {
+                                && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_TURN
+                                && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_START
+                                && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_LOOP
+                                && StatusModule::status_kind(boss_boma) != *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW {
                                     MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
                                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
                                     TURNING_2 = false;
@@ -2297,7 +2326,11 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if lua_bind::PostureModule::lr(boss_boma_2) == 1.0 && MASTER_FACING_LEFT // Crazy Hand Facing right but Master Hand facing left, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma_2) == -1.0 && !MASTER_FACING_LEFT {
                                         CONTROLLABLE_2 = false;
+                                        BARK = false;
+                                        PUNCH = false;
+                                        SHOCK = false;
                                         LASER = true;
+                                        SCRATCH_BLOW = false;
                                         StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_WFINGER_BEAM_START, true);
                                     }
                                 }
@@ -2308,7 +2341,11 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if lua_bind::PostureModule::lr(boss_boma_2) == 1.0 && MASTER_FACING_LEFT // Crazy Hand Facing right but Master Hand facing left, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma_2) == -1.0 && !MASTER_FACING_LEFT {
                                         CONTROLLABLE_2 = false;
+                                        BARK = false;
                                         PUNCH = true;
+                                        SHOCK = false;
+                                        LASER = false;
+                                        SCRATCH_BLOW = false;
                                         StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
                                         MotionModule::change_motion(boss_boma_2,Hash40::new("taggoopaa"),0.0,1.0,false,0.0,false,false);
                                     }
@@ -2722,8 +2759,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
 
                     if SCRATCH_BLOW && !DEAD_2 && MASTER_EXISTS && MotionModule::motion_kind(boss_boma_2) != smash::hash40("bark") && CRAZY_USABLE {
                         CONTROLLABLE_2 = false;
-                        MotionModule::set_rate(boss_boma_2, 1.4);
-                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.4);
+                        MotionModule::set_rate(boss_boma_2, 1.2);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.2);
                         StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_START, true);
                     }
 
@@ -2838,7 +2875,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             StatusModule::change_status_request_from_script(boss_boma_2,*ITEM_CRAZYHAND_STATUS_KIND_DOWN_END,true);
                             CONTROLLABLE_2 = false;
                         }
-                        if CONTROLLABLE_2 && TURNING_2 {
+                        if CONTROLLABLE_2 && !TURNING_2 {
                             MotionModule::set_rate(boss_boma_2, 1.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
                         }
@@ -2909,8 +2946,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 2.0);
                         }
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_LOOP {
-                            MotionModule::set_rate(boss_boma_2, 1.4);
-                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.4);
+                            MotionModule::set_rate(boss_boma_2, 1.2);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.2);
                         }
                         if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID_2 as i32))) == false {
                             if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_FIRE_CHARIOT_START {
@@ -3724,7 +3761,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 let pos = Vector3f{x: CONTROLLER_X_CRAZY, y: CONTROLLER_Y_CRAZY, z: 0.0};
                                 PostureModule::add_pos(boss_boma_2, &pos);
                                 if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID_2 as i32))) == false {
-                                    if MotionModule::frame(boss_boma_2) >= MotionModule::end_frame(boss_boma_2) - 2.0 {
+                                    if MotionModule::frame(boss_boma_2) >= MotionModule::end_frame(boss_boma_2) - 10.0 {
                                         MotionModule::set_rate(boss_boma_2, 1.0);
                                         smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
                                         CONTROLLABLE_2 = true;
@@ -3732,7 +3769,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     }
                                 }
                                 if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID_2 as i32))) == true {
-                                    if MotionModule::frame(boss_boma_2) >= MotionModule::end_frame(boss_boma_2) - 2.0 {
+                                    if MotionModule::frame(boss_boma_2) >= MotionModule::end_frame(boss_boma_2) - 10.0 {
                                         MotionModule::set_rate(boss_boma_2, 1.0);
                                         smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
                                     }
@@ -3837,7 +3874,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_WAIT_TELEPORT, true);
                     }
 
-                    if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID_2 as i32))) == false {
+                    if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID_2 as i32))) == false && StatusModule::status_kind(boss_boma_2) != *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_START && StatusModule::status_kind(boss_boma_2) != *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_LOOP && StatusModule::status_kind(boss_boma_2) != *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW && StatusModule::status_kind(boss_boma_2) != *ITEM_CRAZYHAND_STATUS_KIND_TURN {
                         if TURNING_2 == false {
                             if CONTROLLABLE_2 == true {
                                 if DEAD_2 == false {
@@ -3919,7 +3956,11 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                             || lua_bind::PostureModule::lr(boss_boma_2) == -1.0 && !MASTER_FACING_LEFT {
                                                 // if GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) <= 50.0 && GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) > 0.0 {
                                                     CONTROLLABLE_2 = false;
+                                                    BARK = false;
                                                     PUNCH = true;
+                                                    SHOCK = false;
+                                                    LASER = false;
+                                                    SCRATCH_BLOW = false;
                                                     StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
                                                     MotionModule::change_motion(boss_boma_2,Hash40::new("taggoopaa"),0.0,1.0,false,0.0,false,false);
                                                 // }
@@ -3991,7 +4032,11 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                                 if lua_bind::PostureModule::lr(boss_boma_2) == 1.0 && MASTER_FACING_LEFT // Crazy Hand Facing right but Master Hand facing left, next line is opposite
                                                 || lua_bind::PostureModule::lr(boss_boma_2) == -1.0 && !MASTER_FACING_LEFT {
                                                     CONTROLLABLE_2 = false;
+                                                    BARK = false;
+                                                    PUNCH = false;
+                                                    SHOCK = false;
                                                     LASER = true;
+                                                    SCRATCH_BLOW = false;
                                                     StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_WFINGER_BEAM_START, true);
                                                 }
                                             }
