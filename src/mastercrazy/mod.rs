@@ -304,7 +304,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         let curr_pos = Vector3f{x: PostureModule::pos_x(module_accessor), y: PostureModule::pos_y(module_accessor), z: PostureModule::pos_z(module_accessor)};
                         if MotionModule::motion_kind(boss_boma) == hash40("wait") && FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
-                            if smash::app::sv_math::rand(hash40("fighter"), 1000) as f32 == smash::app::sv_math::rand(hash40("fighter"), 1000) as f32 {
+                            if CONTROLLABLE == false && smash::app::sv_math::rand(hash40("fighter"), 500) as f32 == smash::app::sv_math::rand(hash40("fighter"), 500) as f32
+                            || CONTROLLABLE && smash::app::sv_math::rand(hash40("fighter"), 900) as f32 == smash::app::sv_math::rand(hash40("fighter"), 900) as f32 {
                                 if GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) <= 40.0 && GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) > 0.0 && CRAZY_EXISTS && CRAZY_USABLE && MASTER_TEAM == CRAZY_TEAM {
                                     if lua_bind::PostureModule::lr(boss_boma) == -1.0 && CRAZY_FACING_RIGHT // Master Hand Facing left but Crazy Hand facing right, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma) == 1.0 && !CRAZY_FACING_RIGHT {
@@ -314,7 +315,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     }
                                 }
                             }
-                            else if smash::app::sv_math::rand(hash40("fighter"), 1000) as f32 == smash::app::sv_math::rand(hash40("fighter"), 1000) as f32 {
+                            else if CONTROLLABLE == false && smash::app::sv_math::rand(hash40("fighter"), 500) as f32 == smash::app::sv_math::rand(hash40("fighter"), 500) as f32
+                            || CONTROLLABLE && smash::app::sv_math::rand(hash40("fighter"), 900) as f32 == smash::app::sv_math::rand(hash40("fighter"), 900) as f32 {
                                 if GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) <= 50.0 && GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) > 0.0 && CRAZY_EXISTS && CRAZY_USABLE && MASTER_TEAM == CRAZY_TEAM {
                                     if lua_bind::PostureModule::lr(boss_boma) == -1.0 && CRAZY_FACING_RIGHT // Master Hand Facing left but Crazy Hand facing right, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma) == 1.0 && !CRAZY_FACING_RIGHT {
@@ -324,7 +326,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     }
                                 }
                             }
-                            else if smash::app::sv_math::rand(hash40("fighter"), 1000) as f32 == smash::app::sv_math::rand(hash40("fighter"), 1000) as f32 {
+                            else if CONTROLLABLE == false && smash::app::sv_math::rand(hash40("fighter"), 500) as f32 == smash::app::sv_math::rand(hash40("fighter"), 500) as f32
+                            || CONTROLLABLE && smash::app::sv_math::rand(hash40("fighter"), 900) as f32 == smash::app::sv_math::rand(hash40("fighter"), 900) as f32 {
                                 if CRAZY_EXISTS == true && CRAZY_USABLE && MASTER_TEAM == CRAZY_TEAM {
                                     if lua_bind::PostureModule::lr(boss_boma) == -1.0 && CRAZY_FACING_RIGHT // Master Hand Facing left but Crazy Hand facing right, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma) == 1.0 && !CRAZY_FACING_RIGHT {
@@ -2288,7 +2291,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
                         let curr_pos = Vector3f{x: PostureModule::pos_x(module_accessor), y: PostureModule::pos_y(module_accessor), z: PostureModule::pos_z(module_accessor)};
                         if MotionModule::motion_kind(boss_boma_2) == hash40("wait") && FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID_2 as i32))) == true {
-                            if smash::app::sv_math::rand(hash40("fighter"), 1000) as f32 == smash::app::sv_math::rand(hash40("fighter"), 1000) as f32 {
+                            if CONTROLLABLE_2 == false && smash::app::sv_math::rand(hash40("fighter"), 500) as f32 == smash::app::sv_math::rand(hash40("fighter"), 500) as f32
+                            || CONTROLLABLE_2 && smash::app::sv_math::rand(hash40("fighter"), 900) as f32 == smash::app::sv_math::rand(hash40("fighter"), 900) as f32 {
                                 if GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) <= 50.0 && GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) > 0.0 && MASTER_EXISTS && MASTER_USABLE && MASTER_TEAM == CRAZY_TEAM {
                                     if lua_bind::PostureModule::lr(boss_boma_2) == 1.0 && MASTER_FACING_LEFT // Crazy Hand Facing right but Master Hand facing left, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma_2) == -1.0 && !MASTER_FACING_LEFT {
@@ -2298,7 +2302,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     }
                                 }
                             }
-                            else if smash::app::sv_math::rand(hash40("fighter"), 1000) as f32 == smash::app::sv_math::rand(hash40("fighter"), 1000) as f32 {
+                            else if CONTROLLABLE_2 == false && smash::app::sv_math::rand(hash40("fighter"), 500) as f32 == smash::app::sv_math::rand(hash40("fighter"), 500) as f32
+                            || CONTROLLABLE_2 && smash::app::sv_math::rand(hash40("fighter"), 900) as f32 == smash::app::sv_math::rand(hash40("fighter"), 900) as f32 {
                                 if MASTER_EXISTS && MASTER_USABLE && MASTER_TEAM == CRAZY_TEAM && StatusModule::status_kind(boss_boma_2) != *ITEM_CRAZYHAND_STATUS_KIND_TURN {
                                     if lua_bind::PostureModule::lr(boss_boma_2) == 1.0 && MASTER_FACING_LEFT // Crazy Hand Facing right but Master Hand facing left, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma_2) == -1.0 && !MASTER_FACING_LEFT {
