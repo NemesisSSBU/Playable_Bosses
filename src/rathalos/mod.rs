@@ -539,12 +539,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if DEAD == false {
                         if sv_information::is_ready_go() == true && !DEAD {
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_LOOP {
-                                GROUNDED = true;
                                 StatusModule::change_status_request_from_script(boss_boma,*ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_END,true);
                                 CONTROLLABLE = false;
                             }
                             if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_AIR_LOOP {
-                                GROUNDED = true;
                                 StatusModule::change_status_request_from_script(boss_boma,*ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_AIR_END,true);
                                 CONTROLLABLE = false;
                             }
@@ -591,7 +589,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             CONTROLLABLE = true;
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_START {
-                            GROUNDED = true;
                             CONTROLLABLE = false;
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_NONE {
@@ -665,7 +662,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_TAIL_CUT_END {
-                            GROUNDED = true;
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 2.0 {
                                 CONTROLLABLE = true;
                                 FRESH_CONTROL = true;
@@ -858,11 +854,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_AIR_START {
-                            GROUNDED = true;
                             CONTROLLABLE = false;
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_AIR_LOOP {
-                            GROUNDED = true;
                             CONTROLLABLE = false;
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_TURN {
