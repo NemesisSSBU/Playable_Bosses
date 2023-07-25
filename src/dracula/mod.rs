@@ -31,11 +31,6 @@ pub unsafe fn check_status() -> bool {
     return EXISTS_PUBLIC;
 }
 
-extern "C" {
-    #[link_name = "\u{1}_ZN3app2ai4rankEP9lua_State"]
-    pub fn cpu_level(lua_state: u64) -> f32;
-}
-
 pub unsafe fn read_tag(addr: u64) -> String {
     let mut s: Vec<u8> = vec![];
 
@@ -132,17 +127,50 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             WorkModule::set_int(boss_boma, *ITEM_BOSS_MODE_ADVENTURE_HARD, *ITEM_INSTANCE_WORK_INT_BOSS_MODE);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-                            if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
-                                WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
-                                WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                            }
-                            else {
-                                WorkModule::set_float(boss_boma, cpu_level(fighter.lua_state_agent) + 1.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
-                                WorkModule::set_float(boss_boma, (cpu_level(fighter.lua_state_agent) * 0.1) + 0.1, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                            }
+                            WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                            WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
                             WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
+                        }
+                    }
+
+                    // Respawn in case of Squad Strike or Specific Circumstances
+
+                    if sv_information::is_ready_go() && !ItemModule::is_have_item(module_accessor, 0) && ModelModule::scale(module_accessor) != 0.0001
+                    || smash::app::smashball::is_training_mode() && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
+                        StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_FALL, true);
+
+                        DEAD = false;
+                        CONTROLLABLE = true;
+                        JUMP_START = false;
+                        TRANSFORMED_MODE = false;
+                        STOP = false;
+                        let lua_state = fighter.lua_state_agent;
+                        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+                        ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+                        EXISTS_PUBLIC = true;
+                        RESULT_SPAWNED = false;
+                        ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA), 0, 0, false, false);
+                        BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
+                        let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                        WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
+                        WorkModule::set_int(boss_boma, *ITEM_BOSS_MODE_ADVENTURE_HARD, *ITEM_INSTANCE_WORK_INT_BOSS_MODE);
+                        WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+                        WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+                        WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                        WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+                        WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
+                        ModelModule::set_scale(module_accessor, 0.0001);
+                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA_STATUS_KIND_TELEPORT_START, true);
+
+                        let x = PostureModule::pos_x(module_accessor);
+                        let y = PostureModule::pos_y(boss_boma);
+                        let z = PostureModule::pos_z(module_accessor);
+                        let module_pos = Vector3f{x: x, y: y, z: z};
+                        PostureModule::set_pos(boss_boma, &module_pos);
+                        if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
+                            CONTROLLABLE = true;
                         }
                     }
 
@@ -180,7 +208,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     
                     // SET FIGHTER LOOP
 
-                    if sv_information::is_ready_go() == true && DEAD {
+                    if sv_information::is_ready_go() == true && !DEAD {
                         if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
                             WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_LANDING);
                             WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_SPECIAL);
@@ -273,7 +301,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     //DAMAGE MODULES
                     
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_XLU), 0);
+                    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
                     HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
                     for i in 0..10 {
@@ -288,7 +316,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         && StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_TRANS_PHASE
                         && StatusModule::status_kind(boss_boma) != *ITEM_DRACULA_STATUS_KIND_CHANGE_START
                         && DamageModule::damage(module_accessor, 0) >= phase_hp && !TRANSFORMED_MODE
-                        || DamageModule::damage(module_accessor, 0) >= 499.0 && TRANSFORMED_MODE {
+                        || DamageModule::damage(module_accessor, 0) >= 500.0 && TRANSFORMED_MODE {
                             if FighterUtil::is_hp_mode(module_accessor) == false {
                                 if TRANSFORMED_MODE == false {
                                     if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD {
@@ -342,14 +370,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                                 WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                                 WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-                                if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
-                                    WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
-                                    WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                                }
-                                else {
-                                    WorkModule::set_float(boss_boma, cpu_level(fighter.lua_state_agent) + 1.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
-                                    WorkModule::set_float(boss_boma, (cpu_level(fighter.lua_state_agent) * 0.1) + 0.1, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                                }
+                                WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                                WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
                                 WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
                                 StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_ENTRY, true);
@@ -377,14 +399,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                                 WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                                 WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-                                if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
-                                    WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
-                                    WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                                }
-                                else {
-                                    WorkModule::set_float(boss_boma, cpu_level(fighter.lua_state_agent) + 1.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
-                                    WorkModule::set_float(boss_boma, (cpu_level(fighter.lua_state_agent) * 0.1) + 0.1, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                                }
+                                WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                                WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
                                 WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
                                 StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_ENTRY, true);
@@ -420,7 +436,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == true && StatusModule::status_kind(boss_boma) != *ITEM_DRACULA_STATUS_KIND_CHANGE_START
                     && StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_TRANS_PHASE
                     && StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD
-                    && (StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_ENTRY) {
+                    && (StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_ENTRY)
+                    && !DEAD {
                         if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false && DEAD == false {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             if CONTROLLABLE && !TRANSFORMED_MODE {

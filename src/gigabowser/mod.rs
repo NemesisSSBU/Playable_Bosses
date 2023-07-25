@@ -27,6 +27,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         if fighter_kind == *FIGHTER_KIND_KOOPAG {
             if smash::app::stage::get_stage_id() != 0x139 {
                 let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
+                FighterManager::set_cursor_whole(fighter_manager, false);
                 if sv_information::is_ready_go() == false {
                     DEAD = false;
                     STOP = false;
@@ -35,10 +36,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         INITIAL_STOCK_COUNT = FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32)));
                     }
                 }
-                if sv_information::is_ready_go() == true {
+                if sv_information::is_ready_go() {
                     DamageModule::set_reaction_mul(module_accessor, 0.0);
                     DamageModule::set_reaction_mul_2nd(module_accessor, 0.0);
                     DamageModule::set_reaction_mul_4th(module_accessor, 0.0);
+                }
+                if sv_information::is_ready_go() == true && smash::app::smashball::is_training_mode() == false {
                     if DamageModule::damage(module_accessor, 0) >= 499.0 && FighterUtil::is_hp_mode(module_accessor) == false {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
                     }
@@ -47,15 +50,15 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                 }
                 // DECREASING FOR STAMINA MODE
-                if FighterUtil::is_hp_mode(module_accessor) == true && sv_information::is_ready_go() == true {
+                if FighterUtil::is_hp_mode(module_accessor) == true && sv_information::is_ready_go() == true && smash::app::smashball::is_training_mode() == false {
                     if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) < INITIAL_STOCK_COUNT {
                         DECREASING = true;
                     }
                 }
-                if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
+                if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD && smash::app::smashball::is_training_mode() == false {
                     DEAD = true;
                 }
-                if sv_information::is_ready_go() == true {
+                if sv_information::is_ready_go() == true && smash::app::smashball::is_training_mode() == false {
                     if DEAD == true {
                         if STOP == false {
                             if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
