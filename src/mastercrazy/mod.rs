@@ -848,7 +848,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true
                         && StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_ELECTROSHOCK_END && SHOCK {
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 5.0 {
                                 SHOCK = false;
                             }
                         }
@@ -1625,8 +1625,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
-                        if TURNING {
+                        if CONTROLLABLE && StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_TURN {
                             MotionModule::set_rate(boss_boma, 1.4);
+                        }
+                        if CONTROLLABLE && StatusModule::status_kind(boss_boma) != *ITEM_MASTERHAND_STATUS_KIND_TURN {
+                            MotionModule::set_rate(boss_boma, 1.0);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_HOMING {
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
@@ -2747,6 +2750,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     }
 
                     if MotionModule::motion_kind(boss_boma_2) == hash40("bark") {
+                        MotionModule::set_rate(boss_boma_2, 1.0);
+                        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
                         if smash::app::lua_bind::PostureModule::lr(boss_boma_2) == 1.0 { // right
                             let master_pos = Vector3f{x: MASTER_X_POS + 30.0, y: MASTER_Y_POS, z: MASTER_Z_POS};
                             PostureModule::set_pos(boss_boma_2, &master_pos);
@@ -2813,7 +2818,6 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         else {
                             BARK = false;
                             CONTROLLABLE_2 = true;
-                            StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_WAIT_TIME, true);
                             StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
                             MotionModule::change_motion(boss_boma_2,Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
                         }
@@ -2875,7 +2879,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             StatusModule::change_status_request_from_script(boss_boma_2,*ITEM_CRAZYHAND_STATUS_KIND_DOWN_END,true);
                             CONTROLLABLE_2 = false;
                         }
-                        if CONTROLLABLE_2 && !TURNING_2 {
+                        if CONTROLLABLE_2 && StatusModule::status_kind(boss_boma_2) != *ITEM_CRAZYHAND_STATUS_KIND_TURN {
                             MotionModule::set_rate(boss_boma_2, 1.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
                         }
@@ -3544,16 +3548,6 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 2.2);
                             }
                         }
-                        if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_DRILL_START {
-                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
-                                MotionModule::set_rate(boss_boma_2, 3.0);
-                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 3.0);
-                            }
-                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) == false {
-                                MotionModule::set_rate(boss_boma_2, 2.2);
-                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 2.2);
-                            }
-                        }
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_GROW_FINGER_START {
                             MotionModule::set_rate(boss_boma_2, 1.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
@@ -3646,7 +3640,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK_END {
-                                MotionModule::set_rate(boss_boma_2, 1.6);
+                                MotionModule::set_rate(boss_boma_2, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
                                 if MotionModule::frame(boss_boma_2) >= MotionModule::end_frame(boss_boma_2) - 10.0 {
                                     CONTROLLABLE_2 = true;
                                 }
@@ -3807,7 +3802,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             MotionModule::set_rate(boss_boma_2, 1.2);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.2);
                         }
-                        if TURNING_2 {
+                        if CONTROLLABLE_2 && StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_TURN {
                             MotionModule::set_rate(boss_boma_2, 1.4);
                         }
                         if MotionModule::frame(boss_boma_2) <= 0.0 && MotionModule::motion_kind(boss_boma_2) == hash40("teleport_end") {

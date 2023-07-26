@@ -24,10 +24,11 @@ static mut JUMP_START : bool = false;
 static mut RESULT_SPAWNED : bool = false;
 pub static mut FIGHTER_NAME: [u64;9] = [0;9];
 static mut STOP : bool = false;
-static mut Y_POS: f32 = 0.0;
 static mut FRESH_CONTROL : bool = false;
 static mut EXISTS_PUBLIC : bool = false;
 static mut RETURN : bool = false;
+static mut Y_POS: f32 = 0.0;
+static mut INITIAL_Y_POS: f32 = 0.0;
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -142,6 +143,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                             Y_POS = PostureModule::pos_y(boss_boma);
+                            INITIAL_Y_POS = PostureModule::pos_y(module_accessor);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
                         }
@@ -178,7 +180,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
 
                         let x = PostureModule::pos_x(module_accessor);
-                        let y = Y_POS;
+                        let y = INITIAL_Y_POS;
                         let z = PostureModule::pos_z(module_accessor);
                         let module_pos = Vector3f{x: x, y: y, z: z};
                         PostureModule::set_pos(boss_boma, &module_pos);
