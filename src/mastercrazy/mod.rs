@@ -180,7 +180,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         MULTIPLE_BULLETS = 0;
                         CONTROLLER_X_MASTER = 0.0;
                         CONTROLLER_Y_MASTER = 0.0;
-                        MASTER_TEAM = TeamModule::team_no(module_accessor);
+                        CRAZY_TEAM = u64::MAX;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
@@ -189,6 +189,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             RESULT_SPAWNED = false;
                             RESULT_SPAWNED_2 = false;
                             MASTER_EXISTS = true;
+                            MASTER_TEAM = TeamModule::team_no(module_accessor);
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
@@ -1798,6 +1799,22 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_START {
                             MotionModule::set_rate(boss_boma, 1.25);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.25);
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 2.0 {
+                                MotionModule::change_motion(module_accessor,Hash40::new("chakram_end"),0.0,1.0,false,0.0,false,false);
+                            }
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_END && !DEAD {
+                            WorkModule::off_flag(boss_boma, *ITEM_MASTERHAND_INSTANCE_WORK_FLAG_CHAKRAM_CREATE);
+                            WorkModule::off_flag(boss_boma, *ITEM_MASTERHAND_INSTANCE_WORK_FLAG_CHAKRAM_THROW);
+                        }
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_END && !DEAD {
+                            if MotionModule::frame(boss_boma) <= 2.0 {
+                                ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHANDCHAKRAM), 0, 0, false, false);
+                                SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
+                                let chakram1_boma = sv_battle_object::module_accessor(ItemModule::get_have_item_id(module_accessor, 0) as u32);
+                                PostureModule::set_pos(chakram1_boma, &Vector3f{x: PostureModule::pos_x(boss_boma), y: PostureModule::pos_y(boss_boma) + 18.0 , z: PostureModule::pos_z(boss_boma)});
+                                smash::app::lua_bind::ItemModule::set_have_item_action(module_accessor, *ITEM_KIND_MASTERHANDCHAKRAM, 0.0, *ITEM_MASTERHANDCHAKRAM_ACTION_SHOOT3);
+                            }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_PRE_MOVE && !DEAD {
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_START, true);
@@ -2079,7 +2096,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_S_R) {
                                     CONTROLLABLE = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_START, true);
+                                    MotionModule::change_motion(module_accessor,Hash40::new("chakram_start"),0.0,1.0,false,0.0,false,false);
                                 }
                             }
                         }
@@ -2148,12 +2165,11 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         PUNCH = false;
                         SHOCK = false;
                         SCRATCH_BLOW = false;
-                        CRAZY_EXISTS = true;
                         CRAZY_FACING_RIGHT = true;
                         LASER = false;
                         CONTROLLER_X_CRAZY = 0.0;
                         CONTROLLER_Y_CRAZY = 0.0;
-                        CRAZY_TEAM = TeamModule::team_no(module_accessor);
+                        MASTER_TEAM = u64::MAX;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
@@ -2161,6 +2177,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             EXISTS_PUBLIC_2 = true;
                             RESULT_SPAWNED = false;
                             RESULT_SPAWNED_2 = false;
+                            CRAZY_EXISTS = true;
+                            CRAZY_TEAM = TeamModule::team_no(module_accessor);
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_CRAZYHAND), 0, 0, false, false);
                             BOSS_ID_2[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
