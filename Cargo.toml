@@ -1,6 +1,6 @@
 [package]
 name = "comp_boss"
-version = "1.0.0"
+version = "1.0.4"
 authors = ["GamerSubzero <GamerSubzero@gmail.com>, NemesisSSBU <PepeIsNoice@gmail.com>, ClaudeRiegan <supermariomasterbro@gmail.com>, jam1garner <jam1.mcleod@hotmail.com>"]
 edition = "2021"
 
