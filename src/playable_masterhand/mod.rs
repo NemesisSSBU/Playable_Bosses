@@ -562,13 +562,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         STOP = true;
                                     }
                                 }
-                                if STOP == true {
-                                    if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
-                                        if MotionModule::frame(module_accessor) >= MotionModule::end_frame(module_accessor) {
-                                            StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
-                                        }
-                                    }
-                                }
                             }
                         }
 
