@@ -75,6 +75,11 @@ extern "C" {
     pub fn dead_range(lua_state: u64) -> smash::phx::Vector4f;
 }
 
+extern "C" {
+    #[link_name = "\u{1}_ZN3app10item_other6actionEPNS_26BattleObjectModuleAccessorEif"]
+    pub fn action(module_accessor: *mut BattleObjectModuleAccessor, action: i32, unk: f32);
+}
+
 pub unsafe fn check_status() -> bool {
     return EXISTS_PUBLIC;
 }
@@ -1523,12 +1528,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     println!("STOPPED AT 1116");
                                 }
                             }
-                            if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT {
-                                if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
-                                    CONTROLLABLE = true;
-                                    println!("STOPPED AT 1118");
-                                }
-                            }
                             if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_KENZAN_PRE_MOVE {
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_KENZAN_START, true);
                             }
@@ -1796,25 +1795,62 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             MotionModule::set_rate(boss_boma, 4.4);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 4.4);
                         }
-                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_START {
-                            MotionModule::set_rate(boss_boma, 1.25);
-                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.25);
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 2.0 {
-                                MotionModule::change_motion(module_accessor,Hash40::new("chakram_end"),0.0,1.0,false,0.0,false,false);
+                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_START || MotionModule::motion_kind(boss_boma) == hash40("chakram_start") || MotionModule::motion_kind(boss_boma) == hash40("chakram_start_reverse") {
+                            MotionModule::set_rate(boss_boma, 1.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                        }
+                        if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 2.0 && MotionModule::motion_kind(boss_boma) == hash40("chakram_start") && !DEAD {
+                            MotionModule::change_motion(boss_boma,Hash40::new("chakram_end"),0.0,1.0,false,0.0,false,false);
+                        }
+                        if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 2.0 && MotionModule::motion_kind(boss_boma) == hash40("chakram_start_reverse") && !DEAD {
+                            MotionModule::change_motion(boss_boma,Hash40::new("chakram_end"),0.0,1.0,false,0.0,false,false);
+                        }
+                        if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 20.0 && StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_START && !DEAD {
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT, true);
+                            MotionModule::change_motion(boss_boma,Hash40::new("chakram_start_reverse"),MotionModule::end_frame(boss_boma) - 19.0,1.0,false,0.0,false,false);
+                        }
+                        if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) - 18.0 && MotionModule::motion_kind(boss_boma) == hash40("chakram_start_reverse") && !DEAD {
+                            ItemModule::remove_item(module_accessor, 0);
+                            ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHANDCHAKRAM), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
+                            let chakram1_boma = sv_battle_object::module_accessor(ItemModule::get_have_item_id(module_accessor, 0) as u32);
+                            if lua_bind::PostureModule::lr(boss_boma) == -1.0 { // left
+                                smash::app::lua_bind::PostureModule::set_lr(chakram1_boma, -1.0);
+                            }
+                            if lua_bind::PostureModule::lr(boss_boma) == 1.0 { // right
+                                smash::app::lua_bind::PostureModule::set_lr(chakram1_boma, 1.0);
+                            }
+                            action(chakram1_boma, *ITEM_MASTERHANDCHAKRAM_ACTION_SHOOT3, 0.0);
+
+                            ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHANDCHAKRAM), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
+                            let chakram2_boma = sv_battle_object::module_accessor(ItemModule::get_have_item_id(module_accessor, 0) as u32);
+                            let chakram2_pos = Vector3f{x: PostureModule::pos_x(chakram1_boma), y: PostureModule::pos_y(chakram1_boma) - 10.0, z: PostureModule::pos_z(chakram1_boma)};
+                            LinkModule::remove_model_constraint(chakram2_boma, true);
+                            PostureModule::set_pos(chakram2_boma, &chakram2_pos);
+                            if lua_bind::PostureModule::lr(boss_boma) == -1.0 { // left
+                                smash::app::lua_bind::PostureModule::set_lr(chakram2_boma, -1.0);
+                            }
+                            if lua_bind::PostureModule::lr(boss_boma) == 1.0 { // right
+                                smash::app::lua_bind::PostureModule::set_lr(chakram2_boma, 1.0);
+                            }
+                            SoundModule::play_se(boss_boma, Hash40::new("se_boss_masterhand_chakram_fly"), true, false, false, false, smash::app::enSEType(0));
+                            action(chakram2_boma, *ITEM_MASTERHANDCHAKRAM_ACTION_SHOOT2, 0.0);
+                        }
+                        if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 2.0 && MotionModule::motion_kind(boss_boma) == hash40("chakram_end") && !DEAD {
+                            SoundModule::stop_se(boss_boma, smash::phx::Hash40::new("se_boss_masterhand_chakram_fly"), 0);
+                            if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_FEINT, true);
+                            }
+                            else {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_FEINT, true);
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT, true);
+                                MotionModule::change_motion(boss_boma,Hash40::new("wait"),0.0,1.0,false,0.0,false,false);
+                                CONTROLLABLE = true;
                             }
                         }
-                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_END && !DEAD {
-                            WorkModule::off_flag(boss_boma, *ITEM_MASTERHAND_INSTANCE_WORK_FLAG_CHAKRAM_CREATE);
-                            WorkModule::off_flag(boss_boma, *ITEM_MASTERHAND_INSTANCE_WORK_FLAG_CHAKRAM_THROW);
-                        }
-                        if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_END && !DEAD {
-                            if MotionModule::frame(boss_boma) <= 2.0 {
-                                ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHANDCHAKRAM), 0, 0, false, false);
-                                SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
-                                let chakram1_boma = sv_battle_object::module_accessor(ItemModule::get_have_item_id(module_accessor, 0) as u32);
-                                PostureModule::set_pos(chakram1_boma, &Vector3f{x: PostureModule::pos_x(boss_boma), y: PostureModule::pos_y(boss_boma) + 18.0 , z: PostureModule::pos_z(boss_boma)});
-                                smash::app::lua_bind::ItemModule::set_have_item_action(module_accessor, *ITEM_KIND_MASTERHANDCHAKRAM, 0.0, *ITEM_MASTERHANDCHAKRAM_ACTION_SHOOT3);
-                            }
+                        if MotionModule::motion_kind(boss_boma) == hash40("chakram_end") && !DEAD {
+                            CONTROLLABLE = false;
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_PRE_MOVE && !DEAD {
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_START, true);
@@ -2096,7 +2132,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_S_R) {
                                     CONTROLLABLE = false;
-                                    MotionModule::change_motion(module_accessor,Hash40::new("chakram_start"),0.0,1.0,false,0.0,false,false);
+                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_CHAKRAM_START, true);
                                 }
                             }
                         }
