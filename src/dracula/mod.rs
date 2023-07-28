@@ -135,7 +135,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                             WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                             WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                            WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
                             INITIAL_Y_POS = PostureModule::pos_y(module_accessor);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
@@ -167,7 +166,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                         WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                         WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                        WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
                         ModelModule::set_scale(module_accessor, 0.0001);
                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_DRACULA_STATUS_KIND_TELEPORT_START, true);
 
@@ -202,6 +200,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 WorkModule::off_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_AI_IS_IN_EFFECT);
                             }
                             JostleModule::set_status(module_accessor, false);
+                            if DamageModule::damage(module_accessor, 0) >= 100.0 {
+                                if !DEAD && !TRANSFORMED_MODE && !WorkModule::is_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY) {
+                                    WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
+                                }
+                            }
                         }
                     }
 
@@ -656,6 +659,15 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if sv_information::is_ready_go() == true {
                             if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD && TRANSFORMED_MODE {
                                 if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_STANDBY {
+                                    if MotionModule::frame(boss_boma) == 0.0 {
+                                        smash_script::macros::EFFECT(fighter, Hash40::new("sys_bg_boss_finishhit"), Hash40::new("top"), 0,0,0,0,0,0,1,0,0,0,0,0,0,false);
+                                        SlowModule::set_whole(module_accessor, 10, 0);
+                                    }
+
+                                    if MotionModule::frame(boss_boma) >= 5.0 {
+                                        smash_script::macros::EFFECT_OFF_KIND(fighter,Hash40::new("sys_bg_boss_finishhit"),true,false);
+                                        SlowModule::clear_whole(module_accessor);
+                                    }
                                     if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) {
                                         EXISTS_PUBLIC = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);

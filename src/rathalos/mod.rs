@@ -486,6 +486,20 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    if sv_information::is_ready_go() == true {
+                        if DEAD {
+                            if MotionModule::frame(boss_boma) == 0.0 {
+                                smash_script::macros::EFFECT(fighter, Hash40::new("sys_bg_boss_finishhit"), Hash40::new("top"), 0,0,0,0,0,0,1,0,0,0,0,0,0,false);
+                                SlowModule::set_whole(module_accessor, 10, 0);
+                            }
+        
+                            if MotionModule::frame(boss_boma) >= 5.0 {
+                                smash_script::macros::EFFECT_OFF_KIND(fighter,Hash40::new("sys_bg_boss_finishhit"),true,false);
+                                SlowModule::clear_whole(module_accessor);
+                            }
+                        }
+                    }
+
                     //DEATH CHECK
 
                     if sv_information::is_ready_go() == true {

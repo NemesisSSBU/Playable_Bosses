@@ -568,6 +568,15 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if DEAD == true {
                         if sv_information::is_ready_go() == true {
                             if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD {
+                                if MotionModule::frame(boss_boma) == 0.0 {
+                                    smash_script::macros::EFFECT(fighter, Hash40::new("sys_bg_boss_finishhit"), Hash40::new("top"), 0,0,0,0,0,0,1,0,0,0,0,0,0,false);
+                                    SlowModule::set_whole(module_accessor, 10, 0);
+                                }
+
+                                if MotionModule::frame(boss_boma) >= 5.0 {
+                                    smash_script::macros::EFFECT_OFF_KIND(fighter,Hash40::new("sys_bg_boss_finishhit"),true,false);
+                                    SlowModule::clear_whole(module_accessor);
+                                }
                                 if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_STANDBY {
                                     if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) {
                                         EXISTS_PUBLIC = false;
@@ -724,14 +733,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MARX_STATUS_KIND_ATTACK_ICE_BOMB_LOOP {
-                            if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
-                                if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) == false {
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MARX_STATUS_KIND_ATTACK_ICE_BOMB_SHOOT, true);
-                                }
-                                else {
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MARX_STATUS_KIND_ATTACK_ICE_BOMB_LOOP, true);
-                                }
-                            }
+                            WorkModule::off_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_TARGET_FOUND);
+                            WorkModule::set_float(boss_boma, 0.0, *ITEM_INSTANCE_WORK_FLOAT_TARGET_POS_X);
+                            WorkModule::set_float(boss_boma, 0.0, *ITEM_INSTANCE_WORK_FLOAT_TARGET_POS_Y);
+                            WorkModule::set_float(boss_boma, 0.0, *ITEM_INSTANCE_WORK_FLOAT_TARGET_POS_Z);
                             //Boss Control Stick Movement
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                 let pos = Vector3f{x: ControlModule::get_stick_x(module_accessor) * 3.0, y: 0.0, z: 0.0};
