@@ -300,7 +300,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_FEINT, true);
                         }
                     }
-
+                    if sv_information::is_ready_go() == true {
+                        let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                        if MotionModule::motion_kind(boss_boma) == hash40("wait") && !DEAD {
+                            SoundModule::stop_se(boss_boma, smash::phx::Hash40::new("se_boss_masterhand_chakram_fly"), 0);
+                        }
+                    }
                     // Team Attack Trigger
                     if sv_information::is_ready_go() == true && !DEAD {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
