@@ -202,7 +202,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
                             WorkModule::set_int(boss_boma, *ITEM_BOSS_MODE_ADVENTURE_HARD, *ITEM_INSTANCE_WORK_INT_BOSS_MODE);
                             WorkModule::set_int(boss_boma, *ITEM_VARIATION_MASTERHAND_CRAZYHAND_STANDARD, *ITEM_INSTANCE_WORK_INT_VARIATION);
-                            WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+                            WorkModule::set_float(boss_boma, 9999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
@@ -250,7 +250,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
                         WorkModule::set_int(boss_boma, *ITEM_BOSS_MODE_ADVENTURE_HARD, *ITEM_INSTANCE_WORK_INT_BOSS_MODE);
                         WorkModule::set_int(boss_boma, *ITEM_VARIATION_MASTERHAND_CRAZYHAND_STANDARD, *ITEM_INSTANCE_WORK_INT_VARIATION);
-                        WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+                        WorkModule::set_float(boss_boma, 9999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                         WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                         ModelModule::set_scale(module_accessor, 0.0001);
                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE, true);
@@ -526,17 +526,17 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if ModelModule::scale(module_accessor) == 0.0001 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                        if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY && !EXISTS_PUBLIC_2 {
+                        if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY && !CRAZY_EXISTS {
                             MotionModule::set_rate(boss_boma, 2.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                         }
-                        if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY && EXISTS_PUBLIC_2 {
+                        if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY && CRAZY_EXISTS {
                             CONTROLLABLE = true;
                             MotionModule::set_rate(boss_boma, 2.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
-                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT, true);
                             MASTER_TEAM = TeamModule::team_no(module_accessor);
                             if MASTER_TEAM == CRAZY_TEAM {
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT, true);
                                 MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("entry2"),0.0,1.0,false,0.0,false,false);
                             }
                         }
@@ -2238,7 +2238,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             WorkModule::on_flag(boss_boma_2, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
                             WorkModule::set_int(boss_boma_2, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
                             WorkModule::set_int(boss_boma_2, *ITEM_VARIATION_CRAZYHAND_MASTERHAND_STANDARD, *ITEM_INSTANCE_WORK_INT_VARIATION);
-                            WorkModule::set_float(boss_boma_2, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+                            WorkModule::set_float(boss_boma_2, 9999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                             WorkModule::set_float(boss_boma_2, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
@@ -2285,7 +2285,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         WorkModule::on_flag(boss_boma_2, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
                         WorkModule::set_int(boss_boma_2, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
                         WorkModule::set_int(boss_boma_2, *ITEM_VARIATION_CRAZYHAND_MASTERHAND_STANDARD, *ITEM_INSTANCE_WORK_INT_VARIATION);
-                        WorkModule::set_float(boss_boma_2, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+                        WorkModule::set_float(boss_boma_2, 9999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                         WorkModule::set_float(boss_boma_2, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                         ModelModule::set_scale(module_accessor, 0.0001);
                         StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_WAIT_CHASE, true);
@@ -2541,17 +2541,17 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
 
                     if ModelModule::scale(module_accessor) == 0.0001 && !DEAD_2 {
                         let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
-                        if StatusModule::status_kind(boss_boma_2) == *ITEM_STATUS_KIND_ENTRY && !EXISTS_PUBLIC {
+                        if StatusModule::status_kind(boss_boma_2) == *ITEM_STATUS_KIND_ENTRY && !MASTER_EXISTS {
                             MotionModule::set_rate(boss_boma_2, 2.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 2.0);
                         }
-                        if StatusModule::status_kind(boss_boma_2) == *ITEM_STATUS_KIND_ENTRY && EXISTS_PUBLIC {
+                        if StatusModule::status_kind(boss_boma_2) == *ITEM_STATUS_KIND_ENTRY && MASTER_EXISTS {
                             CONTROLLABLE_2 = true;
                             MotionModule::set_rate(boss_boma_2, 2.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 2.0);
-                            StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
                             CRAZY_TEAM = TeamModule::team_no(module_accessor);
                             if MASTER_TEAM == CRAZY_TEAM {
+                                StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
                                 MotionModule::change_motion(boss_boma_2,smash::phx::Hash40::new("entry2"),0.0,1.0,false,0.0,false,false);
                             }
                         }
