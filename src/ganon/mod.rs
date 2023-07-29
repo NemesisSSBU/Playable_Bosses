@@ -149,6 +149,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    if !smash::app::smashball::is_training_mode() && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
+                        StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD, true);
+                    }
+
                     // Respawn in case of Squad Strike or Specific Circumstances
 
                     if sv_information::is_ready_go() && !ItemModule::is_have_item(module_accessor, 0) && ModelModule::scale(module_accessor) != 0.0001
@@ -588,8 +592,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                     if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_THUNDER_SLASH_EXEC {
-                            if smash::app::sv_math::rand(hash40("fighter"), 700) as f32 == smash::app::sv_math::rand(hash40("fighter"), 700) as f32
-                            && MotionModule::frame(boss_boma) < MotionModule::end_frame(boss_boma) - 85.0 {
+                            if smash::app::sv_math::rand(hash40("fighter"), 5) as f32 == smash::app::sv_math::rand(hash40("fighter"), 5) as f32 && MotionModule::frame(boss_boma) >= 2.0 && MotionModule::frame(boss_boma) <= 3.0 {
                                 RETURN = true;
                             }
                             if RETURN && MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 85.0 {
