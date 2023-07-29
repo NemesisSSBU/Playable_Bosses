@@ -141,7 +141,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if smash::app::smashball::is_training_mode() == false {
                             if ModelModule::scale(module_accessor) != 0.0001 && ModelModule::scale(module_accessor) != 0.0002 {
                                 ModelModule::set_scale(module_accessor, 0.0002);
-                                ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
+                                ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
                                 HIDDEN_CPU[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                                 let hidden_cpu_boma = sv_battle_object::module_accessor(HIDDEN_CPU[entry_id(module_accessor)]);
                                 ModelModule::set_scale(hidden_cpu_boma, 0.0001);
@@ -205,7 +205,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-                        ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
+                        ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
                         HIDDEN_CPU[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         let hidden_cpu_boma = sv_battle_object::module_accessor(HIDDEN_CPU[entry_id(module_accessor)]);
                         ModelModule::set_scale(hidden_cpu_boma, 0.0001);
