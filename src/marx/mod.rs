@@ -204,6 +204,15 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    if sv_information::is_ready_go() == true {
+                        if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.02 {
+                            CONTROLLER_Y = 0.0;
+                        }
+                        if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.02 {
+                            CONTROLLER_Y = 0.0;
+                        }
+                    }
+
                     if sv_information::is_ready_go() {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         if lua_bind::PostureModule::lr(boss_boma) == -1.0 { // left
@@ -359,8 +368,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
                                         if DEAD == false {
                                             CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                             DEAD = true;
+                                            StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                         }
                                     }
                                 }
@@ -534,10 +543,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if DamageModule::damage(module_accessor, 0) >= 400.0 {
                                 if DEAD == false {
                                     CONTROLLABLE = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
+                                    DEAD = true;
+                                    StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                     CameraModule::reset_all(module_accessor);
                                     CameraModule::reset_all(boss_boma);
-                                    DEAD = true;
                                 }
                             }
                         }

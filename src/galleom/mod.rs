@@ -273,15 +273,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             // SET POS AND STOPS OUT OF BOUNDS
                             if ModelModule::scale(module_accessor) == 0.0001 {
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                                if FighterUtil::is_hp_mode(module_accessor) == true {
-                                    if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
-                                        if DEAD == false {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
-                                            DEAD = true;
-                                        }
-                                    }
-                                }
                                 let x = PostureModule::pos_x(boss_boma);
                                 let y = PostureModule::pos_y(boss_boma);
                                 let z = PostureModule::pos_z(boss_boma);
@@ -444,8 +435,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
                                         if DEAD == false {
                                             CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                             DEAD = true;
+                                            StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                         }
                                     }
                                 }
@@ -470,8 +461,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if DamageModule::damage(module_accessor, 0) >= 700.0 {
                                 if !DEAD {
                                     CONTROLLABLE = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
                                     DEAD = true;
+                                    StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                 }
                             }
                         }

@@ -308,8 +308,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         if DEAD == false {
                                             CONTROLLABLE = false;
                                             EXISTS_PUBLIC = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                             DEAD = true;
+                                            StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                         }
                                     }
                                 }
@@ -483,8 +483,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if FighterUtil::is_hp_mode(module_accessor) == false {
                                 if DamageModule::damage(module_accessor, 0) >= 600.0 {
                                     CONTROLLABLE = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
                                     DEAD = true;
+                                    StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                 }
                             }
                         }

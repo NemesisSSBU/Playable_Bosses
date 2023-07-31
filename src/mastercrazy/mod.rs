@@ -266,6 +266,17 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    println!("Status Kind Module: {}", StatusModule::status_kind(module_accessor));
+
+                    if sv_information::is_ready_go() == true {
+                        if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.02 {
+                            CONTROLLER_Y_MASTER = 0.0;
+                        }
+                        if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.02 {
+                            CONTROLLER_Y_MASTER = 0.0;
+                        }
+                    }
+
                     // Flags and new damage stuff
 
                     if sv_information::is_ready_go() == true {
@@ -584,8 +595,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
                                         if DEAD == false {
                                             CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                             DEAD = true;
+                                            StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                         }
                                     }
                                 }
@@ -759,8 +770,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if DamageModule::damage(module_accessor, 0) >= 400.0 { // HEALTH
                                 if DEAD == false {
                                     CONTROLLABLE = false;
-                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                     DEAD = true;
+                                    StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                 }
                             }
                         }
@@ -2301,6 +2312,15 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    if sv_information::is_ready_go() == true {
+                        if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
+                            CONTROLLER_Y_CRAZY = 0.0;
+                        }
+                        if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
+                            CONTROLLER_Y_CRAZY = 0.0;
+                        }
+                    }
+
                     // Flags and new damage stuff
 
                     if sv_information::is_ready_go() == true {
@@ -2578,8 +2598,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if DamageModule::damage(module_accessor, 0) >= 400.0 { // HEALTH
                                 if DEAD_2 == false {
                                     CONTROLLABLE_2 = false;
-                                    StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_STATUS_KIND_DEAD, true);
                                     DEAD_2 = true;
+                                    StatusModule::change_status_force(boss_boma_2, *ITEM_STATUS_KIND_DEAD, true);
                                 }
                             }
                         }
@@ -2623,8 +2643,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
                                         if DEAD_2 == false {
                                             CONTROLLABLE_2 = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                             DEAD_2 = true;
+                                            StatusModule::change_status_force(boss_boma_2, *ITEM_STATUS_KIND_DEAD, true);
                                         }
                                     }
                                 }

@@ -287,8 +287,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
                                         if DEAD == false {
                                             CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                             DEAD = true;
+                                            StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                         }
                                     }
                                 }
@@ -305,8 +305,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
                                         if DEAD == false {
                                             CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                             DEAD = true;
+                                            StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                         }
                                     }
                                 }
@@ -493,8 +493,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 else {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
-                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD,true);
                                         DEAD = true;
+                                        StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                     }
                                 }
                             }
