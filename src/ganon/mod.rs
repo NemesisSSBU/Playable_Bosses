@@ -586,17 +586,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                     }
-                    if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) {
-                        if StatusModule::status_kind(boss_boma) == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_THUNDER_SLASH_EXEC {
-                            if smash::app::sv_math::rand(hash40("fighter"), 5) as f32 == smash::app::sv_math::rand(hash40("fighter"), 5) as f32 && MotionModule::frame(boss_boma) >= 2.0 && MotionModule::frame(boss_boma) <= 3.0 {
-                                RETURN = true;
-                            }
-                            if RETURN && MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 85.0 {
-                                RETURN = false;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_THUNDER_SLASH_RETURN, true);
-                            }
-                        }
-                    }
                     if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
                         if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WAIT {
                             CONTROLLABLE = true;
