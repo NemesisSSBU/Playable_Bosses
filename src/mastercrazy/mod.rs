@@ -266,17 +266,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    println!("Status Kind Module: {}", StatusModule::status_kind(module_accessor));
-
-                    if sv_information::is_ready_go() == true {
-                        if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.02 {
-                            CONTROLLER_Y_MASTER = 0.0;
-                        }
-                        if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.02 {
-                            CONTROLLER_Y_MASTER = 0.0;
-                        }
-                    }
-
                     // Flags and new damage stuff
 
                     if sv_information::is_ready_go() == true {
@@ -971,10 +960,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             MotionModule::set_rate(boss_boma, 1.4);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBI_BEAM {
-                            //Boss Control Stick Movement
                             MotionModule::set_rate(boss_boma, 2.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
 
+                            //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_MASTER < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_MASTER >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -988,11 +977,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
-                            }
-                            if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
+                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1014,11 +1005,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
-                            }
-                            if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
+                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_MASTER > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1096,6 +1089,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             PostureModule::set_pos(boss_boma, &Vector3f{x: PostureModule::pos_x(boss_boma), y: Y_POS, z: PostureModule::pos_z(boss_boma)});
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_START {
+                            //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_MASTER < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_MASTER >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1109,11 +1103,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
-                            }
-                            if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
+                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1135,11 +1131,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
-                            }
-                            if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
+                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_MASTER > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1175,6 +1173,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAINT_BALL_START {
                             MotionModule::set_rate(boss_boma, 1.0);
+                            //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_MASTER < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_MASTER >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1188,11 +1187,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
-                            }
-                            if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
+                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1214,11 +1215,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
-                            }
-                            if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
+                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_MASTER > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1227,12 +1230,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
 
-                            let pos = Vector3f{x: CONTROLLER_X_MASTER, y: CONTROLLER_Y_MASTER, z: 0.0};
+                            let pos = Vector3f{x: CONTROLLER_X_MASTER * 0.75, y: CONTROLLER_Y_MASTER * 0.75, z: 0.0};
                             PostureModule::add_pos(boss_boma, &pos);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_PAINT_BALL {
                             CONTROLLABLE = false;
                             MotionModule::set_rate(boss_boma, 1.1);
+                            //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_MASTER < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_MASTER >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1246,11 +1250,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
-                            }
-                            if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
+                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1272,11 +1278,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
-                            }
-                            if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
+                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_MASTER > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1285,7 +1293,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
 
-                            let pos = Vector3f{x: CONTROLLER_X_MASTER, y: CONTROLLER_Y_MASTER, z: 0.0};
+                            let pos = Vector3f{x: CONTROLLER_X_MASTER * 0.75, y: CONTROLLER_Y_MASTER * 0.75, z: 0.0};
                             PostureModule::add_pos(boss_boma, &pos);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL_PRE_MOVE {
@@ -1299,6 +1307,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL_START {
                             MotionModule::set_rate(boss_boma, 1.3);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
+                            //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_MASTER < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_MASTER >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1312,11 +1321,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
-                            }
-                            if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
+                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1338,11 +1349,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
-                            }
-                            if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
+                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_MASTER > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1351,12 +1364,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
 
-                            let pos = Vector3f{x: CONTROLLER_X_MASTER, y: CONTROLLER_Y_MASTER, z: 0.0};
+                            let pos = Vector3f{x: CONTROLLER_X_MASTER * 0.75, y: CONTROLLER_Y_MASTER * 0.75, z: 0.0};
                             PostureModule::add_pos(boss_boma, &pos);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL {
                             MotionModule::set_rate(boss_boma, 1.3);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
+                            //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_MASTER < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_MASTER >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1370,11 +1384,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
-                            }
-                            if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
+                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1396,11 +1412,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
-                            }
-                            if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
+                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_MASTER > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1409,7 +1427,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
 
-                            let pos = Vector3f{x: CONTROLLER_X_MASTER, y: CONTROLLER_Y_MASTER, z: 0.0};
+                            let pos = Vector3f{x: CONTROLLER_X_MASTER * 0.75, y: CONTROLLER_Y_MASTER * 0.75, z: 0.0};
                             PostureModule::add_pos(boss_boma, &pos);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DRILL_START {
@@ -1891,6 +1909,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 2.0);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_TURN {
+                            //Boss Control Stick Movement
                             // X Controllable
                             if CONTROLLER_X_MASTER < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_MASTER >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1904,11 +1923,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
-                            }
-                            if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.02 {
-                                CONTROLLER_X_MASTER = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
+                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
+                                    CONTROLLER_X_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1930,11 +1951,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_MASTER += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
-                            }
-                            if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.02 {
-                                CONTROLLER_Y_MASTER = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
+                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
+                                    CONTROLLER_Y_MASTER = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_MASTER > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1942,7 +1965,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_MASTER < 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
                                 CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                             }
-                            let pos = Vector3f{x: CONTROLLER_X_MASTER, y: CONTROLLER_Y_MASTER, z: 0.0};
+
+                            let pos = Vector3f{x: CONTROLLER_X_MASTER * 0.75, y: CONTROLLER_Y_MASTER * 0.75, z: 0.0};
                             PostureModule::add_pos(boss_boma, &pos);
                             if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
                                 if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
@@ -1984,7 +2008,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if DEAD == false {
                                 let curr_pos = Vector3f{x: PostureModule::pos_x(module_accessor), y: PostureModule::pos_y(module_accessor), z: PostureModule::pos_z(module_accessor)};
                                 //Boss Control Stick Movement
-
                                 // X Controllable
                                 if CONTROLLER_X_MASTER < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_MASTER >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                     CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -1998,11 +2021,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                     CONTROLLER_X_MASTER += CONTROL_SPEED_MUL_2;
                                 }
-                                if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.02 {
-                                    CONTROLLER_X_MASTER = 0.0;
-                                }
-                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.02 {
-                                    CONTROLLER_X_MASTER = 0.0;
+                                if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                    if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
+                                        CONTROLLER_X_MASTER = 0.0;
+                                    }
+                                    if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
+                                        CONTROLLER_X_MASTER = 0.0;
+                                    }
                                 }
                                 if CONTROLLER_X_MASTER > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                     CONTROLLER_X_MASTER += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -2024,11 +2049,13 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     CONTROLLER_Y_MASTER += CONTROL_SPEED_MUL_2;
                                 }
-                                if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.02 {
-                                    CONTROLLER_Y_MASTER = 0.0;
-                                }
-                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.02 {
-                                    CONTROLLER_Y_MASTER = 0.0;
+                                if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                    if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
+                                        CONTROLLER_Y_MASTER = 0.0;
+                                    }
+                                    if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
+                                        CONTROLLER_Y_MASTER = 0.0;
+                                    }
                                 }
                                 if CONTROLLER_Y_MASTER > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                     CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -2037,7 +2064,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     CONTROLLER_Y_MASTER += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
                                 }
 
-                                let pos = Vector3f{x: CONTROLLER_X_MASTER, y: CONTROLLER_Y_MASTER, z: 0.0};
+                                let pos = Vector3f{x: CONTROLLER_X_MASTER * 0.75, y: CONTROLLER_Y_MASTER * 0.75, z: 0.0};
                                 PostureModule::add_pos(boss_boma, &pos);
                                 
                                 // Boss Moves
@@ -2309,15 +2336,6 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
 
                         if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID_2 as i32))) == false {
                             CONTROLLABLE_2 = true;
-                        }
-                    }
-
-                    if sv_information::is_ready_go() == true {
-                        if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                            CONTROLLER_Y_CRAZY = 0.0;
-                        }
-                        if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                            CONTROLLER_Y_CRAZY = 0.0;
                         }
                     }
 
@@ -2959,6 +2977,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             //Boss Control Stick Movement
                             MotionModule::set_rate(boss_boma_2, 2.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 2.0);
+                            // Boss Control Movement
                             // X Controllable
                             if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -2972,11 +2991,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -2998,11 +3019,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3051,6 +3074,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.2);
                         }
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_GROW_FINGER_START {
+                            // Boss Control Movement
                             // X Controllable
                             if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3064,11 +3088,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3090,11 +3116,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3110,6 +3138,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             WorkModule::set_float(boss_boma_2, 0.0, *ITEM_INSTANCE_WORK_FLOAT_TARGET_POS_X);
                             WorkModule::set_float(boss_boma_2, 0.0, *ITEM_INSTANCE_WORK_FLOAT_TARGET_POS_Y);
                             WorkModule::set_float(boss_boma_2, 0.0, *ITEM_INSTANCE_WORK_FLOAT_TARGET_POS_Z);
+                            // Boss Control Movement
                             // X Controllable
                             if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3123,11 +3152,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3149,11 +3180,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3170,7 +3203,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
                         }
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_LOOK_START {
-                            //Boss Control Stick Movement
+                            // Boss Control Movement
                             // X Controllable
                             if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3184,11 +3217,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3210,11 +3245,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3226,7 +3263,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             PostureModule::add_pos(boss_boma_2, &pos);
                         }
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_LOOK_LOOP {
-                            //Boss Control Stick Movement
+                            // Boss Control Movement
                             // X Controllable
                             if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3240,11 +3277,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3266,11 +3305,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3282,7 +3323,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             PostureModule::add_pos(boss_boma_2, &pos);
                         }
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_LOOK_END {
-                            //Boss Control Stick Movement
+                            // Boss Control Movement
                             // X Controllable
                             if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3296,11 +3337,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3322,11 +3365,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3340,7 +3385,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK_START {
                             MotionModule::set_rate(boss_boma_2, 1.2);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.2);
-                            //Boss Control Stick Movement
+                            // Boss Control Movement
                             // X Controllable
                             if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3354,11 +3399,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3380,11 +3427,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3398,7 +3447,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK {
                             MotionModule::set_rate(boss_boma_2, 1.2);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.2);
-                            //Boss Control Stick Movement
+                            // Boss Control Movement
                             // X Controllable
                             if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3412,11 +3461,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
+                            if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    CONTROLLER_X_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                 CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3438,11 +3489,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
+                            if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
+                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                    CONTROLLER_Y_CRAZY = 0.0;
+                                }
                             }
                             if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                 CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3528,62 +3581,66 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_NIGIRU_HOMING {
-                            //Boss Control Stick Movement
                             MotionModule::set_rate(boss_boma_2, 1.25);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.25);
-                            // X Controllable
-                            if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
-                                CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
-                            }
-                            if CONTROLLER_X_CRAZY > ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY <= 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
-                                CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
-                            }
-                            if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                CONTROLLER_X_CRAZY -= CONTROL_SPEED_MUL_2;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
-                            }
-                            if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                CONTROLLER_X_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
-                                CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
-                            }
-                            if CONTROLLER_X_CRAZY < 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
-                                CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
-                            }
+                                // Boss Control Movement
+                                // X Controllable
+                                if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                    CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                                }
+                                if CONTROLLER_X_CRAZY > ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY <= 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                    CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                                }
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                    CONTROLLER_X_CRAZY -= CONTROL_SPEED_MUL_2;
+                                }
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                    CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
+                                }
+                                if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                    if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                        CONTROLLER_X_CRAZY = 0.0;
+                                    }
+                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                        CONTROLLER_X_CRAZY = 0.0;
+                                    }
+                                }
+                                if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
+                                    CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                                }
+                                if CONTROLLER_X_CRAZY < 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
+                                    CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                                }
 
-                            // Y Controllable
-                            if CONTROLLER_Y_CRAZY < ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y_CRAZY >= 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
-                                CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
-                            }
-                            if CONTROLLER_Y_CRAZY > ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y_CRAZY <= 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
-                                CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
-                            }
-                            if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
-                                CONTROLLER_Y_CRAZY -= CONTROL_SPEED_MUL_2;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
-                                CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
-                            }
-                            if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                CONTROLLER_Y_CRAZY = 0.0;
-                            }
-                            if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
-                                CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
-                            }
-                            if CONTROLLER_Y_CRAZY < 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
-                                CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
-                            }
-                            let pos = Vector3f{x: CONTROLLER_X_CRAZY, y: CONTROLLER_Y_CRAZY, z: 0.0};
-                            PostureModule::add_pos(boss_boma_2, &pos);
+                                // Y Controllable
+                                if CONTROLLER_Y_CRAZY < ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y_CRAZY >= 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                    CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                                }
+                                if CONTROLLER_Y_CRAZY > ControlModule::get_stick_y(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_Y_CRAZY <= 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                    CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                                }
+                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                    CONTROLLER_Y_CRAZY -= CONTROL_SPEED_MUL_2;
+                                }
+                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                    CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
+                                }
+                                if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                    if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                        CONTROLLER_Y_CRAZY = 0.0;
+                                    }
+                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                        CONTROLLER_Y_CRAZY = 0.0;
+                                    }
+                                }
+                                if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
+                                    CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                                }
+                                if CONTROLLER_Y_CRAZY < 0.0 && ControlModule::get_stick_y(module_accessor) > 0.0 {
+                                    CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
+                                }
+                                let pos = Vector3f{x: CONTROLLER_X_CRAZY, y: CONTROLLER_Y_CRAZY, z: 0.0};
+                                PostureModule::add_pos(boss_boma_2, &pos);
                         }
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_NIGIRU_CENTER_MOVE {
                             MotionModule::set_rate(boss_boma_2, 4.4);
@@ -3770,6 +3827,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 MotionModule::change_motion(boss_boma_2,Hash40::new("teleport_end"),0.0,1.0,false,0.0,false,false);
                             }
                             if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_TURN {
+                                // Boss Control Movement
                                 // X Controllable
                                 if CONTROLLER_X_CRAZY < ControlModule::get_stick_x(module_accessor) * CONTROL_SPEED_MUL && CONTROLLER_X_CRAZY >= 0.0 && ControlModule::get_stick_x(module_accessor) > 0.0 {
                                     CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3783,11 +3841,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                     CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                                 }
-                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                    CONTROLLER_X_CRAZY = 0.0;
-                                }
-                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                    CONTROLLER_X_CRAZY = 0.0;
+                                if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                    if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                        CONTROLLER_X_CRAZY = 0.0;
+                                    }
+                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                        CONTROLLER_X_CRAZY = 0.0;
+                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                     CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3809,11 +3869,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
                                 }
-                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                    CONTROLLER_Y_CRAZY = 0.0;
-                                }
-                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                    CONTROLLER_Y_CRAZY = 0.0;
+                                if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                    if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                        CONTROLLER_Y_CRAZY = 0.0;
+                                    }
+                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                        CONTROLLER_Y_CRAZY = 0.0;
+                                    }
                                 }
                                 if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                     CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3954,11 +4016,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY != 0.0 && ControlModule::get_stick_x(module_accessor) == 0.0 {
                                     CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                                 }
-                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
-                                    CONTROLLER_X_CRAZY = 0.0;
-                                }
-                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
-                                    CONTROLLER_X_CRAZY = 0.0;
+                                if ControlModule::get_stick_x(module_accessor) == 0.0 {
+                                    if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                        CONTROLLER_X_CRAZY = 0.0;
+                                    }
+                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                        CONTROLLER_X_CRAZY = 0.0;
+                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0 && ControlModule::get_stick_x(module_accessor) < 0.0 {
                                     CONTROLLER_X_CRAZY += (ControlModule::get_stick_x(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -3980,11 +4044,13 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     CONTROLLER_Y_CRAZY += CONTROL_SPEED_MUL_2;
                                 }
-                                if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.02 {
-                                    CONTROLLER_Y_CRAZY = 0.0;
-                                }
-                                if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.02 {
-                                    CONTROLLER_Y_CRAZY = 0.0;
+                                if ControlModule::get_stick_y(module_accessor) == 0.0 {
+                                    if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
+                                        CONTROLLER_Y_CRAZY = 0.0;
+                                    }
+                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
+                                        CONTROLLER_Y_CRAZY = 0.0;
+                                    }
                                 }
                                 if CONTROLLER_Y_CRAZY > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {
                                     CONTROLLER_Y_CRAZY += (ControlModule::get_stick_y(module_accessor)  * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
