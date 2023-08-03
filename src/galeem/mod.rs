@@ -179,7 +179,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         WorkModule::set_float(hidden_cpu_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                         WorkModule::set_float(hidden_cpu_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                         if StatusModule::status_kind(hidden_cpu_boma) != *ITEM_STATUS_KIND_NONE {
-                            StatusModule::change_status_force(hidden_cpu_boma, *ITEM_STATUS_KIND_NONE, true);
+                            StatusModule::change_status_request_from_script(hidden_cpu_boma, *ITEM_STATUS_KIND_NONE, true);
                         }
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         let x = PostureModule::pos_x(boss_boma);
@@ -342,11 +342,12 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if ModelModule::scale(module_accessor) == 0.0001 {
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                                 if FighterUtil::is_hp_mode(module_accessor) == true {
-                                    if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD {
+                                    if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD
+                                    || StatusModule::status_kind(module_accessor) == 79 {
                                         if DEAD == false {
                                             CONTROLLABLE = false;
                                             DEAD = true;
-                                            StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                         }
                                     }
                                 }
@@ -544,7 +545,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         DEAD = true;
-                                        StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
+                                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                     }
                                 }
                             }
