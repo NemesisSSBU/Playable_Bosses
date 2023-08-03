@@ -29,8 +29,9 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
                 FighterManager::set_cursor_whole(fighter_manager, false);
                 if sv_information::is_ready_go() == false {
-                    if ModelModule::scale(module_accessor) != 0.0001 {
+                    if ModelModule::scale(module_accessor) != 1.0001 {
                         DEAD = false;
+                        ModelModule::set_scale(module_accessor, 1.0001);
                     }
                     STOP = false;
                     DECREASING = false;

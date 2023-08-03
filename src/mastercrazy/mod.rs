@@ -173,8 +173,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == false {
                         if ModelModule::scale(module_accessor) != 0.0001 {
                             DEAD = false;
+                            CONTROLLABLE = true;
                         }
-                        CONTROLLABLE = true;
                         JUMP_START = false;
                         STOP = false;
                         PUNCH = false;
@@ -429,6 +429,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     }
                                     if MotionModule::frame(boss_boma) == 0.0 {
                                         smash_script::macros::CAM_ZOOM_IN_arg5(fighter, 0.0, 0.0, 5.0, 0.0, 0.0);
+                                        smash_script::macros::EFFECT_OFF_KIND(fighter,Hash40::new("sys_dead"),true,false);
                                         smash_script::macros::EFFECT(fighter, Hash40::new("sys_bg_criticalhit"), Hash40::new("top"), 0,7,0,0,0,0,1,0,0,0,0,0,0,false);
                                         smash_script::macros::EFFECT(fighter, Hash40::new("sys_bg_boss_finishhit"), Hash40::new("top"), 0,7,0,0,0,0,1,0,0,0,0,0,0,false);
                                     }
@@ -2271,8 +2272,8 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == false {
                         if ModelModule::scale(module_accessor) != 0.0001 {
                             DEAD_2 = false;
+                            CONTROLLABLE_2 = true;
                         }
-                        CONTROLLABLE_2 = true;
                         JUMP_START_2 = false;
                         STOP_2 = false;
                         CRAZY_USABLE = false;
@@ -2502,6 +2503,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     }
                                     if MotionModule::frame(boss_boma_2) == 0.0 {
                                         smash_script::macros::CAM_ZOOM_IN_arg5(fighter, 0.0, 0.0, 5.0, 0.0, 0.0);
+                                        smash_script::macros::EFFECT_OFF_KIND(fighter,Hash40::new("sys_dead"),true,false);
                                         smash_script::macros::EFFECT(fighter, Hash40::new("sys_bg_criticalhit"), Hash40::new("top"), 0,7,0,0,0,0,1,0,0,0,0,0,0,false);
                                         smash_script::macros::EFFECT(fighter, Hash40::new("sys_bg_boss_finishhit"), Hash40::new("top"), 0,7,0,0,0,0,1,0,0,0,0,0,0,false);
                                     }
@@ -3027,10 +3029,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
                             if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
-                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
                             }
@@ -3124,10 +3126,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
                             if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
-                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
                             }
@@ -3188,10 +3190,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
                             if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
-                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
                             }
@@ -3253,10 +3255,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
                             if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
-                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
                             }
@@ -3313,10 +3315,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
                             if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
-                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
                             }
@@ -3373,10 +3375,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
                             if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
-                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
                             }
@@ -3435,10 +3437,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
                             if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
-                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
                             }
@@ -3497,10 +3499,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                             }
                             if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
-                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                     CONTROLLER_X_CRAZY = 0.0;
                                 }
                             }
@@ -3637,10 +3639,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                                 }
                                 if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                    if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
                                 }
@@ -3881,10 +3883,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                                 }
                                 if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                    if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
                                 }
@@ -4056,10 +4058,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     CONTROLLER_X_CRAZY += CONTROL_SPEED_MUL_2;
                                 }
                                 if ControlModule::get_stick_x(module_accessor) == 0.0 {
-                                    if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.02 {
+                                    if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.02 {
+                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
                                 }

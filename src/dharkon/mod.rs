@@ -1167,10 +1167,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if CONTROLLER_Y < 0.0 && CONTROLLER_Y != 0.0 && ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 CONTROLLER_Y += CONTROL_SPEED_MUL_2;
                             }
-                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.02 {
+                            if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.06 {
                                 CONTROLLER_Y = 0.0;
                             }
-                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.02 {
+                            if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.06 {
                                 CONTROLLER_Y = 0.0;
                             }
                             if CONTROLLER_Y > 0.0 && ControlModule::get_stick_y(module_accessor) < 0.0 {

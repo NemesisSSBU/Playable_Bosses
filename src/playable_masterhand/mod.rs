@@ -128,9 +128,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if ModelModule::scale(module_accessor) != 0.0001 {
                         EXISTS_PUBLIC = true;
                         CONTROLLABLE = true;
-                        if ModelModule::scale(module_accessor) != 0.0001 {
-                            DEAD = false;
-                        }
+                        DEAD = false;
                         RESULT_SPAWNED = false;
                         STOP = false;
                         FRESH_CONTROL = false;

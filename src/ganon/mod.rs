@@ -122,8 +122,8 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == false {
                         if ModelModule::scale(module_accessor) != 0.0001 {
                             DEAD = false;
+                            CONTROLLABLE = true;
                         }
-                        CONTROLLABLE = true;
                         JUMP_START = false;
                         STOP = false;
                         MOVING = false;
@@ -478,6 +478,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_STANDBY {
                                     if MotionModule::frame(boss_boma) == 0.0 {
                                         smash_script::macros::CAM_ZOOM_IN_arg5(fighter, 0.0, 0.0, 7.0, 0.0, 0.0);
+                                        smash_script::macros::EFFECT_OFF_KIND(fighter,Hash40::new("sys_dead"),true,false);
                                         smash_script::macros::EFFECT(fighter, Hash40::new("sys_bg_criticalhit"), Hash40::new("top"), 0,7,0,0,0,0,1,0,0,0,0,0,0,false);
                                         smash_script::macros::EFFECT(fighter, Hash40::new("sys_bg_boss_finishhit"), Hash40::new("top"), 0,7,0,0,0,0,1,0,0,0,0,0,0,false);
                                     }
