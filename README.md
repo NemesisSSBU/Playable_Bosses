@@ -27,15 +27,30 @@ ALL BOSSES HAVE ONE(1) LIFE
 ## Setup
 Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
 
+## Requirements
+[ARCropolis](https://github.com/Raytwo/ARCropolis/releases)
+[Skyline](https://github.com/skyline-dev/skyline/releases)
+[NRO Hook](https://github.com/ultimate-research/nro-hook-plugin/releases)
+[ACMD Hook](https://github.com/ultimate-research/acmd_hook/releases)
+
 Drop this mod into your sd card root folder and you're good to go.
 ```
+Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis (don't worry, this comes packaged with the mod).
+
 *Step 1*
+
 - Unpack the .zip release file
 
 *Step 2*
+
 - Drag and drop the unpacked files ("atmosphere" and "ultimate") into the root of your Switch SD card
 
 *Step 3*
+
+Go to the requirements section and install ARCropolis, Skyline, NRO Hook, and ACMD Hook. Drag and drop those files within the plugins folder. This can be located at: sdcard --> atmosphere --> contents --> 01006A800016E000 --> romfs --> skyline --> plugins
+
+*Step 4*
+
 - Start the game and you should be good to go!
 ```
 ## Warning
