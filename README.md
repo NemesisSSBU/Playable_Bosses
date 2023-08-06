@@ -29,11 +29,12 @@ Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
 
 ## Requirements
 [ARCropolis](https://github.com/Raytwo/ARCropolis/releases)
-[Skyline](https://github.com/skyline-dev/skyline/releases)
-[NRO Hook](https://github.com/ultimate-research/nro-hook-plugin/releases)
-[ACMD Hook](https://github.com/ultimate-research/acmd_hook/releases)
 
-Drop this mod into your sd card root folder and you're good to go.
+[Skyline](https://github.com/skyline-dev/skyline/releases)
+
+[NRO Hook](https://github.com/ultimate-research/nro-hook-plugin/releases)
+
+[ACMD Hook](https://github.com/ultimate-research/acmd_hook/releases)
 ```
 Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis (don't worry, this comes packaged with the mod).
 
