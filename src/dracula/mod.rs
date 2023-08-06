@@ -520,7 +520,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
                         if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
                             CONTROLLABLE = false;
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 && !TRANSFORMED_MODE {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 20.0 && !TRANSFORMED_MODE {
                                 let x = PostureModule::pos_x(boss_boma);
                                 let y = PostureModule::pos_y(boss_boma);
                                 let z = PostureModule::pos_z(boss_boma);
@@ -549,7 +549,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
                         if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
                             CONTROLLABLE = false;
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 && !TRANSFORMED_MODE {
+                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 20.0 && !TRANSFORMED_MODE {
                                 let x = PostureModule::pos_x(boss_boma);
                                 let y = PostureModule::pos_y(boss_boma);
                                 let z = PostureModule::pos_z(boss_boma);

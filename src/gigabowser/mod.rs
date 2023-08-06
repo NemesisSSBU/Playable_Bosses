@@ -45,10 +45,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     DamageModule::set_reaction_mul_4th(module_accessor, 0.0);
                 }
                 if smash::app::smashball::is_training_mode() == false {
-                    if DamageModule::damage(module_accessor, 0) >= 499.0 && FighterUtil::is_hp_mode(module_accessor) == false {
+                    if DamageModule::damage(module_accessor, 0) >= 600.0 && FighterUtil::is_hp_mode(module_accessor) == false {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
                     }
-                    if DECREASING && FighterUtil::is_hp_mode(module_accessor) == true {
+                    if DECREASING && FighterUtil::is_hp_mode(module_accessor) && sv_information::is_ready_go() == false {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
                     }
                 }
