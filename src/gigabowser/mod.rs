@@ -29,13 +29,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
                 FighterManager::set_cursor_whole(fighter_manager, false);
                 if sv_information::is_ready_go() == false {
-                    if ModelModule::scale(module_accessor) != 1.0001 {
-                        DEAD = false;
-                        ModelModule::set_scale(module_accessor, 1.0001);
-                    }
+                    DEAD = false;
                     STOP = false;
                     DECREASING = false;
-                    if FighterUtil::is_hp_mode(module_accessor) == true {
+                    if FighterUtil::is_hp_mode(module_accessor) {
                         INITIAL_STOCK_COUNT = FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32)));
                     }
                 }
