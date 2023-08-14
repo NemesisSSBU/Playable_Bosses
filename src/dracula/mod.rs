@@ -486,7 +486,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if FighterUtil::is_hp_mode(module_accessor) == false {
                                 if TRANSFORMED_MODE == false {
                                     if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD {
-                                        DamageModule::heal(module_accessor, phase_hp * - 1.0, 0);
+                                        DamageModule::heal(module_accessor, -999.9, 0);
                                         CONTROLLABLE = false;
                                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
                                     }
