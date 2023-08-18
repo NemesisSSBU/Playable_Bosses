@@ -79,7 +79,7 @@ Checkout the [GameBanana Page](https://gamebanana.com/mods/457095)!
 - Ryujinx is a little different as their mod folder is located within %appdata% --> sdcard --> atmosphere --> contents --> 01006a800016e000 --> romfs --> skyline --> (drag .nro files into here). Our mod is already simplified so that all you need to do is go into: %appdata% --> sdcard. While in the sdcard folder, drag and drop the mod files in. Be sure to install the required file listed above!
 
 *If there's other issues*
-- Please check the latest release descriptions. If your issue is not mentioned in those descriptions, open up a "New Issue" in the issues tab on GitHub and describe the issue to the best of your ability.
+- Please check the latest release descriptions. If your issue is not mentioned in those descriptions, please do NOT open up an issue on this GitHub page as this mod is done developing. Instead post a comment on the Game Banana website (chances are we will not respond as we're done with Smash modding but other people may respond), and/or go to Ultimate Modding Discord server and state your issue there.
 
 ## Note to those that want to include this mod in their own mod pack
 - Feel free to include this mod in your mod pack but you must also credit all of the people listed below in "Credit" and link this mod.
