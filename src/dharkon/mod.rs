@@ -109,10 +109,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if smash::app::stage::get_stage_id() == 0x139 {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-                    SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                     if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
                         ItemModule::remove_all(module_accessor);
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
+                        SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         ModelModule::set_scale(module_accessor, 0.0001);
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
@@ -142,6 +142,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if ModelModule::scale(module_accessor) != 0.0001 && ModelModule::scale(module_accessor) != 0.0002 {
                                 ModelModule::set_scale(module_accessor, 0.0002);
                                 ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
+                                SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                                 HIDDEN_CPU[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                                 let hidden_cpu_boma = sv_battle_object::module_accessor(HIDDEN_CPU[entry_id(module_accessor)]);
                                 ModelModule::set_scale(hidden_cpu_boma, 0.0001);
@@ -151,6 +152,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 RESULT_SPAWNED = false;
                                 ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
                                 ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
+                                SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                                 BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                                 WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
@@ -206,6 +208,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
+                        SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         HIDDEN_CPU[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         let hidden_cpu_boma = sv_battle_object::module_accessor(HIDDEN_CPU[entry_id(module_accessor)]);
                         ModelModule::set_scale(hidden_cpu_boma, 0.0001);
@@ -213,6 +216,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         RESULT_SPAWNED = false;
                         ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
+                        SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
@@ -297,6 +301,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if ModelModule::scale(module_accessor) == 0.0002 {
                             RESULT_SPAWNED = false;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
@@ -518,6 +523,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             EXISTS_PUBLIC = false;
                             RESULT_SPAWNED = true;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);

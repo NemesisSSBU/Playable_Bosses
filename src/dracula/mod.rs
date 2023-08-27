@@ -98,10 +98,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if smash::app::stage::get_stage_id() == 0x139 {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-                    SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                     if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
                         ItemModule::remove_all(module_accessor);
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
+                        SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         ModelModule::set_scale(module_accessor, 0.0001);
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
@@ -129,6 +129,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
@@ -152,7 +153,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() && !ItemModule::is_have_item(module_accessor, 0) && ModelModule::scale(module_accessor) != 0.0001
                     || smash::app::smashball::is_training_mode() && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_FALL, true);
-
                         DEAD = false;
                         CONTROLLABLE = true;
                         JUMP_START = false;
@@ -164,6 +164,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         EXISTS_PUBLIC = true;
                         RESULT_SPAWNED = false;
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA), 0, 0, false, false);
+                        SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
@@ -516,64 +517,39 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                     }
-                    
-                    if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
-                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
-                            CONTROLLABLE = false;
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 20.0 && !TRANSFORMED_MODE {
-                                let x = PostureModule::pos_x(boss_boma);
-                                let y = PostureModule::pos_y(boss_boma);
-                                let z = PostureModule::pos_z(boss_boma);
-                                let boss_pos = Vector3f{x: x, y: y, z: z};
-                                TRANSFORMED_MODE = true;
-                                PostureModule::set_pos(module_accessor, &boss_pos);
-                                PostureModule::set_pos(boss_boma, &boss_pos);
-                                ModelModule::set_scale(module_accessor, 1.0);
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
-                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
-                                ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
-                                BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
-                                let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                                WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
-                                WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-                                WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
-                                WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                                WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
-                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_ENTRY, true);
-                                ModelModule::set_scale(module_accessor, 0.0001);
-                            }
+
+                    if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
+                        CONTROLLABLE = false;
+                        if MotionModule::frame(boss_boma) == MotionModule::end_frame(boss_boma) - 20.0 && !TRANSFORMED_MODE {
+                            let x = PostureModule::pos_x(boss_boma);
+                            let y = PostureModule::pos_y(boss_boma);
+                            let z = PostureModule::pos_z(boss_boma);
+                            let boss_pos = Vector3f{x: x, y: y, z: z};
+
+                            PostureModule::set_pos(module_accessor, &boss_pos);
+                            PostureModule::set_pos(boss_boma, &boss_pos);
+                            ModelModule::set_scale(module_accessor, 1.0);
+                            StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
+                            StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
+                            ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
+
+                            BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
+                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+
+                            WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+                            WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+                            WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                            WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+                            WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
+
+                            StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_ENTRY, true);
+
+                            ModelModule::set_scale(module_accessor, 0.0001);
+                            TRANSFORMED_MODE = true;
                         }
                     }
-
-                    if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == true {
-                        if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
-                            CONTROLLABLE = false;
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 20.0 && !TRANSFORMED_MODE {
-                                let x = PostureModule::pos_x(boss_boma);
-                                let y = PostureModule::pos_y(boss_boma);
-                                let z = PostureModule::pos_z(boss_boma);
-                                let boss_pos = Vector3f{x: x, y: y, z: z};
-                                TRANSFORMED_MODE = true;
-                                PostureModule::set_pos(module_accessor, &boss_pos);
-                                PostureModule::set_pos(boss_boma, &boss_pos);
-                                ModelModule::set_scale(module_accessor, 1.0);
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
-                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
-                                ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
-                                BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor,0) as u32;
-                                let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                                WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
-                                WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-                                WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
-                                WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                                WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
-                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_ENTRY, true);
-                                ModelModule::set_scale(module_accessor, 0.0001);
-                            }
-                        }
-                    } 
 
                     if sv_information::is_ready_go() == true {
                         if TRANSFORMED_MODE {
@@ -696,6 +672,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             EXISTS_PUBLIC = false;
                             RESULT_SPAWNED = true;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);

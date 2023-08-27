@@ -154,10 +154,10 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if smash::app::stage::get_stage_id() == 0x139 {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-                    SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
                     if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
                         ItemModule::remove_all(module_accessor);
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
+                        SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         ModelModule::set_scale(module_accessor, 0.0001);
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
@@ -196,6 +196,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             RESULT_SPAWNED_2 = false;
                             MASTER_EXISTS = true;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
@@ -244,6 +245,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         RESULT_SPAWNED_2 = false;
                         MASTER_EXISTS = true;
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
+                        SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                         WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
@@ -515,6 +517,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             CRAZY_TEAM = 98;
 
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_MASTERHAND), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
@@ -2253,10 +2256,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                 if smash::app::stage::get_stage_id() == 0x139 {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-                    SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
                     if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
                         ItemModule::remove_all(module_accessor);
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_CRAZYHAND), 0, 0, false, false);
+                        SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         BOSS_ID_2[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         ModelModule::set_scale(module_accessor, 0.0001);
                         let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
@@ -2294,6 +2297,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             RESULT_SPAWNED_2 = false;
                             CRAZY_EXISTS = true;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_CRAZYHAND), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                             BOSS_ID_2[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
                             WorkModule::set_int(boss_boma_2, *ITEM_BOSS_MODE_ADVENTURE_HARD, *ITEM_INSTANCE_WORK_INT_BOSS_MODE);
@@ -2341,6 +2345,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         RESULT_SPAWNED = false;
                         RESULT_SPAWNED_2 = false;
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_CRAZYHAND), 0, 0, false, false);
+                        SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         BOSS_ID_2[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
                         WorkModule::set_int(boss_boma_2, *ITEM_BOSS_MODE_ADVENTURE_HARD, *ITEM_INSTANCE_WORK_INT_BOSS_MODE);
@@ -2588,6 +2593,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             CRAZY_TEAM = 98;
 
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_CRAZYHAND), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                             BOSS_ID_2[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
                             ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
