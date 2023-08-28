@@ -26,6 +26,9 @@ pub static mut FIGHTER_MANAGER: usize = 0;
 static mut ENTRY_ID_2 : usize = 0;
 pub static mut FIGHTER_MANAGER_2: usize = 0;
 
+static mut ENTRY_ID_3 : usize = 0;
+pub static mut FIGHTER_MANAGER_3: usize = 0;
+
 pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
@@ -93,6 +96,39 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                 || rathalos::check_status()
                 || galleom::check_status()
                 || ganon::check_status() {
+                    WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_BG);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_FLASH);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_CHARGE);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_IS_DISCRETION_FINAL_USED);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_INFINITY_SMASH_HOLD);
+                    FighterManager::set_visible_finalbg(fighter_manager, false);
+                    DamageModule::heal(module_accessor, -0.01, 0);
+                }
+            }
+        }
+    }
+}
+
+pub fn once_per_fighter_frame_3(fighter: &mut L2CFighterCommon) {
+    unsafe {
+        let lua_state = fighter.lua_state_agent;
+        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+        let fighter_kind = smash::app::utility::get_kind(module_accessor);
+        ENTRY_ID_3 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        LookupSymbol(
+            &mut FIGHTER_MANAGER_3,
+            "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
+            .as_bytes()
+            .as_ptr(),
+        );
+        let fighter_manager = *(FIGHTER_MANAGER_3 as *mut *mut smash::app::FighterManager);
+        if fighter_kind == *FIGHTER_KIND_SZEROSUIT {
+            if FighterManager::is_final(fighter_manager) {
+                if ganon::check_status() {
                     WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
@@ -1000,6 +1036,7 @@ const MAX_FILE_SIZE: usize = 0xFFFF;
  pub fn main() {
        acmd::add_custom_hooks!(once_per_fighter_frame);
        acmd::add_custom_hooks!(once_per_fighter_frame_2);
+       acmd::add_custom_hooks!(once_per_fighter_frame_3);
        mastercrazy::install();
        playable_masterhand::install();
        galeem::install();
@@ -1021,8 +1058,8 @@ const MAX_FILE_SIZE: usize = 0xFFFF;
        callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
        callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
        callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-    //    callback_map_1::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-    //    callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       callback_map_1::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
        callback_map_3::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
        callback_map_4::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
        callback_map_5::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);

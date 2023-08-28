@@ -36,6 +36,11 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         INITIAL_STOCK_COUNT = FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32)));
                     }
                 }
+                if FighterManager::is_result_mode(fighter_manager) == true {
+                    if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_WAIT {
+                        StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT,true);
+                    }
+                }
                 if sv_information::is_ready_go() {
                     DamageModule::set_reaction_mul(module_accessor, 0.0);
                     DamageModule::set_reaction_mul_2nd(module_accessor, 0.0);
