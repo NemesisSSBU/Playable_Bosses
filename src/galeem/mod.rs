@@ -631,9 +631,6 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_KIILA_STATUS_KIND_MANAGER_VANISH {
                             CONTROLLABLE = true;
                         }
-                        if StatusModule::status_kind(boss_boma) == *ITEM_KIILA_STATUS_KIND_DOWN_START {
-                            CONTROLLABLE = false;
-                        }
                         if StatusModule::status_kind(boss_boma) == *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER_WAIT {
                             CONTROLLABLE = true;
                         }
