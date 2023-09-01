@@ -17,7 +17,7 @@ ALL BOSSES HAVE ONE(1) LIFE
 - Galeem: 400 HP (Rage at 220 HP)
 - Marx: 400 HP
 - Giga Bowser 600 HP (No Knockback)
-- Ganon: 750 HP
+- Ganon: 600 HP
 - Dracula: 700 HP (Phase 1 dies at 220 HP, Phase 2 dies at 500 HP. If you want to play Dracula in Stamina mode, always play Dracula with above 200 HP or else he won't reach phase 2)
 - Rathalos: 600 HP
 - Galleom: 700 HP (Rage at 220 HP)
