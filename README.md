@@ -37,7 +37,7 @@ Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
 (FOR NEWEST VERSION, 2.0.0 AND AFTER):
 [SMASHLINE 2.0](https://github.com/HDR-Development/smashline)
 
-(FOR OLDER VERSIONS BEFORE SMASHLINE, BEFORE OR EQUAL TO 1.1.7):
+(FOR OLDER VERSIONS, BEFORE OR EQUAL TO 1.1.7):
 [ACMD Hook](https://github.com/ultimate-research/acmd_hook/releases)
 ```
 Make sure you have a modded Switch or emulator. Install atmosphere, Skyline, ACMD, and ARCropolis.
