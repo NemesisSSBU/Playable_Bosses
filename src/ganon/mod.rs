@@ -153,7 +153,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    if !smash::app::smashball::is_training_mode() && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
+                    if !smash::app::smashball::is_training_mode() && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH
+                    && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD, true);
                     }
 
@@ -464,10 +465,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
                             if STOP == false {
-                                if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0 {
+                                if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0
+                                && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
                                     StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
                                 }
-                                if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == 0 {
+                                if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == 0
+                                && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
                                     StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
                                     STOP = true;
                                 }
