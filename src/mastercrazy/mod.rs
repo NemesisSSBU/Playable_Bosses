@@ -13,6 +13,7 @@ use skyline::nn::ro::LookupSymbol;
 use smash::hash40;
 use smash::app::utility::get_category;
 use smash::phx::Hash40;
+use smashline::{Agent, Main};
 
 // Global
 static mut BARK : bool = false;
@@ -121,7 +122,7 @@ pub unsafe fn get_player_number(module_accessor:  &mut smash::app::BattleObjectM
     return player_number;
 }
 
-pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
+extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -2224,7 +2225,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     }
 }
 
-pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
+extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -4235,6 +4236,10 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
 }
 
 pub fn install() {
-    acmd::add_custom_hooks!(once_per_fighter_frame);
-    acmd::add_custom_hooks!(once_per_fighter_frame_2);
+    Agent::new("mario")
+    .on_line(Main, once_per_fighter_frame)
+    .install();
+    Agent::new("mario")
+    .on_line(Main, once_per_fighter_frame_2)
+    .install();
 }

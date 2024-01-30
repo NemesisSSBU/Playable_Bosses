@@ -4,6 +4,7 @@ use smash::lua2cpp::L2CFighterCommon;
 use skyline::nn::ro::LookupSymbol;
 use smash::app::sv_information;
 use smash::app::FighterUtil;
+use smashline::{Agent, Main};
 
 static mut DEAD : bool = false;
 static mut STOP : bool = false;
@@ -12,7 +13,7 @@ pub static mut FIGHTER_MANAGER: usize = 0;
 static mut DECREASING : bool = false;
 static mut INITIAL_STOCK_COUNT : u64 = 0;
 
-pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
+extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -87,5 +88,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 }
 
 pub fn install() {
-    acmd::add_custom_hooks!(once_per_fighter_frame);
+    Agent::new("koopag")
+    .on_line(Main, once_per_fighter_frame)
+    .install();
 }

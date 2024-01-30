@@ -8,6 +8,7 @@ use smash::lib::lua_const::*;
 use smash::app::lua_bind::*;
 use skyline::nn::ro::LookupSymbol;
 use smash::lua2cpp::L2CFighterCommon;
+use smashline::{Agent, Main};
 
 mod mastercrazy;
 mod playable_masterhand;
@@ -29,7 +30,7 @@ pub static mut FIGHTER_MANAGER_2: usize = 0;
 static mut ENTRY_ID_3 : usize = 0;
 pub static mut FIGHTER_MANAGER_3: usize = 0;
 
-pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
+extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -71,7 +72,7 @@ pub fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     }
 }
 
-pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
+extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -113,7 +114,7 @@ pub fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
     }
 }
 
-pub fn once_per_fighter_frame_3(fighter: &mut L2CFighterCommon) {
+extern "C" fn once_per_fighter_frame_3(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -1034,9 +1035,15 @@ const MAX_FILE_SIZE: usize = 0xFFFF;
 
 #[skyline::main(name = "comp_boss")]
  pub fn main() {
-       acmd::add_custom_hooks!(once_per_fighter_frame);
-       acmd::add_custom_hooks!(once_per_fighter_frame_2);
-       acmd::add_custom_hooks!(once_per_fighter_frame_3);
+       Agent::new("daisy")
+        .on_line(Main, once_per_fighter_frame)
+        .install();
+        Agent::new("peach")
+        .on_line(Main, once_per_fighter_frame_2)
+        .install();
+        Agent::new("szerosuit")
+        .on_line(Main, once_per_fighter_frame_3)
+        .install();
        mastercrazy::install();
        playable_masterhand::install();
        galeem::install();
