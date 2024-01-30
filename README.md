@@ -34,6 +34,10 @@ Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
 
 [NRO Hook](https://github.com/ultimate-research/nro-hook-plugin/releases)
 
+(FOR NEWEST VERSION):
+[SMASHLINE 2.0](https://github.com/HDR-Development/smashline)
+
+(FOR OLDER VERSIONS BEFORE SMASHLINE):
 [ACMD Hook](https://github.com/ultimate-research/acmd_hook/releases)
 ```
 Make sure you have a modded Switch or emulator. Install atmosphere, Skyline, ACMD, and ARCropolis.
