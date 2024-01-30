@@ -40,7 +40,7 @@ Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
 (FOR OLDER VERSIONS, BEFORE OR EQUAL TO 1.1.7):
 [ACMD Hook](https://github.com/ultimate-research/acmd_hook/releases)
 ```
-Make sure you have a modded Switch or emulator. Install atmosphere, Skyline, ACMD, and ARCropolis.
+Make sure you have a modded Switch or emulator. Install Atmosphere, Skyline, ACMD, and ARCropolis.
 
 *Step 1*
 
