@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 [dependencies]
 skyline = { git = "https://github.com/ultimate-research/skyline-rs.git" }
 skyline_smash = { git = "https://github.com/ultimate-research/skyline-smash.git" }
-acmd = { git = "https://github.com/ultimate-research/skyline-acmd.git" }
+smashline = { git = "https://github.com/HDR-Development/smashline" }
 serde = { version = "1.0.180", features = ["derive"] }
 parking_lot = "0.12.1"
 toml = "0.7.6"
