@@ -516,11 +516,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if RESULT_SPAWNED == false {
                             EXISTS_PUBLIC = false;
                             RESULT_SPAWNED = true;
-                            ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_KIILA), 0, 0, false, false);
-                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
-                            BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
-                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
+                            // ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_KIILA), 0, 0, false, false);
+                            // SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
+                            // BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
+                            // let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                            // StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
                         }
                         SoundModule::stop_se(module_accessor, Hash40::new("se_common_swing_05"), 0);
                         SoundModule::stop_se(module_accessor, Hash40::new("vc_mario_013"), 0);
@@ -728,7 +728,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_TELEPORT, true);
                             }
                         }
-                        if DamageModule::damage(module_accessor, 0) >= 220.0 {
+                        if DamageModule::damage(module_accessor, 0) >= 220.0 && !DEAD {
                             if IS_ANGRY == false && !DEAD {
                                 CONTROLLABLE = false;
                                 IS_ANGRY = true;

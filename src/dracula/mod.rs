@@ -209,7 +209,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 WorkModule::off_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_AI_IS_IN_EFFECT);
                             }
                             JostleModule::set_status(module_accessor, false);
-                            if DamageModule::damage(module_accessor, 0) >= 100.0 {
+                            if DamageModule::damage(module_accessor, 0) >= 120.0 {
                                 if !DEAD && !TRANSFORMED_MODE && !WorkModule::is_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY) {
                                     WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
                                 }
@@ -258,11 +258,19 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if sv_information::is_ready_go() == true {
                             if ModelModule::scale(module_accessor) == 0.0001 {
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY && FighterUtil::is_hp_mode(module_accessor) == false {
-                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
+                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY
+                                && FighterUtil::is_hp_mode(module_accessor) == false
+                                && StatusModule::status_kind(boss_boma) != *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
+                                    //StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
                                 }
-                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY && FighterUtil::is_hp_mode(module_accessor) == true && !TRANSFORMED_MODE {
-                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
+                                if StatusModule::status_kind(boss_boma) == *ITEM_DRACULA_STATUS_KIND_CHANGE_START
+                                && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_STANDBY {
+                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
+                                }
+                                if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY
+                                && FighterUtil::is_hp_mode(module_accessor) == true && !TRANSFORMED_MODE
+                                && StatusModule::status_kind(boss_boma) != *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
+                                    //StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
                                 }
                                 if FighterUtil::is_hp_mode(module_accessor) == true && TRANSFORMED_MODE {
                                     WorkModule::enable_transition_term_forbid_group(module_accessor, *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_LANDING);
@@ -480,7 +488,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     if sv_information::is_ready_go() == true {
-                        let phase_hp = 200.0;
+                        let phase_hp = 160.0;
                         if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD
                         && StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_TRANS_PHASE
                         && StatusModule::status_kind(boss_boma) != *ITEM_DRACULA_STATUS_KIND_CHANGE_START

@@ -289,7 +289,7 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = false;
+            *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
