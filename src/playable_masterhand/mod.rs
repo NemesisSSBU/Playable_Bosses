@@ -334,7 +334,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if DEAD == false {
                                 DEAD = true;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_DEAD, true);
-                                StatusModule::change_status_request_from_script(module_accessor,*FIGHTER_STATUS_KIND_DEAD,true);
                             }
                         }
                     }
@@ -550,7 +549,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             if StatusModule::status_kind(boss_boma) != *FIGHTER_STATUS_KIND_STANDBY {
                                                 SlowModule::clear_whole(boss_boma);
                                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
-                                                StatusModule::change_status_request_from_script(module_accessor, *ITEM_STATUS_KIND_STANDBY, true);
                                             }
                                         }
                                     }
