@@ -96,7 +96,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             );
             let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
             let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let name_base = text + 0x52c3758;
+            let name_base = text + 0x52c5758;
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
             if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("GALEEM")
             || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("キーラ")

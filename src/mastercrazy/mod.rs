@@ -141,7 +141,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             );
             let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
             let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let name_base = text + 0x52c3758;
+            let name_base = text + 0x52c5758;
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
             if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("MASTER HAND")
             || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("マスターハンド")
@@ -597,10 +597,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             GroundModule::set_correct(module_accessor, smash::app::GroundCorrectKind(*GROUND_CORRECT_KIND_AIR));
                             MotionModule::change_motion(module_accessor,Hash40::new("fall"),0.0,1.0,false,0.0,false,false);
                         }
-                    }
-
-                    if sv_information::is_ready_go() == false {
-                        println!("{}", StatusModule::status_kind(module_accessor));
                     }
 
                     if DEAD == false {
@@ -2247,7 +2243,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
             );
             let fighter_manager = *(FIGHTER_MANAGER_2 as *mut *mut smash::app::FighterManager);
             let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let name_base = text + 0x52c3758;
+            let name_base = text + 0x52c5758;
             FIGHTER_NAME_2[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
             if FIGHTER_NAME_2[get_player_number(module_accessor)] == hash40("CRAZY HAND")
             || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("クレイジーハンド")
