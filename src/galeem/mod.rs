@@ -112,7 +112,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                     if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
                         ItemModule::remove_all(module_accessor);
-                        ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_KIILA), 0, 0, false, false);
+                        ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_KIILACORE), 0, 0, false, false);
                         SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         ModelModule::set_scale(module_accessor, 0.0001);
