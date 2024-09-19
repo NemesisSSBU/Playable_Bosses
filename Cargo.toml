@@ -20,7 +20,6 @@ toml = "0.8.10"
 lazy_static = "1.4.0"
 smash_script = { git = "https://github.com/blu-dev/smash-script.git" }
 arcropolis-api = { git = "https://github.com/Raytwo/arcropolis_api" }
-bntx = { git = "https://github.com/ScanMountGoat/bntx.git", branch="main" }
 prc-rs = { git = "https://github.com/ultimate-research/prc-rs", features = ["indexmap-std"] }
 rand = { git = "https://github.com/skyline-rs/rand" }
 
