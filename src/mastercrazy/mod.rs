@@ -134,7 +134,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             }
             ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
             LookupSymbol(
-                &mut FIGHTER_MANAGER,
+                &raw mut FIGHTER_MANAGER,
                 "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
                 .as_bytes()
                 .as_ptr(),
@@ -1548,6 +1548,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_ENERGY_SHOT_RUSH_END {
                                 if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                     CONTROLLABLE = true;
+                                    JostleModule::set_status(boss_boma, true);
                                     println!("STOPPED AT 1057");
                                 }
                             }
@@ -2115,6 +2116,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             SHOCK = true;
                                             LASER = false;
                                             SCRATCH_BLOW = false;
+                                            let z = PostureModule::pos_z(boss_boma);
+                                            let module_pos = Vector3f{x: 100.0, y: 100.0, z: z};
+                                            PostureModule::set_pos(boss_boma, &module_pos);
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_ELECTROSHOCK_START, true);
                                         }
                                     }
@@ -2236,7 +2240,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
             }
             ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
             LookupSymbol(
-                &mut FIGHTER_MANAGER_2,
+                &raw mut FIGHTER_MANAGER_2,
                 "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
                 .as_bytes()
                 .as_ptr(),
@@ -2967,6 +2971,9 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             MotionModule::set_rate(boss_boma_2, 1.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
                             CONTROLLABLE_2 = false;
+                            let z = PostureModule::pos_z(boss_boma_2);
+                            let module_pos = Vector3f{x: -100.0, y: 100.0, z: z};
+                            PostureModule::set_pos(boss_boma_2, &module_pos);
                             StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
                             MotionModule::change_motion(boss_boma_2,Hash40::new("electroshock_start"),0.0,1.0,false,0.0,false,false);
                         }

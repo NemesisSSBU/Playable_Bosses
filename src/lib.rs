@@ -37,7 +37,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
         LookupSymbol(
-            &mut FIGHTER_MANAGER,
+            &raw mut FIGHTER_MANAGER_3,
             "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
             .as_bytes()
             .as_ptr(),
@@ -79,7 +79,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
         ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
         LookupSymbol(
-            &mut FIGHTER_MANAGER_2,
+            &raw mut FIGHTER_MANAGER_3,
             "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
             .as_bytes()
             .as_ptr(),
@@ -121,7 +121,7 @@ extern "C" fn once_per_fighter_frame_3(fighter: &mut L2CFighterCommon) {
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
         ENTRY_ID_3 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
         LookupSymbol(
-            &mut FIGHTER_MANAGER_3,
+            &raw mut FIGHTER_MANAGER_3,
             "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
             .as_bytes()
             .as_ptr(),

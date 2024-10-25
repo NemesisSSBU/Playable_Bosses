@@ -85,7 +85,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             }
             ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
             LookupSymbol(
-                &mut FIGHTER_MANAGER,
+                &raw mut FIGHTER_MANAGER,
                 "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
                 .as_bytes()
                 .as_ptr(),
