@@ -1548,7 +1548,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_ENERGY_SHOT_RUSH_END {
                                 if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                     CONTROLLABLE = true;
-                                    JostleModule::set_status(boss_boma, true);
+                                    StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TIME, true);
                                     println!("STOPPED AT 1057");
                                 }
                             }
@@ -2117,7 +2117,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             LASER = false;
                                             SCRATCH_BLOW = false;
                                             let z = PostureModule::pos_z(boss_boma);
-                                            let module_pos = Vector3f{x: 100.0, y: 100.0, z: z};
+                                            let module_pos = Vector3f{x: 50.0, y: 25.0, z: z};
                                             PostureModule::set_pos(boss_boma, &module_pos);
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_ELECTROSHOCK_START, true);
                                         }
@@ -2972,7 +2972,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
                             CONTROLLABLE_2 = false;
                             let z = PostureModule::pos_z(boss_boma_2);
-                            let module_pos = Vector3f{x: -100.0, y: 100.0, z: z};
+                            let module_pos = Vector3f{x: 50.0, y: 25.0, z: z};
                             PostureModule::set_pos(boss_boma_2, &module_pos);
                             StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
                             MotionModule::change_motion(boss_boma_2,Hash40::new("electroshock_start"),0.0,1.0,false,0.0,false,false);
