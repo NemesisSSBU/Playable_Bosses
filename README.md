@@ -38,12 +38,12 @@ Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
 
 [The CSK Collection](https://gamebanana.com/mods/499008)
 
-[Guide ARCropolis Mods using Yuzu/Suyu Emulator] (https://gamebanana.com/tuts/12827)
+[Guide ARCropolis Mods using Yuzu/Suyu Emulator](https://gamebanana.com/tuts/12827)
 
 (FOR NEWEST VERSION, 2.0.0 AND AFTER):
 [SMASHLINE 2.0](https://github.com/HDR-Development/smashline)
 
-(FOR OLDER VERSIONS, BEFORE OR EQUAL TO 1.1.7):
+(FOR OLDER VERSIONS, BEFORE OR EQUAL TO MOD VERSION 1.1.7):
 [ACMD Hook](https://github.com/ultimate-research/acmd_hook/releases)
 ```
 Make sure you have a modded Switch or emulator. Install Atmosphere, Skyline, ACMD, and ARCropolis.
@@ -66,9 +66,9 @@ Go to the requirements section and install ARCropolis, Skyline, NRO Hook, and AC
 ```
 ## Warning
 
-This mod is NOT compatable with a mod that changes the announcers voice of a character since this could create conflicting audio files (edit the audio file that comes with this mod if you have a seperate announcer voice file).
+This mod is NOT compatible with a mod that changes the announcers voice of a character since this could create conflicting audio files (edit the audio file that comes with this mod if you have a seperate announcer voice file).
 
-This mod is NOT compatable in a multiplayer environment unless the other player(s) also have this mod installed.
+This mod is NOT compatible in a multiplayer environment unless the other player(s) also have this mod installed.
 
 We are NOT responsible for what happens to your Nintendo account! Please take precautions!
 
@@ -78,7 +78,7 @@ We are NOT responsible for what happens to your Nintendo account! Please take pr
 - NEVER play this mod in an online environment without someone else using this same exact mod installed along with your other installed mods!
 
 # GameBanana Page
-Checkout the [GameBanana Page](https://gamebanana.com/mods/457095)!
+Check out the [GameBanana Page](https://gamebanana.com/mods/457095)!
 
 # Troubleshooting
 
