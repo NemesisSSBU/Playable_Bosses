@@ -37,7 +37,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
         LookupSymbol(
-            &raw mut FIGHTER_MANAGER_3,
+            &raw mut FIGHTER_MANAGER,
             "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
             .as_bytes()
             .as_ptr(),
@@ -79,7 +79,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
         ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
         LookupSymbol(
-            &raw mut FIGHTER_MANAGER_3,
+            &raw mut FIGHTER_MANAGER_2,
             "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
             .as_bytes()
             .as_ptr(),
@@ -1035,10 +1035,10 @@ const MAX_FILE_SIZE: usize = 0xFFFF;
 
 #[skyline::main(name = "comp_boss")]
  pub fn main() {
-       Agent::new("daisy")
+        Agent::new("peach")
         .on_line(Main, once_per_fighter_frame)
         .install();
-        Agent::new("peach")
+       Agent::new("daisy")
         .on_line(Main, once_per_fighter_frame_2)
         .install();
         Agent::new("szerosuit")
