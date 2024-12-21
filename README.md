@@ -36,7 +36,7 @@ Make sure you have a modded Switch or emulator, atmosphere, and ARCropolis.
 
 [NRO Hook](https://github.com/ultimate-research/nro-hook-plugin/releases)
 
-[The CSK Collection](https://gamebanana.com/mods/499008)
+[The CSK Collection](https://gamebanana.com/mods/499008) (You only need the .nro file)
 
 [Guide ARCropolis Mods using Yuzu/Suyu Emulator](https://gamebanana.com/tuts/12827)
 
