@@ -723,11 +723,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_KIILA_STATUS_KIND_CHANGE_ANGRY {
                             CONTROLLABLE = false;
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) {
-                                CONTROLLABLE = true;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_TELEPORT, true);
-                            }
                         }
+                        if StatusModule::status_kind(boss_boma) == 73 {
+                            CONTROLLABLE = true;
+                        }
+                        // println!("{}", StatusModule::status_kind(boss_boma));
                         if DamageModule::damage(module_accessor, 0) >= 220.0 && !DEAD {
                             if IS_ANGRY == false && !DEAD {
                                 CONTROLLABLE = false;
@@ -780,10 +780,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_TORRENT, true);
                                         }
                                         if RANDOM_ATTACK == 9 {
-                                            CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_CRUSH_DOWN_START, true);
-                                        }
-                                        if RANDOM_ATTACK == 10 {
                                             CONTROLLABLE = false;
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER, true);
                                         }
@@ -956,13 +952,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 CONTROLLABLE = false;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_THREAT_START, true);
                             }
-                            if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_S3 != 0 {
-                                CONTROLLABLE = false;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_TORRENT, true);
-                            }
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_HI) {
                                 CONTROLLABLE = false;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_CRUSH_DOWN_START, true);
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_TORRENT, true);
                             }
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_LW) {
                                 CONTROLLABLE = false;

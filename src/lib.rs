@@ -58,14 +58,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_BG);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_FLASH);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_CHARGE);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_IS_DISCRETION_FINAL_USED);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_INFINITY_SMASH_HOLD);
                     FighterManager::set_visible_finalbg(fighter_manager, false);
-                    DamageModule::heal(module_accessor, -0.01, 0);
                 }
             }
         }
@@ -100,14 +94,8 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_BG);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_FLASH);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_CHARGE);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_IS_DISCRETION_FINAL_USED);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_INFINITY_SMASH_HOLD);
                     FighterManager::set_visible_finalbg(fighter_manager, false);
-                    DamageModule::heal(module_accessor, -0.01, 0);
                 }
             }
         }
@@ -133,14 +121,8 @@ extern "C" fn once_per_fighter_frame_3(fighter: &mut L2CFighterCommon) {
                     WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_BG);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_EFFECT_SCREEN_NO_FINAL_FLASH);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_CHARGE);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_IS_DISCRETION_FINAL_USED);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_INFINITY_SMASH_HOLD);
                     FighterManager::set_visible_finalbg(fighter_manager, false);
-                    DamageModule::heal(module_accessor, -0.01, 0);
                 }
             }
         }
@@ -1035,10 +1017,10 @@ const MAX_FILE_SIZE: usize = 0xFFFF;
 
 #[skyline::main(name = "comp_boss")]
  pub fn main() {
-        Agent::new("peach")
+       Agent::new("daisy")
         .on_line(Main, once_per_fighter_frame)
         .install();
-       Agent::new("daisy")
+        Agent::new("peach")
         .on_line(Main, once_per_fighter_frame_2)
         .install();
         Agent::new("szerosuit")

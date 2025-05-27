@@ -1117,17 +1117,17 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let pos = Vector3f{x: CONTROLLER_X, y: CONTROLLER_Y, z: 0.0};
                             PostureModule::add_pos(boss_boma, &pos);
                         }
+                        if StatusModule::status_kind(boss_boma) == 68 {
+                            CONTROLLABLE = true;
+                        }
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_TEAR_UP {
                             if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 10.0 {
                                 CONTROLLABLE = true;
                             }
                         }
+                        // println!("{}", StatusModule::status_kind(boss_boma));
                         if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_CHANGE_ANGRY {
                             CONTROLLABLE = false;
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) {
-                                CONTROLLABLE = true;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_DARZ_STATUS_KIND_TELEPORT, true);
-                            }
                         }
                         if CONTROLLABLE == true && FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false && !DEAD {
                             //Boss Control Stick Movement
@@ -1230,11 +1230,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_LW) {
                                 CONTROLLABLE = false;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_DARZ_STATUS_KIND_TORRENT, true);
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_DARZ_STATUS_KIND_SUMMON_FIGHTER, true);
                             }
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_S_R) {
                                 CONTROLLABLE = false;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_DARZ_STATUS_KIND_SUMMON_FIGHTER, true);
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_DARZ_STATUS_KIND_TORRENT, true);
                             }
                         }
                     }
