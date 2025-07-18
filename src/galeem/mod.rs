@@ -96,7 +96,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             );
             let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
             let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let name_base = text + 0x52c5758;
+            let name_base = text + 0x52c4758;
+            println!("{}", hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e)));
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
             if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("GALEEM")
             || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("キーラ")
@@ -227,7 +228,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() && !ItemModule::is_have_item(module_accessor, 0) && ModelModule::scale(module_accessor) != 0.0001
                     || smash::app::smashball::is_training_mode() && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_FALL, true);
-
                         DEAD = false;
                         CONTROLLABLE = true;
                         JUMP_START = false;
