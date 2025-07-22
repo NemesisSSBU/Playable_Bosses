@@ -1,6 +1,7 @@
 use smash::lib::lua_const::*;
 use smash::app::lua_bind::*;
 use smash::lua2cpp::L2CFighterCommon;
+use smash::phx::Vector3f;
 use skyline::nn::ro::LookupSymbol;
 use smash::app::sv_information;
 use smash::app::FighterUtil;
@@ -12,6 +13,8 @@ static mut ENTRY_ID : usize = 0;
 pub static mut FIGHTER_MANAGER: usize = 0;
 static mut DECREASING : bool = false;
 static mut INITIAL_STOCK_COUNT : u64 = 0;
+
+use crate::config;
 
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
@@ -42,11 +45,24 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     DamageModule::set_reaction_mul_2nd(module_accessor, 0.0);
                     DamageModule::set_reaction_mul_4th(module_accessor, 0.0);
                 }
-                if smash::app::smashball::is_training_mode() == false {
-                    if DamageModule::damage(module_accessor, 0) >= 600.0 && FighterUtil::is_hp_mode(module_accessor) == false
-                    && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
-                        StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
-                    }
+                let cfg = config::load_config();
+                let hp = cfg.options.giga_bowser_hp.unwrap_or(600.0);
+                if !smash::app::smashball::is_training_mode()
+                && DamageModule::damage(module_accessor, 0) >= hp && FighterUtil::is_hp_mode(module_accessor) == false
+                && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD
+                && !STOP {
+                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
+                }
+                if !smash::app::smashball::is_training_mode()
+                && DamageModule::damage(module_accessor, 0) >= hp && FighterUtil::is_hp_mode(module_accessor) == false
+                && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY
+                && STOP {
+                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
+                    let x = 0.0;
+                    let y = 0.0;
+                    let z = 0.0;
+                    let module_pos = Vector3f{x: x, y: y, z: z};
+                    PostureModule::set_pos(module_accessor, &module_pos);
                 }
                 // DECREASING FOR STAMINA MODE
                 if StatusModule::status_kind(module_accessor) == 470 || StatusModule::status_kind(module_accessor) == 181 {
@@ -66,7 +82,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
                 }
-                if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD && smash::app::smashball::is_training_mode() == false {
+                if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD
+                && smash::app::smashball::is_training_mode() == false {
                     DEAD = true;
                 }
                 if smash::app::smashball::is_training_mode() == false {

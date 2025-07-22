@@ -15,6 +15,7 @@ use smash::app::utility::get_category;
 use smash::phx::Hash40;
 use smashline::{Agent, Main};
 
+use crate::config;
 use crate::galeem;
 
 static mut CONTROLLABLE : bool = true;
@@ -96,7 +97,19 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             );
             let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
             let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let name_base = text + 0x52c4758;
+            let cfg = config::load_config();
+            let game_version = cfg.options.game_version.as_deref().unwrap_or("13.0.4");
+            let mut offset_value = 0x52c4758;
+            if game_version == "13.0.4" {
+                offset_value = 0x52c4758;
+            }
+            else if game_version == "13.0.3" {
+                offset_value = 0x52c5758;
+            }
+            else if game_version == "13.0.2" {
+                offset_value = 0x52c3758;
+            }
+            let name_base = text + offset_value;
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
             if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("DHARKON")
             || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("ダーズ")
@@ -151,12 +164,14 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if MotionModule::frame(module_accessor) >= 5.0 && ModelModule::scale(module_accessor) != 0.0001 {
                                 EXISTS_PUBLIC = true;
                                 RESULT_SPAWNED = false;
+                                let cfg = config::load_config();
+                                let get_boss_intensity = cfg.options.boss_difficulty.unwrap_or(10.0);
                                 ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
                                 ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
                                 SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                                 BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                                WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                                WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                                 WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
                                 ModelModule::set_scale(module_accessor, 0.0001);
                                 if galeem::check_status() {
@@ -214,12 +229,14 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         ModelModule::set_scale(hidden_cpu_boma, 0.0001);
                         EXISTS_PUBLIC = true;
                         RESULT_SPAWNED = false;
+                        let cfg = config::load_config();
+                        let get_boss_intensity = cfg.options.boss_difficulty.unwrap_or(10.0);
                         ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
                         ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
                         SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                         BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                        WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                        WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                         WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
                         ModelModule::set_scale(module_accessor, 0.0001);
                         StatusModule::change_status_request_from_script(boss_boma, *ITEM_DARZ_STATUS_KIND_TELEPORT, true);
@@ -251,7 +268,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if sv_information::is_ready_go() == true {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_DOWN_LOOP {
-                                StatusModule::change_status_request_from_script(boss_boma,*ITEM_DARZ_STATUS_KIND_DOWN_END,true);
+                                let cfg = config::load_config();
+                                let stunned = !cfg.options.full_stun_duration.unwrap_or(false);
+                                if stunned {
+                                    StatusModule::change_status_request_from_script(boss_boma,*ITEM_DARZ_STATUS_KIND_DOWN_END,true);
+                                }
                                 CONTROLLABLE = false;
                             }
                         }
@@ -304,7 +325,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                            WorkModule::set_float(boss_boma, 10.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                            let cfg = config::load_config();
+                            let get_boss_intensity = cfg.options.boss_difficulty.unwrap_or(10.0);
+                            WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                             WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
                             WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
@@ -554,7 +577,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if sv_information::is_ready_go() == true {
                             if FighterUtil::is_hp_mode(module_accessor) == false {
-                                if DamageModule::damage(module_accessor, 0) >= 400.0 {
+                                let cfg = config::load_config();
+                                let hp = cfg.options.dharkon_hp.unwrap_or(400.0);
+                                if DamageModule::damage(module_accessor, 0) >= hp {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         DEAD = true;
@@ -685,8 +710,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                         }
-
-                        if DamageModule::damage(module_accessor, 0) >= 220.0 && !DEAD {
+                        let cfg = config::load_config();
+                        let rage_hp = cfg.options.dharkon_rage_hp.unwrap_or(220.0);
+                        if DamageModule::damage(module_accessor, 0) >= rage_hp && !DEAD {
                             if IS_ANGRY == false {
                                 CONTROLLABLE = false;
                                 IS_ANGRY = true;
@@ -1124,10 +1150,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 CONTROLLABLE = true;
                             }
                         }
-                        println!("{}", StatusModule::status_kind(boss_boma));
-                        if StatusModule::status_kind(boss_boma) == *ITEM_DARZ_STATUS_KIND_CHANGE_ANGRY {
-                            CONTROLLABLE = false;
-                        }
+                        // println!("{}", StatusModule::status_kind(boss_boma));
                         if CONTROLLABLE == true && FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false && !DEAD {
                             //Boss Control Stick Movement
 
