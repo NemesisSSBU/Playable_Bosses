@@ -1,6 +1,6 @@
 [package]
 name = "comp_boss"
-version = "2.0.6"
+version = "2.0.8"
 authors = ["GamerSubzero <GamerSubzero@gmail.com>, NemesisSSBU <PepeIsNoice@gmail.com>, ClaudeRiegan <supermariomasterbro@gmail.com>, jam1garner <jam1.mcleod@hotmail.com>"]
 edition = "2021"
 
@@ -14,10 +14,11 @@ crate-type = ["cdylib"]
 skyline = { git = "https://github.com/ultimate-research/skyline-rs.git" }
 skyline_smash = { git = "https://github.com/ultimate-research/skyline-smash.git" }
 smashline = { git = "https://github.com/HDR-Development/smashline" }
-serde = { version = "1.0.216", features = ["derive"] }
+serde = { version = "1.0.213", features = ["derive"] }
 parking_lot = "0.12.3"
 toml = "0.8.19"
 lazy_static = "1.5.0"
+once_cell = "1.21.3"
 smash_script = { git = "https://github.com/blu-dev/smash-script.git" }
 arcropolis-api = { git = "https://github.com/Raytwo/arcropolis_api" }
 prc-rs = { git = "https://github.com/ultimate-research/prc-rs", features = ["indexmap-std"] }
