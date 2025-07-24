@@ -6,6 +6,8 @@ use skyline::nn::ro::LookupSymbol;
 use smash::app::sv_information;
 use smash::app::FighterUtil;
 use smashline::{Agent, Main};
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
 
 static mut DEAD : bool = false;
 static mut STOP : bool = false;
@@ -14,7 +16,11 @@ pub static mut FIGHTER_MANAGER: usize = 0;
 static mut DECREASING : bool = false;
 static mut INITIAL_STOCK_COUNT : u64 = 0;
 
-use crate::config;
+use crate::config::{Config, load_config};
+
+pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
+    RwLock::new(load_config())
+});
 
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
@@ -45,24 +51,25 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     DamageModule::set_reaction_mul_2nd(module_accessor, 0.0);
                     DamageModule::set_reaction_mul_4th(module_accessor, 0.0);
                 }
-                let cfg = config::load_config();
-                let hp = cfg.options.giga_bowser_hp.unwrap_or(600.0);
+                
+                let hp = CONFIG.read().options.giga_bowser_hp.unwrap_or(600.0);
                 if !smash::app::smashball::is_training_mode()
                 && DamageModule::damage(module_accessor, 0) >= hp && FighterUtil::is_hp_mode(module_accessor) == false
                 && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD
-                && !STOP {
+                && !STOP
+                && !CONFIG.read().options.boss_respawn.unwrap_or(false) {
                     StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
                 }
                 if !smash::app::smashball::is_training_mode()
                 && DamageModule::damage(module_accessor, 0) >= hp && FighterUtil::is_hp_mode(module_accessor) == false
                 && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY
                 && STOP {
-                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
                     let x = 0.0;
                     let y = 0.0;
                     let z = 0.0;
                     let module_pos = Vector3f{x: x, y: y, z: z};
                     PostureModule::set_pos(module_accessor, &module_pos);
+                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
                 }
                 // DECREASING FOR STAMINA MODE
                 if StatusModule::status_kind(module_accessor) == 470 || StatusModule::status_kind(module_accessor) == 181 {
@@ -86,9 +93,13 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 && smash::app::smashball::is_training_mode() == false {
                     DEAD = true;
                 }
-                if smash::app::smashball::is_training_mode() == false {
+                if smash::app::smashball::is_training_mode() == false || CONFIG.read().options.boss_respawn.unwrap_or(false) {
                     if DEAD == true {
-                        if STOP == false {
+                        if STOP == false && CONFIG.read().options.boss_respawn.unwrap_or(false) {
+                            StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD, true);
+                            STOP = true;
+                        }
+                        if STOP == false && !CONFIG.read().options.boss_respawn.unwrap_or(false) {
                             if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0
                             && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
                                 StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);

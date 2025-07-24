@@ -1,5 +1,7 @@
 #![feature(concat_idents)]
 #![feature(proc_macro_hygiene)]
+#[macro_use]
+extern crate lazy_static;
 
 use prc::*;
 use prc::hash40::Hash40;
@@ -21,6 +23,12 @@ mod galleom;
 mod ganon;
 mod gigabowser;
 mod config;
+
+use crate::config::{Config, load_config};
+
+lazy_static! {
+    pub static ref CONFIG: Config = load_config();
+}
 
 static mut ENTRY_ID : usize = 0;
 pub static mut FIGHTER_MANAGER: usize = 0;
@@ -214,8 +222,6 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 
     // now we have Koopags's data, we can convert to a dictionary to gain faster access
     // to arbitrary keys, but since we only want to change 1 param, we'll just iterate
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -229,7 +235,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_koopa");
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 15;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -269,8 +275,6 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_chara_masterhand")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -281,7 +285,7 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 118;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -324,8 +328,6 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_chara_crazyhand")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -336,7 +338,7 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 119;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -379,8 +381,6 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_chara_darz")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -391,7 +391,7 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 120;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -434,8 +434,6 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_chara_kiila")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -446,7 +444,7 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 121;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -489,8 +487,6 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_chara_marx")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -501,7 +497,7 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 122;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -544,8 +540,6 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_chara_ganonboss")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -556,7 +550,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 123;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -599,8 +593,6 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_chara_dracula")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -611,7 +603,7 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 124;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -654,8 +646,6 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_chara_galleom")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -666,7 +656,7 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 125;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -709,8 +699,6 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_chara_lioleus")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -721,7 +709,7 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 126;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -764,8 +752,6 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_chara_mewtwo_masterhand")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.custom_css.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -776,7 +762,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 127;
         }
         if *hash == to_hash40("skill_list_order") {
@@ -819,10 +805,8 @@ fn callback_map_1(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_stage_boss_final2")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.no_final_boss_stages.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
@@ -854,10 +838,8 @@ fn callback_map_2(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_stage_boss_final3")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.no_final_boss_stages.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
@@ -889,10 +871,8 @@ fn callback_map_3(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_stage_boss_ganon")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.no_boss_stages.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
@@ -924,10 +904,8 @@ fn callback_map_4(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_stage_boss_rathalos")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.no_boss_stages.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
@@ -959,10 +937,8 @@ fn callback_map_5(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_stage_boss_marx")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.no_boss_stages.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
@@ -994,10 +970,8 @@ fn callback_map_6(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_stage_boss_galleom")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.no_boss_stages.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
@@ -1029,10 +1003,8 @@ fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
         *ui_chara_hash == to_hash40("ui_stage_boss_dracula")
     }).unwrap().try_into_mut::<ParamStruct>().unwrap();
-    let cfg = config::load_config();
-    let use_disp_order = !cfg.options.no_boss_stages.unwrap_or(false);
     charroot.0.iter_mut().for_each(|(hash, param)| {
-        if *hash == to_hash40("disp_order") && use_disp_order {
+        if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("is_usable") {
@@ -1054,8 +1026,22 @@ const MAX_FILE_SIZE: usize = 0xFFFF;
 
 #[skyline::main(name = "comp_boss")]
  pub fn main() {
-       let cfg = config::load_config();
-       let giga_bowser_normal = !cfg.options.giga_bowser_normal.unwrap_or(false);
+       let giga_bowser_normal = !CONFIG.options.giga_bowser_normal.unwrap_or(false);
+       let use_disp_order_char = !CONFIG.options.custom_css.unwrap_or(false);
+       let use_disp_order_final_boss_stages = !CONFIG.options.no_final_boss_stages.unwrap_or(false);
+       let use_disp_order_boss_stages = !CONFIG.options.no_boss_stages.unwrap_or(false);
+
+       let master_hand_css = CONFIG.options.master_hand_css.unwrap_or(true);
+       let crazy_hand_css = CONFIG.options.crazy_hand_css.unwrap_or(true);
+       let dharkon_css = CONFIG.options.dharkon_css.unwrap_or(true);
+       let galeem_css = CONFIG.options.galeem_css.unwrap_or(true);
+       let marx_css = CONFIG.options.marx_css.unwrap_or(true);
+       let giga_bowser_css = CONFIG.options.giga_bowser_css.unwrap_or(true);
+       let ganon_css = CONFIG.options.ganon_css.unwrap_or(true);
+       let dracula_css = CONFIG.options.dracula_css.unwrap_or(true);
+       let rathalos_css = CONFIG.options.rathalos_css.unwrap_or(true);
+       let galleom_css = CONFIG.options.galleom_css.unwrap_or(true);
+       let wol_master_hand_css = CONFIG.options.wol_master_hand_css.unwrap_or(true);
        Agent::new("daisy")
         .on_line(Main, once_per_fighter_frame)
         .install();
@@ -1077,22 +1063,53 @@ const MAX_FILE_SIZE: usize = 0xFFFF;
        if giga_bowser_normal {
         gigabowser::install();
        }
-       callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_dharkon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_galeem::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_dracula::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_marx::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_ganon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-       callback_map_1::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-       callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+        // character database callbacks
+        if use_disp_order_char {
+            if giga_bowser_css {
+                callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+
+            if master_hand_css {
+                callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+            if crazy_hand_css {
+                callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+            if dharkon_css {
+                callback_dharkon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+            if galeem_css {
+                callback_galeem::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+            if dracula_css {
+                callback_dracula::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+            if marx_css {
+                callback_marx::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+            if ganon_css {
+                callback_ganon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+            if galleom_css {
+                callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+            if rathalos_css {
+                callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+            if wol_master_hand_css {
+                callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+            }
+        }
+       if use_disp_order_final_boss_stages {
+        callback_map_1::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+        callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       }
+       if use_disp_order_boss_stages {
        callback_map_3::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
        callback_map_4::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
        callback_map_5::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
        callback_map_6::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
        callback_map_7::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+       }
+
     }

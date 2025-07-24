@@ -23,8 +23,44 @@ pub struct Options {
     #[serde(rename = "NO_FINAL_BOSS_STAGES")]
     pub no_final_boss_stages: Option<bool>,
 
+    #[serde(rename = "BOSS_RESPAWN")]
+    pub boss_respawn: Option<bool>,
+
     #[serde(rename = "BOSS_DIFFICULTY")]
     pub boss_difficulty: Option<f32>,
+
+    #[serde(rename = "MASTER_HAND_CSS")]
+    pub master_hand_css: Option<bool>,
+
+    #[serde(rename = "CRAZY_HAND_CSS")]
+    pub crazy_hand_css: Option<bool>,
+
+    #[serde(rename = "DHARKON_CSS")]
+    pub dharkon_css: Option<bool>,
+
+    #[serde(rename = "GALEEM_CSS")]
+    pub galeem_css: Option<bool>,
+
+    #[serde(rename = "MARX_CSS")]
+    pub marx_css: Option<bool>,
+
+    #[serde(rename = "GIGA_BOWSER_CSS")]
+    pub giga_bowser_css: Option<bool>,
+
+    #[serde(rename = "GANON_CSS")]
+    pub ganon_css: Option<bool>,
+
+    #[serde(rename = "DRACULA_CSS")]
+    pub dracula_css: Option<bool>,
+
+    #[serde(rename = "RATHALOS_CSS")]
+    pub rathalos_css: Option<bool>,
+
+    #[serde(rename = "GALLEOM_CSS")]
+    pub galleom_css: Option<bool>,
+
+    #[serde(rename = "WOL_MASTER_HAND_CSS")]
+    pub wol_master_hand_css: Option<bool>,
 
     #[serde(rename = "MASTER_HAND_HP")]
     pub master_hand_hp: Option<f32>,
@@ -78,42 +114,28 @@ pub struct Config {
 }
 
 pub fn load_config() -> Config {
-    let default = Config {
-        options: Options {
-            game_version: Some("13.0.4".to_string()),
-            full_stun_duration: Some(false),
-            giga_bowser_normal: Some(false),
-            custom_css: Some(false),
-            no_boss_stages: Some(false),
-            no_final_boss_stages: Some(false),
-            boss_difficulty: Some(10.0),
-            master_hand_hp: Some(400.0),
-            crazy_hand_hp: Some(400.0),
-            dharkon_hp: Some(400.0),
-            galeem_hp: Some(400.0),
-            marx_hp: Some(400.0),
-            giga_bowser_hp: Some(600.0),
-            ganon_hp: Some(600.0),
-            dracula_phase_1_hp: Some(160.0),
-            dracula_phase_2_hp: Some(500.0),
-            rathalos_hp: Some(600.0),
-            galleom_hp: Some(700.0),
-            wol_master_hand_hp: Some(400.0),
-            dharkon_rage_hp: Some(220.0),
-            galeem_rage_hp: Some(220.0),
-            galleom_rage_hp: Some(220.0),
-        },
-    };
-
     let path = "sd:/ultimate/mods/Bosses/config.toml";
 
     match fs::read_to_string(path) {
-        Ok(contents) => toml::from_str(&contents).unwrap_or(default),
+        Ok(contents) => toml::from_str(&contents).unwrap_or_else(|e| {
+            show_error(
+                0x02,
+                "Failed to parse config.toml",
+                &format!(
+                    "TOML parse error: {}\nCheck formatting at:\nsd:/ultimate/mods/Bosses/config.toml",
+                    e
+                ),
+            );
+            exit(0);
+        }),
         Err(e) => {
             show_error(
                 0x01,
                 "Missing or unreadable config.toml for Competitive Playable Bosses",
-                &format!("Error: {}\nExpected at:\nsd:/ultimate/mods/Bosses/config.toml", e),
+                &format!(
+                    "Error: {}\nExpected at:\nsd:/ultimate/mods/Bosses/config.toml",
+                    e
+                ),
             );
             exit(0);
         }

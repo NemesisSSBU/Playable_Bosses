@@ -14,8 +14,8 @@ use smash::hash40;
 use smash::app::utility::get_category;
 use smash::phx::Hash40;
 use smashline::{Agent, Main};
-
-use crate::config;
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
 
 // Global
 static mut BARK : bool = false;
@@ -72,6 +72,12 @@ static mut CRAZY_EXISTS : bool = false;
 static mut EXISTS_PUBLIC_2 : bool = false;
 static mut Y_POS_2: f32 = 0.0;
 static mut CRAZY_TEAM : u64 = 98;
+
+use crate::config::{Config, load_config};
+
+pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
+    RwLock::new(load_config())
+});
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -143,18 +149,17 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             );
             let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
             let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let cfg = config::load_config();
-            let game_version = cfg.options.game_version.as_deref().unwrap_or("13.0.4");
-            let mut offset_value = 0x52c4758;
+            let game_version: String = CONFIG.read().options.game_version.clone().unwrap_or_else(|| "13.0.4".to_string());
+            let offset_value =
             if game_version == "13.0.4" {
-                offset_value = 0x52c4758;
-            }
-            else if game_version == "13.0.3" {
-                offset_value = 0x52c5758;
-            }
-            else if game_version == "13.0.2" {
-                offset_value = 0x52c3758;
-            }
+                0x52c4758
+            } else if game_version == "13.0.3" {
+                0x52c5758
+            } else if game_version == "13.0.2" {
+                0x52c3758
+            } else {
+                0x52c4758
+            };
             let name_base = text + offset_value;
             // println!("{}", FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))));
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
@@ -205,10 +210,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         CONTROLLER_Y_MASTER = 0.0;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-                        let cfg = config::load_config();
-                        let get_boss_intensity = cfg.options.boss_difficulty.unwrap_or(10.0);
+                        let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(10.0);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if ModelModule::scale(module_accessor) != 0.0001 {
+                            let mut cfg = CONFIG.write();
+                            *cfg = load_config();
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             RESULT_SPAWNED_2 = false;
@@ -233,14 +239,16 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if !smash::app::smashball::is_training_mode()
                     && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH
                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD
-                    && !STOP {
+                    && !STOP
+                    && !CONFIG.read().options.boss_respawn.unwrap_or(false) {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD, true);
                     }
                     if !smash::app::smashball::is_training_mode()
                     && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH
                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY
                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD
-                    && STOP {
+                    && STOP
+                    && !CONFIG.read().options.boss_respawn.unwrap_or(false) {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
                         let x = 0.0;
                         let y = 0.0;
@@ -251,8 +259,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     // Respawn in case of Squad Strike or Specific Circumstances
 
-                    if sv_information::is_ready_go() && !ItemModule::is_have_item(module_accessor, 0) && ModelModule::scale(module_accessor) != 0.0001
-                    || smash::app::smashball::is_training_mode() && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
+                    if sv_information::is_ready_go()
+                    && !ItemModule::is_have_item(module_accessor, 0)
+                    && ModelModule::scale(module_accessor) != 0.0001
+                    || smash::app::smashball::is_training_mode()
+                    || CONFIG.read().options.boss_respawn.unwrap_or(false)
+                    && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_FALL, true);
                         
                         DEAD = false;
@@ -272,8 +284,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         MASTER_TEAM = TeamModule::team_no(module_accessor);
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-                        let cfg = config::load_config();
-                        let get_boss_intensity = cfg.options.boss_difficulty.unwrap_or(1.0);
+                        let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(1.0);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         EXISTS_PUBLIC = true;
                         RESULT_SPAWNED = false;
@@ -434,12 +445,17 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == true {
                         if DEAD == true {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                            MASTER_EXISTS = false;
                             if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD
                             || StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD
                             && MotionModule::frame(boss_boma) > 250.0 {
                                 HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
                                 HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
-                                if STOP == false {
+                                if STOP == false && CONFIG.read().options.boss_respawn.unwrap_or(false) {
+                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD, true);
+                                    STOP = true;
+                                }
+                                if STOP == false && !CONFIG.read().options.boss_respawn.unwrap_or(false) {
                                     if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) != 0
                                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
                                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD, true);
@@ -450,7 +466,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_knockout_reaction"), 0);
                                         SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_knockout_slow_frame"), 0);
                                         SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_knockout_slow_mag"), 0);
-                                        MASTER_EXISTS = false;
                                     }
                                     if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == 0
                                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
@@ -463,7 +478,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_knockout_slow_frame"), 0);
                                         SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_knockout_slow_mag"), 0);
                                         STOP = true;
-                                        MASTER_EXISTS = false;
                                     }
                                 }
                             }
@@ -830,8 +844,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if sv_information::is_ready_go() == true {
                         if FighterUtil::is_hp_mode(module_accessor) == false {
-                            let cfg = config::load_config();
-                            let hp = cfg.options.master_hand_hp.unwrap_or(400.0);
+                            let hp = CONFIG.read().options.master_hand_hp.unwrap_or(400.0);
                             if DamageModule::damage(module_accessor, 0) >= hp { // HEALTH
                                 if DEAD == false {
                                     CONTROLLABLE = false;
@@ -910,8 +923,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_LOOP && !DEAD {
                             MotionModule::set_rate(boss_boma, 1.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
-                            let cfg = config::load_config();
-                            let stunned = !cfg.options.full_stun_duration.unwrap_or(false);
+                            let stunned = !CONFIG.read().options.full_stun_duration.unwrap_or(false);
                             if stunned {
                                 StatusModule::change_status_request_from_script(boss_boma,*ITEM_MASTERHAND_STATUS_KIND_DOWN_END,true);
                             }
@@ -2304,18 +2316,17 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
             );
             let fighter_manager = *(FIGHTER_MANAGER_2 as *mut *mut smash::app::FighterManager);
             let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let cfg = config::load_config();
-            let game_version = cfg.options.game_version.as_deref().unwrap_or("13.0.4");
-            let mut offset_value = 0x52c4758;
+            let game_version: String = CONFIG.read().options.game_version.clone().unwrap_or_else(|| "13.0.4".to_string());
+            let offset_value =
             if game_version == "13.0.4" {
-                offset_value = 0x52c4758;
-            }
-            else if game_version == "13.0.3" {
-                offset_value = 0x52c5758;
-            }
-            else if game_version == "13.0.2" {
-                offset_value = 0x52c3758;
-            }
+                0x52c4758
+            } else if game_version == "13.0.3" {
+                0x52c5758
+            } else if game_version == "13.0.2" {
+                0x52c3758
+            } else {
+                0x52c4758
+            };
             let name_base = text + offset_value;
             FIGHTER_NAME_2[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
             if FIGHTER_NAME_2[get_player_number(module_accessor)] == hash40("CRAZY HAND")
@@ -2363,10 +2374,11 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         CONTROLLER_Y_CRAZY = 0.0;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-                        let cfg = config::load_config();
-                        let get_boss_intensity = cfg.options.boss_difficulty.unwrap_or(10.0);
+                        let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(10.0);
                         ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if ModelModule::scale(module_accessor) != 0.0001 {
+                            let mut cfg = CONFIG.write();
+                            *cfg = load_config();
                             EXISTS_PUBLIC_2 = true;
                             RESULT_SPAWNED = false;
                             RESULT_SPAWNED_2 = false;
@@ -2391,14 +2403,16 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     if !smash::app::smashball::is_training_mode()
                     && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH
                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD
-                    && !STOP_2 {
+                    && !STOP_2
+                    && !CONFIG.read().options.boss_respawn.unwrap_or(false) {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD, true);
                     }
                     if !smash::app::smashball::is_training_mode()
                     && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH
                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY
                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD
-                    && STOP_2 {
+                    && STOP_2
+                    && !CONFIG.read().options.boss_respawn.unwrap_or(false) {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
                         let x = 0.0;
                         let y = 0.0;
@@ -2410,7 +2424,9 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     // Respawn in case of Squad Strike or Specific Circumstances
 
                     if sv_information::is_ready_go() && !ItemModule::is_have_item(module_accessor, 0) && ModelModule::scale(module_accessor) != 0.0001
-                    || smash::app::smashball::is_training_mode() && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
+                    || smash::app::smashball::is_training_mode()
+                    || CONFIG.read().options.boss_respawn.unwrap_or(false)
+                    && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_FALL, true);
                         
                         DEAD_2 = false;
@@ -2430,8 +2446,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         CRAZY_TEAM = TeamModule::team_no(module_accessor);
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-                        let cfg = config::load_config();
-                        let get_boss_intensity = cfg.options.boss_difficulty.unwrap_or(10.0);
+                        let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(10.0);
                         ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         EXISTS_PUBLIC_2 = true;
                         RESULT_SPAWNED = false;
@@ -2575,7 +2590,11 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             && MotionModule::frame(boss_boma_2) > 250.0 {
                                 HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
                                 HitModule::set_whole(boss_boma_2, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
-                                if STOP_2 == false {
+                                if STOP_2 == false && CONFIG.read().options.boss_respawn.unwrap_or(false) {
+                                    StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD, true);
+                                    STOP_2 = true;
+                                }
+                                if STOP_2 == false && !CONFIG.read().options.boss_respawn.unwrap_or(false) {
                                     if FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID_2 as i32))) != 0
                                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
                                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD,true);
@@ -2769,8 +2788,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
 
                     if sv_information::is_ready_go() == true {
                         if FighterUtil::is_hp_mode(module_accessor) == false {
-                            let cfg = config::load_config();
-                            let hp = cfg.options.crazy_hand_hp.unwrap_or(400.0);
+                            let hp = CONFIG.read().options.crazy_hand_hp.unwrap_or(400.0);
                             if DamageModule::damage(module_accessor, 0) >= hp { // HEALTH
                                 if DEAD_2 == false {
                                     CONTROLLABLE_2 = false;
@@ -3126,8 +3144,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_DOWN_LOOP {
                             MotionModule::set_rate(boss_boma_2, 1.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.0);
-                            let cfg = config::load_config();
-                            let stunned = !cfg.options.full_stun_duration.unwrap_or(false);
+                            let stunned = !CONFIG.read().options.full_stun_duration.unwrap_or(false);
                             if stunned {
                                 StatusModule::change_status_request_from_script(boss_boma_2,*ITEM_CRAZYHAND_STATUS_KIND_DOWN_END,true);
                             }
