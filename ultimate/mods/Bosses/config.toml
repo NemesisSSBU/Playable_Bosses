@@ -1,5 +1,4 @@
 [options]
-GAME_VERSION = "13.0.4"
 FULL_STUN_DURATION = false
 GIGA_BOWSER_NORMAL = false
 CUSTOM_CSS = false
