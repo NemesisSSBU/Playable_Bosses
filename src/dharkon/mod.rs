@@ -16,6 +16,7 @@ use smash::phx::Hash40;
 use smashline::{Agent, Main};
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
+use skyline::nn::oe::{Initialize, GetDisplayVersion, DisplayVersion};
 
 use crate::galeem;
 
@@ -38,6 +39,35 @@ static mut CONTROL_SPEED_MUL_2: f32 = 0.05;
 static mut HIDDEN_CPU : [u32; 8] = [0; 8];
 
 use crate::config::{Config, load_config};
+
+pub static TITLE_VERSION: Lazy<(u16, u16, u16)> = Lazy::new(|| {
+    unsafe {
+        Initialize();
+        let mut display_version = std::mem::MaybeUninit::<DisplayVersion>::uninit();
+        GetDisplayVersion(display_version.as_mut_ptr());
+        let version = display_version.assume_init();
+        let name = std::str::from_utf8(&version.name)
+            .unwrap_or_default()
+            .trim_end_matches(char::from(0))
+            .to_string();
+        let mut parts = name.split('.').filter_map(|s| s.parse::<u16>().ok());
+        let major = parts.next().unwrap_or(0);
+        let minor = parts.next().unwrap_or(0);
+        let micro = parts.next().unwrap_or(0);
+        (major, minor, micro)
+    }
+});
+
+pub unsafe fn get_version_offset() -> u64 {
+    let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
+    let offset = match *TITLE_VERSION {
+        (13, 0, 4) => 0x52C4758,
+        (13, 0, 3) => 0x52C5758,
+        (13, 0, 2) => 0x52C3758,
+        _ => 0x52C4758, // fallback
+    };
+    text + offset
+}
 
 pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
     RwLock::new(load_config())
@@ -103,19 +133,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 .as_ptr(),
             );
             let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
-            let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let game_version: String = CONFIG.read().options.game_version.clone().unwrap_or_else(|| "13.0.4".to_string());
-            let offset_value =
-            if game_version == "13.0.4" {
-                0x52c4758
-            } else if game_version == "13.0.3" {
-                0x52c5758
-            } else if game_version == "13.0.2" {
-                0x52c3758
-            } else {
-                0x52c4758
-            };
-            let name_base = text + offset_value;
+            
+            let name_base = get_version_offset();
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
             if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("DHARKON")
             || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("ダーズ")
@@ -160,8 +179,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if smash::app::smashball::is_training_mode() == false {
                             if ModelModule::scale(module_accessor) != 0.0001 && ModelModule::scale(module_accessor) != 0.0002 {
-                                let mut cfg = CONFIG.write();
-                                *cfg = load_config();
+                                *CONFIG.write() = load_config();
                                 ModelModule::set_scale(module_accessor, 0.0002);
                                 ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
                                 SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);

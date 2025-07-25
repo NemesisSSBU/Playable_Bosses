@@ -63,7 +63,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if !smash::app::smashball::is_training_mode()
                 && DamageModule::damage(module_accessor, 0) >= hp && FighterUtil::is_hp_mode(module_accessor) == false
                 && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY
-                && STOP {
+                && STOP
+                && !CONFIG.read().options.boss_respawn.unwrap_or(false) {
                     let x = 0.0;
                     let y = 0.0;
                     let z = 0.0;
@@ -111,7 +112,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if STOP == true {
-                            if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
+                            if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH && !CONFIG.read().options.boss_respawn.unwrap_or(false) {
                                 StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY,true);
                             }
                         }

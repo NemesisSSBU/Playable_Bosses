@@ -16,6 +16,7 @@ use smash::phx::Hash40;
 use smashline::{Agent, Main};
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
+use skyline::nn::oe::{Initialize, GetDisplayVersion, DisplayVersion};
 
 // Global
 static mut BARK : bool = false;
@@ -74,6 +75,35 @@ static mut Y_POS_2: f32 = 0.0;
 static mut CRAZY_TEAM : u64 = 98;
 
 use crate::config::{Config, load_config};
+
+pub static TITLE_VERSION: Lazy<(u16, u16, u16)> = Lazy::new(|| {
+    unsafe {
+        Initialize();
+        let mut display_version = std::mem::MaybeUninit::<DisplayVersion>::uninit();
+        GetDisplayVersion(display_version.as_mut_ptr());
+        let version = display_version.assume_init();
+        let name = std::str::from_utf8(&version.name)
+            .unwrap_or_default()
+            .trim_end_matches(char::from(0))
+            .to_string();
+        let mut parts = name.split('.').filter_map(|s| s.parse::<u16>().ok());
+        let major = parts.next().unwrap_or(0);
+        let minor = parts.next().unwrap_or(0);
+        let micro = parts.next().unwrap_or(0);
+        (major, minor, micro)
+    }
+});
+
+pub unsafe fn get_version_offset() -> u64 {
+    let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
+    let offset = match *TITLE_VERSION {
+        (13, 0, 4) => 0x52C4758,
+        (13, 0, 3) => 0x52C5758,
+        (13, 0, 2) => 0x52C3758,
+        _ => 0x52C4758, // fallback
+    };
+    text + offset
+}
 
 pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
     RwLock::new(load_config())
@@ -148,19 +178,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 .as_ptr(),
             );
             let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
-            let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let game_version: String = CONFIG.read().options.game_version.clone().unwrap_or_else(|| "13.0.4".to_string());
-            let offset_value =
-            if game_version == "13.0.4" {
-                0x52c4758
-            } else if game_version == "13.0.3" {
-                0x52c5758
-            } else if game_version == "13.0.2" {
-                0x52c3758
-            } else {
-                0x52c4758
-            };
-            let name_base = text + offset_value;
+            
+            let name_base = get_version_offset();
             // println!("{}", FighterInformation::stock_count(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))));
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
             if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("MASTER HAND")
@@ -213,8 +232,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(10.0);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if ModelModule::scale(module_accessor) != 0.0001 {
-                            let mut cfg = CONFIG.write();
-                            *cfg = load_config();
+                            *CONFIG.write() = load_config();
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             RESULT_SPAWNED_2 = false;
@@ -445,6 +463,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == true {
                         if DEAD == true {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                            if STOP == false && CONFIG.read().options.boss_respawn.unwrap_or(false) && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
+                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
+                            }
                             MASTER_EXISTS = false;
                             if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD
                             || StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD
@@ -2315,19 +2336,8 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                 .as_ptr(),
             );
             let fighter_manager = *(FIGHTER_MANAGER_2 as *mut *mut smash::app::FighterManager);
-            let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let game_version: String = CONFIG.read().options.game_version.clone().unwrap_or_else(|| "13.0.4".to_string());
-            let offset_value =
-            if game_version == "13.0.4" {
-                0x52c4758
-            } else if game_version == "13.0.3" {
-                0x52c5758
-            } else if game_version == "13.0.2" {
-                0x52c3758
-            } else {
-                0x52c4758
-            };
-            let name_base = text + offset_value;
+            
+            let name_base = get_version_offset();
             FIGHTER_NAME_2[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
             if FIGHTER_NAME_2[get_player_number(module_accessor)] == hash40("CRAZY HAND")
             || FIGHTER_NAME[get_player_number(module_accessor)] == hash40("クレイジーハンド")
@@ -2377,8 +2387,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(10.0);
                         ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if ModelModule::scale(module_accessor) != 0.0001 {
-                            let mut cfg = CONFIG.write();
-                            *cfg = load_config();
+                            *CONFIG.write() = load_config();
                             EXISTS_PUBLIC_2 = true;
                             RESULT_SPAWNED = false;
                             RESULT_SPAWNED_2 = false;
@@ -2585,6 +2594,9 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == true {
                         if DEAD_2 == true {
                             let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[entry_id(module_accessor)]);
+                            if STOP_2 == false && CONFIG.read().options.boss_respawn.unwrap_or(false) && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
+                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
+                            }
                             if StatusModule::status_kind(boss_boma_2) != *ITEM_STATUS_KIND_DEAD
                             || StatusModule::status_kind(boss_boma_2) == *ITEM_STATUS_KIND_DEAD
                             && MotionModule::frame(boss_boma_2) > 250.0 {

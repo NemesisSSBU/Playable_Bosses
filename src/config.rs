@@ -5,9 +5,6 @@ use skyline::error::show_error;
 
 #[derive(Deserialize, Debug)]
 pub struct Options {
-    #[serde(rename = "GAME_VERSION")]
-    pub game_version: Option<String>,
-
     #[serde(rename = "FULL_STUN_DURATION")]
     pub full_stun_duration: Option<bool>,
 

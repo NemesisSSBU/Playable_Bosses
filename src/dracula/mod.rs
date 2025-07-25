@@ -17,6 +17,7 @@ use smash::phx::Hash40;
 use smashline::{Agent, Main};
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
+use skyline::nn::oe::{Initialize, GetDisplayVersion, DisplayVersion};
 
 static mut CONTROLLABLE : bool = true;
 static mut TELEPORTED : bool = false;
@@ -33,6 +34,35 @@ static mut EXISTS_PUBLIC : bool = false;
 static mut INITIAL_Y_POS: f32 = 0.0;
 
 use crate::config::{Config, load_config};
+
+pub static TITLE_VERSION: Lazy<(u16, u16, u16)> = Lazy::new(|| {
+    unsafe {
+        Initialize();
+        let mut display_version = std::mem::MaybeUninit::<DisplayVersion>::uninit();
+        GetDisplayVersion(display_version.as_mut_ptr());
+        let version = display_version.assume_init();
+        let name = std::str::from_utf8(&version.name)
+            .unwrap_or_default()
+            .trim_end_matches(char::from(0))
+            .to_string();
+        let mut parts = name.split('.').filter_map(|s| s.parse::<u16>().ok());
+        let major = parts.next().unwrap_or(0);
+        let minor = parts.next().unwrap_or(0);
+        let micro = parts.next().unwrap_or(0);
+        (major, minor, micro)
+    }
+});
+
+pub unsafe fn get_version_offset() -> u64 {
+    let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
+    let offset = match *TITLE_VERSION {
+        (13, 0, 4) => 0x52C4758,
+        (13, 0, 3) => 0x52C5758,
+        (13, 0, 2) => 0x52C3758,
+        _ => 0x52C4758, // fallback
+    };
+    text + offset
+}
 
 pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
     RwLock::new(load_config())
@@ -98,19 +128,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 .as_ptr(),
             );
             let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
-            let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-            let game_version: String = CONFIG.read().options.game_version.clone().unwrap_or_else(|| "13.0.4".to_string());
-            let offset_value =
-            if game_version == "13.0.4" {
-                0x52c4758
-            } else if game_version == "13.0.3" {
-                0x52c5758
-            } else if game_version == "13.0.2" {
-                0x52c3758
-            } else {
-                0x52c4758
-            };
-            let name_base = text + offset_value;
+            
+            let name_base = get_version_offset();
             // println!("{}", hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e)));
             FIGHTER_NAME[get_player_number(&mut *fighter.module_accessor)] = hash40(&read_tag(name_base + 0x260 * get_player_number(&mut *fighter.module_accessor) as u64 + 0x8e));
             if FIGHTER_NAME[get_player_number(module_accessor)] == hash40("DRACULA")
@@ -148,8 +167,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if ModelModule::scale(module_accessor) != 0.0001 {
-                            let mut cfg = CONFIG.write();
-                            *cfg = load_config();
+                            *CONFIG.write() = load_config();
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA), 0, 0, false, false);
@@ -674,9 +692,10 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if sv_information::is_ready_go() == true {
                         if DEAD == true {
-                            if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD
-                            || StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD
-                            && MotionModule::frame(boss_boma) > 250.0 {
+                            if STOP == false && CONFIG.read().options.boss_respawn.unwrap_or(false) && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
+                                StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
+                            }
+                            if MotionModule::frame(boss_boma) > 250.0 {
                                 HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                                 HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
