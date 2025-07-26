@@ -4,7 +4,7 @@
 
 *This mod is compatible with WOL*
 
-*Compatible with Version 13.0.4*
+*Compatible with Versions 13.0.4, 13.0.3, 13.0.2*
 
 *Compatible with any gamemode*
 
