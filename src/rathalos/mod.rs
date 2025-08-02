@@ -32,7 +32,7 @@ static mut FRESH_CONTROL : bool = false;
 static mut EXISTS_PUBLIC : bool = false;
 static mut INITIAL_Y_POS: f32 = 0.0;
 
-use crate::config::{Config, load_config};
+use crate::config::{Config, load_config, reload_config};
 
 pub static TITLE_VERSION: Lazy<(u16, u16, u16)> = Lazy::new(|| {
     unsafe {
@@ -169,7 +169,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if ModelModule::scale(module_accessor) != 0.0001 {
-                            *CONFIG.write() = load_config();
+                            reload_config();
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_LIOLEUSBOSS), 0, 0, false, false);
@@ -213,45 +213,45 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     // Respawn in case of Squad Strike or Specific Circumstances
 
-                    if sv_information::is_ready_go() && !ItemModule::is_have_item(module_accessor, 0) && ModelModule::scale(module_accessor) != 0.0001
-                    || smash::app::smashball::is_training_mode()
-                    || CONFIG.read().options.boss_respawn.unwrap_or(false)
+                    if sv_information::is_ready_go() && !ItemModule::is_have_item(module_accessor, 0) && ModelModule::scale(module_accessor) == 0.0001
                     && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
-                        StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_FALL, true);
-
-                        DEAD = false;
-                        CONTROLLABLE = true;
-                        JUMP_START = false;
-                        GROUNDED = true;
-                        STOP = false;
-                        FRESH_CONTROL = false;
-                        let lua_state = fighter.lua_state_agent;
-                        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-                        ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-                        EXISTS_PUBLIC = true;
-                        RESULT_SPAWNED = false;
-                        ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_LIOLEUSBOSS), 0, 0, false, false);
-                        SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
-                        BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
-                        let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
-                        
-                        let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(10.0);
-                        WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
-                        WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                        WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
-                        WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
-                        WorkModule::set_float(boss_boma, 9999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
-                        WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-                        ModelModule::set_scale(module_accessor, 0.0001);
-                        StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
-
-                        let x = PostureModule::pos_x(module_accessor);
-                        let y = INITIAL_Y_POS;
-                        let z = PostureModule::pos_z(module_accessor);
-                        let module_pos = Vector3f{x: x, y: y, z: z};
-                        PostureModule::set_pos(boss_boma, &module_pos);
-                        if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
+                        if smash::app::smashball::is_training_mode() || CONFIG.read().options.boss_respawn.unwrap_or(false) {
+                            StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_FALL, true);
+                            reload_config();
+                            DEAD = false;
                             CONTROLLABLE = true;
+                            JUMP_START = false;
+                            GROUNDED = true;
+                            STOP = false;
+                            FRESH_CONTROL = false;
+                            let lua_state = fighter.lua_state_agent;
+                            let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+                            ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+                            EXISTS_PUBLIC = true;
+                            RESULT_SPAWNED = false;
+                            ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_LIOLEUSBOSS), 0, 0, false, false);
+                            SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
+                            BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
+                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
+                            
+                            let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(10.0);
+                            WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+                            WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+                            WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
+                            WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
+                            WorkModule::set_float(boss_boma, 9999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+                            WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+                            ModelModule::set_scale(module_accessor, 0.0001);
+                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
+
+                            let x = PostureModule::pos_x(module_accessor);
+                            let y = INITIAL_Y_POS;
+                            let z = PostureModule::pos_z(module_accessor);
+                            let module_pos = Vector3f{x: x, y: y, z: z};
+                            PostureModule::set_pos(boss_boma, &module_pos);
+                            if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
+                                CONTROLLABLE = true;
+                            }
                         }
                     }
 
@@ -570,8 +570,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_STANDBY,true);
-                                SlowModule::clear_whole(module_accessor);
                                 HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+                                ItemModule::remove_all(module_accessor);
                                 if STOP == false && CONFIG.read().options.boss_respawn.unwrap_or(false) {
                                     StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_DEAD, true);
                                     STOP = true;

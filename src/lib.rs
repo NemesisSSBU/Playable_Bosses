@@ -1,7 +1,5 @@
 #![feature(concat_idents)]
 #![feature(proc_macro_hygiene)]
-#[macro_use]
-extern crate lazy_static;
 
 use prc::*;
 use prc::hash40::Hash40;
@@ -24,11 +22,7 @@ mod ganon;
 mod gigabowser;
 mod config;
 
-use crate::config::{Config, load_config};
-
-lazy_static! {
-    pub static ref CONFIG: Config = load_config();
-}
+use crate::config::{CONFIG, ensure_config_loaded};
 
 static mut ENTRY_ID : usize = 0;
 pub static mut FIGHTER_MANAGER: usize = 0;
@@ -1025,91 +1019,65 @@ fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 const MAX_FILE_SIZE: usize = 0xFFFF;
 
 #[skyline::main(name = "comp_boss")]
- pub fn main() {
-       let giga_bowser_normal = !CONFIG.options.giga_bowser_normal.unwrap_or(false);
-       let use_disp_order_char = !CONFIG.options.custom_css.unwrap_or(false);
-       let use_disp_order_final_boss_stages = !CONFIG.options.no_final_boss_stages.unwrap_or(false);
-       let use_disp_order_boss_stages = !CONFIG.options.no_boss_stages.unwrap_or(false);
+pub fn main() {
+    ensure_config_loaded();
+    let cfg = CONFIG.read().unwrap();
+    let opts = &cfg.options;
+    let giga_bowser_normal  = !opts.giga_bowser_normal.unwrap_or(false);
+    let use_disp_order_char = !opts.custom_css.unwrap_or(false);
+    let master_hand_css = opts.master_hand_css.unwrap_or(true);
+    let crazy_hand_css = opts.crazy_hand_css.unwrap_or(true);
+    let dharkon_css = opts.dharkon_css.unwrap_or(true);
+    let galeem_css = opts.galeem_css.unwrap_or(true);
+    let marx_css = opts.marx_css.unwrap_or(true);
+    let giga_bowser_css = opts.giga_bowser_css.unwrap_or(true);
+    let ganon_css = opts.ganon_css.unwrap_or(true);
+    let dracula_css = opts.dracula_css.unwrap_or(true);
+    let rathalos_css = opts.rathalos_css.unwrap_or(true);
+    let galleom_css = opts.galleom_css.unwrap_or(true);
+    let wol_master_hand_css = opts.wol_master_hand_css.unwrap_or(true);
+    let final2_stage = opts.final2_stage.unwrap_or(true);
+    let final3_stage = opts.final3_stage.unwrap_or(true);
+    let ganon_stage = opts.ganon_stage.unwrap_or(true);
+    let rathalos_stage = opts.rathalos_stage.unwrap_or(true);
+    let marx_stage = opts.marx_stage.unwrap_or(true);
+    let galleom_stage = opts.galleom_stage.unwrap_or(true);
+    let dracula_stage = opts.dracula_stage.unwrap_or(true);
 
-       let master_hand_css = CONFIG.options.master_hand_css.unwrap_or(true);
-       let crazy_hand_css = CONFIG.options.crazy_hand_css.unwrap_or(true);
-       let dharkon_css = CONFIG.options.dharkon_css.unwrap_or(true);
-       let galeem_css = CONFIG.options.galeem_css.unwrap_or(true);
-       let marx_css = CONFIG.options.marx_css.unwrap_or(true);
-       let giga_bowser_css = CONFIG.options.giga_bowser_css.unwrap_or(true);
-       let ganon_css = CONFIG.options.ganon_css.unwrap_or(true);
-       let dracula_css = CONFIG.options.dracula_css.unwrap_or(true);
-       let rathalos_css = CONFIG.options.rathalos_css.unwrap_or(true);
-       let galleom_css = CONFIG.options.galleom_css.unwrap_or(true);
-       let wol_master_hand_css = CONFIG.options.wol_master_hand_css.unwrap_or(true);
-       Agent::new("daisy")
-        .on_line(Main, once_per_fighter_frame)
-        .install();
-        Agent::new("peach")
-        .on_line(Main, once_per_fighter_frame_2)
-        .install();
-        Agent::new("szerosuit")
-        .on_line(Main, once_per_fighter_frame_3)
-        .install();
-       mastercrazy::install();
-       playable_masterhand::install();
-       galeem::install();
-       dharkon::install();
-       marx::install();
-       rathalos::install();
-       dracula::install();
-       galleom::install();
-       ganon::install();
-       if giga_bowser_normal {
-        gigabowser::install();
-       }
-        // character database callbacks
-        if use_disp_order_char {
-            if giga_bowser_css {
-                callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
+    Agent::new("daisy").on_line(Main, once_per_fighter_frame).install();
+    Agent::new("peach").on_line(Main, once_per_fighter_frame_2).install();
+    Agent::new("szerosuit").on_line(Main, once_per_fighter_frame_3).install();
 
-            if master_hand_css {
-                callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
-            if crazy_hand_css {
-                callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
-            if dharkon_css {
-                callback_dharkon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
-            if galeem_css {
-                callback_galeem::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
-            if dracula_css {
-                callback_dracula::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
-            if marx_css {
-                callback_marx::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
-            if ganon_css {
-                callback_ganon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
-            if galleom_css {
-                callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
-            if rathalos_css {
-                callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
-            if wol_master_hand_css {
-                callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-            }
-        }
-       if use_disp_order_final_boss_stages {
-        callback_map_1::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-        callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-       }
-       if use_disp_order_boss_stages {
-       callback_map_3::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-       callback_map_4::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-       callback_map_5::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-       callback_map_6::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-       callback_map_7::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-       }
+    mastercrazy::install();
+    playable_masterhand::install();
+    galeem::install();
+    dharkon::install();
+    marx::install();
+    rathalos::install();
+    dracula::install();
+    galleom::install();
+    ganon::install();
+    if giga_bowser_normal { gigabowser::install(); }
 
+    if use_disp_order_char {
+        if giga_bowser_css { callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if master_hand_css { callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if crazy_hand_css { callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if dharkon_css { callback_dharkon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if galeem_css { callback_galeem::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if dracula_css { callback_dracula::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if marx_css { callback_marx::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if ganon_css { callback_ganon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if galleom_css { callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if rathalos_css { callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if wol_master_hand_css { callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
     }
+
+    if final2_stage { callback_map_1::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if final3_stage { callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if ganon_stage { callback_map_3::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if rathalos_stage { callback_map_4::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if marx_stage { callback_map_5::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if galleom_stage { callback_map_6::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if dracula_stage { callback_map_7::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+}
