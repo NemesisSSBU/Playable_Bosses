@@ -22,7 +22,7 @@ mod ganon;
 mod gigabowser;
 mod config;
 
-use crate::config::{CONFIG, ensure_config_loaded};
+use crate::config::CONFIG;
 
 static mut ENTRY_ID : usize = 0;
 pub static mut FIGHTER_MANAGER: usize = 0;
@@ -1020,10 +1020,9 @@ const MAX_FILE_SIZE: usize = 0xFFFF;
 
 #[skyline::main(name = "comp_boss")]
 pub fn main() {
-    ensure_config_loaded();
-    let cfg = CONFIG.read().unwrap();
+    let cfg = &*CONFIG;
     let opts = &cfg.options;
-    let giga_bowser_normal  = !opts.giga_bowser_normal.unwrap_or(false);
+    let giga_bowser_normal = !opts.giga_bowser_normal.unwrap_or(false);
     let use_disp_order_char = !opts.custom_css.unwrap_or(false);
     let master_hand_css = opts.master_hand_css.unwrap_or(true);
     let crazy_hand_css = opts.crazy_hand_css.unwrap_or(true);

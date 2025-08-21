@@ -15,8 +15,8 @@ use smash::app::utility::get_category;
 use smash::phx::Hash40;
 use smashline::{Agent, Main};
 use once_cell::sync::Lazy;
-use parking_lot::RwLock;
 use skyline::nn::oe::{Initialize, GetDisplayVersion, DisplayVersion};
+use crate::config::CONFIG;
 
 use crate::dharkon;
 
@@ -37,8 +37,6 @@ static mut CONTROLLER_Y: f32 = 0.0;
 static mut CONTROL_SPEED_MUL: f32 = 1.25;
 static mut CONTROL_SPEED_MUL_2: f32 = 0.05;
 static mut HIDDEN_CPU : [u32; 8] = [0; 8];
-
-use crate::config::{Config, load_config, reload_config};
 
 pub static TITLE_VERSION: Lazy<(u16, u16, u16)> = Lazy::new(|| {
     unsafe {
@@ -68,10 +66,6 @@ pub unsafe fn get_version_offset() -> u64 {
     };
     text + offset
 }
-
-pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
-    RwLock::new(load_config())
-});
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -180,7 +174,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
                         if smash::app::smashball::is_training_mode() == false {
                             if ModelModule::scale(module_accessor) != 0.0001 && ModelModule::scale(module_accessor) != 0.0002 {
-                                reload_config();
                                 ModelModule::set_scale(module_accessor, 0.0002);
                                 ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
                                 SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
@@ -197,7 +190,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                                 let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                                 
-                                let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(10.0);
+                                let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
                                 WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                                 WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
                                 ModelModule::set_scale(module_accessor, 0.0001);
@@ -234,7 +227,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         PostureModule::set_pos(hidden_cpu_boma, &boss_pos);
                     }
 
-                    if sv_information::is_ready_go() == true && smash::app::smashball::is_training_mode() == true || CONFIG.read().options.boss_respawn.unwrap_or(false) {
+                    if sv_information::is_ready_go() == true && smash::app::smashball::is_training_mode() == true || CONFIG.options.boss_respawn.unwrap_or(false) {
                         if ModelModule::scale(module_accessor) != 0.0002 && ModelModule::scale(module_accessor) != 0.0001 {
                             DEAD = false;
                             CONTROLLABLE = true;
@@ -253,7 +246,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             
-                            let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(10.0);
+                            let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
                             WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                             WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
                             WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
@@ -270,9 +263,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if sv_information::is_ready_go() && !ItemModule::is_have_item(module_accessor, 0) && ModelModule::scale(module_accessor) == 0.0001
                     && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH {
-                        if smash::app::smashball::is_training_mode() || CONFIG.read().options.boss_respawn.unwrap_or(false) {
+                        if smash::app::smashball::is_training_mode() || CONFIG.options.boss_respawn.unwrap_or(false) {
                             StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_FALL, true);
-                            reload_config();
                             DEAD = false;
                             CONTROLLABLE = true;
                             JUMP_START = false;
@@ -296,7 +288,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             BOSS_ID[entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             
-                            let get_boss_intensity = CONFIG.read().options.boss_difficulty.unwrap_or(10.0);
+                            let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
                             WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                             WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
                             ModelModule::set_scale(module_accessor, 0.0001);
@@ -385,7 +377,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[entry_id(module_accessor)]);
                             if StatusModule::status_kind(boss_boma) == *ITEM_KIILA_STATUS_KIND_DOWN_LOOP {
                                 
-                                let stunned = !CONFIG.read().options.full_stun_duration.unwrap_or(false);
+                                let stunned = !CONFIG.options.full_stun_duration.unwrap_or(false);
                                 if stunned {
                                     StatusModule::change_status_request_from_script(boss_boma,*ITEM_KIILA_STATUS_KIND_DOWN_END,true);
                                 }
@@ -601,7 +593,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if sv_information::is_ready_go() == true {
                             if FighterUtil::is_hp_mode(module_accessor) == false {
                                 
-                                let hp = CONFIG.read().options.galeem_hp.unwrap_or(400.0);
+                                let hp = CONFIG.options.galeem_hp.unwrap_or(400.0);
                                 if DamageModule::damage(module_accessor, 0) >= hp {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
@@ -784,7 +776,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         // println!("{}", StatusModule::status_kind(boss_boma));
                         
-                        let rage_hp = CONFIG.read().options.galeem_rage_hp.unwrap_or(220.0);
+                        let rage_hp = CONFIG.options.galeem_rage_hp.unwrap_or(220.0);
                         if DamageModule::damage(module_accessor, 0) >= rage_hp && !DEAD {
                             if IS_ANGRY == false && !DEAD {
                                 CONTROLLABLE = false;
@@ -836,10 +828,10 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             CONTROLLABLE = false;
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_TORRENT, true);
                                         }
-                                        // if RANDOM_ATTACK == 9 {
-                                        //     CONTROLLABLE = false;
-                                        //     StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER, true);
-                                        // }
+                                        if RANDOM_ATTACK == 9 {
+                                            CONTROLLABLE = false;
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER, true);
+                                        }
                                     }
                                 }
                             }
@@ -979,44 +971,64 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             //Boss Moves
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
                                 CONTROLLABLE = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_CROSS_BOMB, true);
                             }
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) {
                                 CONTROLLABLE = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_TELEPORT, true);
                             }
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_ATTACK) {
                                 CONTROLLABLE = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_STATIC_MISSILE_START, true);
                             }
                             if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
                                 CONTROLLABLE = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_CHASE_SPEAR, true);
                             }
                             if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 {
                                 CONTROLLABLE = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_EXPLODE_SHOT_START, true);
                             }
                             if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 {
                                 CONTROLLABLE = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_LASER_RUSH_START, true);
                             }
                             if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_LW3 != 0 {
                                 CONTROLLABLE = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_ENERGY_SMART_BOMB_START, true);
                             }
                             if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 {
                                 CONTROLLABLE = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_THREAT_START, true);
                             }
                             if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_HI) {
                                 CONTROLLABLE = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_TORRENT, true);
                             }
-                            // if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_LW) {
-                            //     CONTROLLABLE = false;
-                            //     StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER, true);
-                            // }
+                            if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_LW) {
+                                CONTROLLABLE = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER, true);
+                            }
                         }
                     }
                 }

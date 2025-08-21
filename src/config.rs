@@ -3,7 +3,6 @@ use std::fs;
 use std::process::exit;
 use skyline::error::show_error;
 use once_cell::sync::Lazy;
-use std::sync::RwLock;
 
 #[derive(Deserialize, Debug)]
 pub struct Options {
@@ -191,13 +190,4 @@ pub fn load_config() -> Config {
     }
 }
 
-pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| RwLock::new(load_config()));
-
-pub fn ensure_config_loaded() {
-    once_cell::sync::Lazy::force(&CONFIG);
-}
-
-pub fn reload_config() {
-    let new_cfg = load_config();
-    *CONFIG.write().unwrap() = new_cfg;
-}
+pub static CONFIG: Lazy<Config> = Lazy::new(load_config);
