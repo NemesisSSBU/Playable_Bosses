@@ -10,6 +10,10 @@ pub struct Options {
     pub full_stun_duration: Option<bool>,
     #[serde(rename = "GIGA_BOWSER_NORMAL")]
     pub giga_bowser_normal: Option<bool>,
+    #[serde(rename = "WOL_MASTER_HAND_NORMAL")]
+    pub wol_master_hand_normal: Option<bool>,
+    #[serde(rename = "FASTER_ATTACKS")]
+    pub faster_attacks: Option<bool>,
     #[serde(rename = "CUSTOM_CSS")]
     pub custom_css: Option<bool>,
     #[serde(rename = "BOSS_RESPAWN")]

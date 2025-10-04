@@ -183,7 +183,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             WorkModule::set_float(boss_boma, 9999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                             ModelModule::set_scale(module_accessor, 0.0001);
-                            ModelModule::set_scale(boss_boma, 1.15);
+                            if !CONFIG.options.wol_master_hand_normal.unwrap_or(false) {
+                                ModelModule::set_scale(boss_boma, 1.15);
+                            }
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_TIME, true);
                         }
                         else {
@@ -249,7 +251,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             WorkModule::set_float(boss_boma, 9999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                             ModelModule::set_scale(module_accessor, 0.0001);
-                            ModelModule::set_scale(boss_boma, 1.15);
+                            if !CONFIG.options.wol_master_hand_normal.unwrap_or(false) {
+                                ModelModule::set_scale(boss_boma, 1.15);
+                            }
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE, true);
 
                             let x = PostureModule::pos_x(module_accessor);
@@ -265,7 +269,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     || CONFIG.options.boss_respawn.unwrap_or(false)
                     && StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_REBIRTH && FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
                         StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_FALL, true);
-
                         EXISTS_PUBLIC = true;
                         CONTROLLABLE = true;
                         DEAD = false;
@@ -550,23 +553,25 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                         // SETS POWER
 
-                        if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
-                            if StatusModule::status_kind(boss_boma) != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_YUBIDEPPOU_START
-                            && StatusModule::status_kind(boss_boma) != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING
-                            && StatusModule::status_kind(boss_boma) != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_YUBIDEPPOU
-                            && StatusModule::status_kind(boss_boma) != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_YUBIDEPPOU_END {
-                                AttackModule::set_power_mul(boss_boma, 0.5);
-                                AttackModule::set_power_mul_2nd(boss_boma, 1.0);
-                                AttackModule::set_power_mul_3rd(boss_boma, 1.0);
-                                AttackModule::set_power_mul_4th(boss_boma, 1.0);
-                                AttackModule::set_power_mul_5th(boss_boma, 1.0);
-                            }
-                            else {
-                                AttackModule::set_power_mul(boss_boma, 0.02);
-                                AttackModule::set_power_mul_2nd(boss_boma, 0.2);
-                                AttackModule::set_power_mul_3rd(boss_boma, 0.2);
-                                AttackModule::set_power_mul_4th(boss_boma, 0.2);
-                                AttackModule::set_power_mul_5th(boss_boma, 0.2);
+                        if !CONFIG.options.wol_master_hand_normal.unwrap_or(false) {
+                            if FighterInformation::is_operation_cpu(FighterManager::get_fighter_information(fighter_manager,smash::app::FighterEntryID(ENTRY_ID as i32))) == false {
+                                if StatusModule::status_kind(boss_boma) != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_YUBIDEPPOU_START
+                                && StatusModule::status_kind(boss_boma) != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING
+                                && StatusModule::status_kind(boss_boma) != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_YUBIDEPPOU
+                                && StatusModule::status_kind(boss_boma) != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_YUBIDEPPOU_END {
+                                    AttackModule::set_power_mul(boss_boma, 0.5);
+                                    AttackModule::set_power_mul_2nd(boss_boma, 1.0);
+                                    AttackModule::set_power_mul_3rd(boss_boma, 1.0);
+                                    AttackModule::set_power_mul_4th(boss_boma, 1.0);
+                                    AttackModule::set_power_mul_5th(boss_boma, 1.0);
+                                }
+                                else {
+                                    AttackModule::set_power_mul(boss_boma, 0.02);
+                                    AttackModule::set_power_mul_2nd(boss_boma, 0.2);
+                                    AttackModule::set_power_mul_3rd(boss_boma, 0.2);
+                                    AttackModule::set_power_mul_4th(boss_boma, 0.2);
+                                    AttackModule::set_power_mul_5th(boss_boma, 0.2);
+                                }
                             }
                         }
 
