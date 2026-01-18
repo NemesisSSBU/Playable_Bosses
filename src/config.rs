@@ -1,8 +1,8 @@
-use once_cell::sync::Lazy;
 use serde::Deserialize;
-use skyline::error::show_error;
 use std::fs;
 use std::process::exit;
+use skyline::error::show_error;
+use once_cell::sync::Lazy;
 
 #[derive(Deserialize, Debug)]
 pub struct Options {
@@ -12,7 +12,6 @@ pub struct Options {
     pub giga_bowser_normal: Option<bool>,
     #[serde(rename = "WOL_MASTER_HAND_NORMAL")]
     pub wol_master_hand_normal: Option<bool>,
-    #[allow(dead_code)]
     #[serde(rename = "FASTER_ATTACKS")]
     pub faster_attacks: Option<bool>,
     #[serde(rename = "CUSTOM_CSS")]
@@ -174,7 +173,10 @@ pub fn load_config() -> Config {
             show_error(
                 0x02,
                 "Failed to parse config.toml",
-                &format!("TOML parse error: {}\nCheck formatting at:\n{}", e, path),
+                &format!(
+                    "TOML parse error: {}\nCheck formatting at:\n{}",
+                    e, path
+                ),
             );
             exit(0);
         }),
@@ -182,7 +184,10 @@ pub fn load_config() -> Config {
             show_error(
                 0x01,
                 "Unreadable config.toml for Competitive Playable Bosses",
-                &format!("Error: {}\nTried to read:\n{}", e, path),
+                &format!(
+                    "Error: {}\nTried to read:\n{}",
+                    e, path
+                ),
             );
             exit(0);
         }

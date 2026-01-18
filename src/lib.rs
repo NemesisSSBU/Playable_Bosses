@@ -1,37 +1,36 @@
-use arcropolis_api::*;
-use prc::hash40::Hash40;
+#![feature(concat_idents)]
+#![feature(proc_macro_hygiene)]
+
 use prc::*;
-use skyline::nn::ro::LookupSymbol;
-use smash::app::lua_bind::*;
+use prc::hash40::Hash40;
+use arcropolis_api::*;
 use smash::lib::lua_const::*;
+use smash::app::lua_bind::*;
+use skyline::nn::ro::LookupSymbol;
 use smash::lua2cpp::L2CFighterCommon;
 use smashline::{Agent, Main};
 
-mod config;
-mod dharkon;
-mod dracula;
+mod mastercrazy;
+mod playable_masterhand;
 mod galeem;
+mod dharkon;
+mod marx;
+mod dracula;
+mod rathalos;
 mod galleom;
 mod ganon;
 mod gigabowser;
-mod marx;
-mod mastercrazy;
-mod playable_masterhand;
-mod rathalos;
+mod config;
 
 use crate::config::CONFIG;
 
-pub const MAX_PLAYERS: usize = 8;
-
-pub static mut SELECTED_UI_CHARA: [u64; MAX_PLAYERS] = [0; MAX_PLAYERS];
-
-static mut ENTRY_ID: usize = 0;
+static mut ENTRY_ID : usize = 0;
 pub static mut FIGHTER_MANAGER: usize = 0;
 
-static mut ENTRY_ID_2: usize = 0;
+static mut ENTRY_ID_2 : usize = 0;
 pub static mut FIGHTER_MANAGER_2: usize = 0;
 
-static mut ENTRY_ID_3: usize = 0;
+static mut ENTRY_ID_3 : usize = 0;
 pub static mut FIGHTER_MANAGER_3: usize = 0;
 
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
@@ -39,44 +38,30 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
-        ENTRY_ID =
-            WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
         LookupSymbol(
             &raw mut FIGHTER_MANAGER,
             "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
-                .as_bytes()
-                .as_ptr(),
+            .as_bytes()
+            .as_ptr(),
         );
         let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
         if fighter_kind == *FIGHTER_KIND_PEACH {
             if FighterManager::is_final(fighter_manager) {
                 if mastercrazy::check_status()
-                    || mastercrazy::check_status_2()
-                    || playable_masterhand::check_status()
-                    || galeem::check_status()
-                    || dharkon::check_status()
-                    || marx::check_status()
-                    || dracula::check_status()
-                    || rathalos::check_status()
-                    || galleom::check_status()
-                    || ganon::check_status()
-                {
-                    WorkModule::enable_transition_term_forbid(
-                        fighter.module_accessor,
-                        *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL,
-                    );
-                    WorkModule::off_flag(
-                        fighter.module_accessor,
-                        *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL,
-                    );
-                    WorkModule::off_flag(
-                        fighter.module_accessor,
-                        *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS,
-                    );
-                    WorkModule::off_flag(
-                        fighter.module_accessor,
-                        *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE,
-                    );
+                || mastercrazy::check_status_2()
+                || playable_masterhand::check_status()
+                || galeem::check_status()
+                || dharkon::check_status()
+                || marx::check_status()
+                || dracula::check_status()
+                || rathalos::check_status()
+                || galleom::check_status()
+                || ganon::check_status() {
+                    WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
                     FighterManager::set_visible_finalbg(fighter_manager, false);
                 }
             }
@@ -89,44 +74,30 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
-        ENTRY_ID_2 =
-            WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
         LookupSymbol(
             &raw mut FIGHTER_MANAGER_2,
             "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
-                .as_bytes()
-                .as_ptr(),
+            .as_bytes()
+            .as_ptr(),
         );
         let fighter_manager = *(FIGHTER_MANAGER_2 as *mut *mut smash::app::FighterManager);
         if fighter_kind == *FIGHTER_KIND_DAISY {
             if FighterManager::is_final(fighter_manager) {
                 if mastercrazy::check_status()
-                    || mastercrazy::check_status_2()
-                    || playable_masterhand::check_status()
-                    || galeem::check_status()
-                    || dharkon::check_status()
-                    || marx::check_status()
-                    || dracula::check_status()
-                    || rathalos::check_status()
-                    || galleom::check_status()
-                    || ganon::check_status()
-                {
-                    WorkModule::enable_transition_term_forbid(
-                        fighter.module_accessor,
-                        *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL,
-                    );
-                    WorkModule::off_flag(
-                        fighter.module_accessor,
-                        *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL,
-                    );
-                    WorkModule::off_flag(
-                        fighter.module_accessor,
-                        *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS,
-                    );
-                    WorkModule::off_flag(
-                        fighter.module_accessor,
-                        *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE,
-                    );
+                || mastercrazy::check_status_2()
+                || playable_masterhand::check_status()
+                || galeem::check_status()
+                || dharkon::check_status()
+                || marx::check_status()
+                || dracula::check_status()
+                || rathalos::check_status()
+                || galleom::check_status()
+                || ganon::check_status() {
+                    WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
                     FighterManager::set_visible_finalbg(fighter_manager, false);
                 }
             }
@@ -139,34 +110,21 @@ extern "C" fn once_per_fighter_frame_3(fighter: &mut L2CFighterCommon) {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
-        ENTRY_ID_3 =
-            WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        ENTRY_ID_3 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
         LookupSymbol(
             &raw mut FIGHTER_MANAGER_3,
             "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
-                .as_bytes()
-                .as_ptr(),
+            .as_bytes()
+            .as_ptr(),
         );
         let fighter_manager = *(FIGHTER_MANAGER_3 as *mut *mut smash::app::FighterManager);
         if fighter_kind == *FIGHTER_KIND_SZEROSUIT {
             if FighterManager::is_final(fighter_manager) {
                 if ganon::check_status() {
-                    WorkModule::enable_transition_term_forbid(
-                        fighter.module_accessor,
-                        *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL,
-                    );
-                    WorkModule::off_flag(
-                        fighter.module_accessor,
-                        *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL,
-                    );
-                    WorkModule::off_flag(
-                        fighter.module_accessor,
-                        *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS,
-                    );
-                    WorkModule::off_flag(
-                        fighter.module_accessor,
-                        *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE,
-                    );
+                    WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
+                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
                     FighterManager::set_visible_finalbg(fighter_manager, false);
                 }
             }
@@ -225,16 +183,6 @@ const _CRC_TABLE: [u32; 256] = [
     0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d,
 ];
 
-#[skyline::hook(offset = 0x3310760)]
-unsafe fn update_selected_fighter_hook(unk: u64, player_id: u32, new_selection_info: u64) {
-    let ui_chara_hash_ptr = (new_selection_info + 0x18) as *const u64;
-    let selected_hash = *ui_chara_hash_ptr & 0xFFFF_FFFFFF;
-    if (player_id as usize) < MAX_PLAYERS {
-        SELECTED_UI_CHARA[player_id as usize] = selected_hash;
-    }
-    original!()(unk, player_id, new_selection_info);
-}
-
 // Giga Bowser
 
 #[arc_callback]
@@ -253,24 +201,18 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 
     // iterate the list to find the param with mario's data
     // we could go to the exact index, but this is subject to change across game updates.
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
 
-            // we assume ui_chara_id will always be the first param.
-            // given the file, this is a safe assumption, but there are
-            // more fool-proof ways of searching for the right node.
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        // we assume ui_chara_id will always be the first param.
+        // given the file, this is a safe assumption, but there are
+        // more fool-proof ways of searching for the right node.
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
 
-            // check to make sure it's Koopag
-            *ui_chara_hash == to_hash40("ui_chara_koopag")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+        // check to make sure it's Koopag
+        *ui_chara_hash == to_hash40("ui_chara_koopag")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
 
     // now we have Koopags's data, we can convert to a dictionary to gain faster access
     // to arbitrary keys, but since we only want to change 1 param, we'll just iterate
@@ -321,18 +263,12 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_masterhand")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_chara_masterhand")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -353,8 +289,7 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
-            *param.try_into_mut::<Hash40>().unwrap() =
-                to_hash40("vc_narration_characall_masterhand");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_masterhand");
         }
         if *hash == to_hash40("fighter_type") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
@@ -381,18 +316,12 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_crazyhand")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_chara_crazyhand")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -416,8 +345,7 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
-            *param.try_into_mut::<Hash40>().unwrap() =
-                to_hash40("vc_narration_characall_crazyhand");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_crazyhand");
         }
         if *hash == to_hash40("ui_series_id") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
@@ -441,18 +369,12 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_darz")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_chara_darz")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -500,18 +422,12 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_kiila")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_chara_kiila")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -559,18 +475,12 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_marx")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_chara_marx")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -618,18 +528,12 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_ganonboss")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_chara_ganonboss")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -653,8 +557,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
-            *param.try_into_mut::<Hash40>().unwrap() =
-                to_hash40("vc_narration_characall_ganonboss");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_ganonboss");
         }
         if *hash == to_hash40("ui_series_id") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_zelda");
@@ -678,18 +581,12 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_dracula")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_chara_dracula")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -737,18 +634,12 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_galleom")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_chara_galleom")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -796,18 +687,12 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_lioleus")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_chara_lioleus")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -855,18 +740,12 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_mewtwo_masterhand")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_chara_mewtwo_masterhand")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -890,8 +769,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
-            *param.try_into_mut::<Hash40>().unwrap() =
-                to_hash40("vc_narration_characall_masterhandwol2");
+            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_masterhandwol2");
         }
         if *hash == to_hash40("ui_series_id") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
@@ -915,18 +793,12 @@ fn callback_map_1(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_stage_boss_final2")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_boss_final2")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
@@ -954,18 +826,12 @@ fn callback_map_2(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_stage_boss_final3")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_boss_final3")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
@@ -993,18 +859,12 @@ fn callback_map_3(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_stage_boss_ganon")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_boss_ganon")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
@@ -1032,18 +892,12 @@ fn callback_map_4(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_stage_boss_rathalos")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_boss_rathalos")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
@@ -1071,18 +925,12 @@ fn callback_map_5(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_stage_boss_marx")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_boss_marx")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
@@ -1110,18 +958,12 @@ fn callback_map_6(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_stage_boss_galleom")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_boss_galleom")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
@@ -1149,18 +991,12 @@ fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_stage_boss_dracula")
-        })
-        .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+    let charroot = db_root_list.0.iter_mut().find(|param| {
+        let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
+        let (_, ui_chara_id) = &ui_chara_struct.0[0];
+        let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
+        *ui_chara_hash == to_hash40("ui_stage_boss_dracula")
+    }).unwrap().try_into_mut::<ParamStruct>().unwrap();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 0;
@@ -1207,17 +1043,9 @@ pub fn main() {
     let galleom_stage = opts.galleom_stage.unwrap_or(true);
     let dracula_stage = opts.dracula_stage.unwrap_or(true);
 
-    skyline::install_hook!(update_selected_fighter_hook);
-
-    Agent::new("daisy")
-        .on_line(Main, once_per_fighter_frame)
-        .install();
-    Agent::new("peach")
-        .on_line(Main, once_per_fighter_frame_2)
-        .install();
-    Agent::new("szerosuit")
-        .on_line(Main, once_per_fighter_frame_3)
-        .install();
+    Agent::new("daisy").on_line(Main, once_per_fighter_frame).install();
+    Agent::new("peach").on_line(Main, once_per_fighter_frame_2).install();
+    Agent::new("szerosuit").on_line(Main, once_per_fighter_frame_3).install();
 
     mastercrazy::install();
     playable_masterhand::install();
@@ -1228,65 +1056,27 @@ pub fn main() {
     dracula::install();
     galleom::install();
     ganon::install();
-    if giga_bowser_normal {
-        gigabowser::install();
-    }
+    if giga_bowser_normal { gigabowser::install(); }
 
     if use_disp_order_char {
-        if giga_bowser_css {
-            callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if master_hand_css {
-            callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if crazy_hand_css {
-            callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if dharkon_css {
-            callback_dharkon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if galeem_css {
-            callback_galeem::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if dracula_css {
-            callback_dracula::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if marx_css {
-            callback_marx::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if ganon_css {
-            callback_ganon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if galleom_css {
-            callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if rathalos_css {
-            callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if wol_master_hand_css {
-            callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
+        if giga_bowser_css { callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if master_hand_css { callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if crazy_hand_css { callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if dharkon_css { callback_dharkon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if galeem_css { callback_galeem::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if dracula_css { callback_dracula::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if marx_css { callback_marx::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if ganon_css { callback_ganon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if galleom_css { callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if rathalos_css { callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+        if wol_master_hand_css { callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
     }
 
-    if final2_stage {
-        callback_map_1::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-    }
-    if final3_stage {
-        callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-    }
-    if ganon_stage {
-        callback_map_3::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-    }
-    if rathalos_stage {
-        callback_map_4::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-    }
-    if marx_stage {
-        callback_map_5::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-    }
-    if galleom_stage {
-        callback_map_6::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-    }
-    if dracula_stage {
-        callback_map_7::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
-    }
+    if final2_stage { callback_map_1::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if final3_stage { callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if ganon_stage { callback_map_3::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if rathalos_stage { callback_map_4::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if marx_stage { callback_map_5::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if galleom_stage { callback_map_6::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
+    if dracula_stage { callback_map_7::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
 }
