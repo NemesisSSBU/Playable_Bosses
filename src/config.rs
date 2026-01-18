@@ -12,8 +12,6 @@ pub struct Options {
     pub giga_bowser_normal: Option<bool>,
     #[serde(rename = "WOL_MASTER_HAND_NORMAL")]
     pub wol_master_hand_normal: Option<bool>,
-    #[serde(rename = "FASTER_ATTACKS")]
-    pub faster_attacks: Option<bool>,
     #[serde(rename = "CUSTOM_CSS")]
     pub custom_css: Option<bool>,
     #[serde(rename = "BOSS_RESPAWN")]
