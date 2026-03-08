@@ -1,6 +1,6 @@
 [package]
 name = "comp_boss"
-version = "2.1.0"
+version = "3.0.0"
 authors = ["GamerSubzero <GamerSubzero@gmail.com>, NemesisSSBU <PepeIsNoice@gmail.com>, ClaudeRiegan <supermariomasterbro@gmail.com>, jam1garner <jam1.mcleod@hotmail.com>"]
 edition = "2021"
 
@@ -23,9 +23,6 @@ smash_script = { git = "https://github.com/blu-dev/smash-script.git" }
 arcropolis-api = { git = "https://github.com/Raytwo/arcropolis_api" }
 prc-rs = { git = "https://github.com/ultimate-research/prc-rs", features = ["indexmap-std"] }
 rand = { git = "https://github.com/skyline-rs/rand" }
-
-[patch.crates-io]
-getrandom = { git = "https://github.com/skyline-rs/getrandom" }
 
 [profile.dev]
 panic = "abort"

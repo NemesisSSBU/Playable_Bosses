@@ -20,6 +20,10 @@ mod galleom;
 mod ganon;
 mod gigabowser;
 mod config;
+mod selection;
+mod debug;
+mod boss_helpers;
+mod boss_runtime;
 
 use crate::config::CONFIG;
 
@@ -29,8 +33,59 @@ pub static mut FIGHTER_MANAGER: usize = 0;
 static mut ENTRY_ID_2 : usize = 0;
 pub static mut FIGHTER_MANAGER_2: usize = 0;
 
+const MAX_FIGHTERS: usize = 8;
+static mut PEACH_FINAL_GUARD_ACTIVE: [bool; 8] = [false; 8];
+static mut DAISY_FINAL_GUARD_ACTIVE: [bool; 8] = [false; 8];
+
 static mut ENTRY_ID_3 : usize = 0;
 pub static mut FIGHTER_MANAGER_3: usize = 0;
+
+unsafe fn any_boss_active() -> bool {
+    mastercrazy::check_status()
+    || mastercrazy::check_status_2()
+    || playable_masterhand::check_status()
+    || galeem::check_status()
+    || dharkon::check_status()
+    || marx::check_status()
+    || dracula::check_status()
+    || rathalos::check_status()
+    || galleom::check_status()
+    || ganon::check_status()
+}
+
+unsafe fn suppress_hidden_host_result_audio(module_accessor: *mut smash::app::BattleObjectModuleAccessor) {
+    if module_accessor.is_null() || !boss_helpers::is_hidden_host(module_accessor) {
+        return;
+    }
+    LookupSymbol(
+        &raw mut FIGHTER_MANAGER,
+        "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
+        .as_bytes()
+        .as_ptr(),
+    );
+    let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
+    if fighter_manager.is_null() || !FighterManager::is_result_mode(fighter_manager) {
+        return;
+    }
+    boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
+}
+
+extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
+    unsafe {
+        let module_accessor = fighter.module_accessor;
+        mastercrazy::master_frame(fighter);
+        mastercrazy::crazy_frame(fighter);
+        playable_masterhand::frame(fighter);
+        galeem::frame(fighter);
+        dharkon::frame(fighter);
+        marx::frame(fighter);
+        dracula::frame(fighter);
+        rathalos::frame(fighter);
+        galleom::frame(fighter);
+        ganon::frame(fighter);
+        suppress_hidden_host_result_audio(module_accessor);
+    }
+}
 
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
@@ -38,6 +93,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        let entry_id = ENTRY_ID;
         LookupSymbol(
             &raw mut FIGHTER_MANAGER,
             "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
@@ -46,22 +102,27 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         );
         let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
         if fighter_kind == *FIGHTER_KIND_PEACH {
-            if FighterManager::is_final(fighter_manager) {
-                if mastercrazy::check_status()
-                || mastercrazy::check_status_2()
-                || playable_masterhand::check_status()
-                || galeem::check_status()
-                || dharkon::check_status()
-                || marx::check_status()
-                || dracula::check_status()
-                || rathalos::check_status()
-                || galleom::check_status()
-                || ganon::check_status() {
-                    WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
+            let boss_active = any_boss_active();
+            if boss_active {
+                if entry_id < MAX_FIGHTERS && !PEACH_FINAL_GUARD_ACTIVE[entry_id] {
+                    PEACH_FINAL_GUARD_ACTIVE[entry_id] = true;
+                    crate::boss_log!("[PB][Final] Peach entry {}: guard enabled (boss active)", entry_id);
+                }
+                WorkModule::enable_transition_term_forbid(fighter.module_accessor, *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
+                WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
+                if WorkModule::is_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL)
+                || WorkModule::is_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS)
+                || FighterManager::is_final(fighter_manager) {
+                    crate::boss_log!("[PB][Final] Peach entry {}: clearing active Final Smash state", entry_id);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
                     FighterManager::set_visible_finalbg(fighter_manager, false);
+                }
+            } else {
+                WorkModule::unable_transition_term_forbid(fighter.module_accessor, *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
+                if entry_id < MAX_FIGHTERS && PEACH_FINAL_GUARD_ACTIVE[entry_id] {
+                    PEACH_FINAL_GUARD_ACTIVE[entry_id] = false;
+                    crate::boss_log!("[PB][Final] Peach entry {}: guard disabled (no boss active)", entry_id);
                 }
             }
         }
@@ -74,6 +135,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
         ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        let entry_id = ENTRY_ID_2;
         LookupSymbol(
             &raw mut FIGHTER_MANAGER_2,
             "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
@@ -82,22 +144,27 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
         );
         let fighter_manager = *(FIGHTER_MANAGER_2 as *mut *mut smash::app::FighterManager);
         if fighter_kind == *FIGHTER_KIND_DAISY {
-            if FighterManager::is_final(fighter_manager) {
-                if mastercrazy::check_status()
-                || mastercrazy::check_status_2()
-                || playable_masterhand::check_status()
-                || galeem::check_status()
-                || dharkon::check_status()
-                || marx::check_status()
-                || dracula::check_status()
-                || rathalos::check_status()
-                || galleom::check_status()
-                || ganon::check_status() {
-                    WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
+            let boss_active = any_boss_active();
+            if boss_active {
+                if entry_id < MAX_FIGHTERS && !DAISY_FINAL_GUARD_ACTIVE[entry_id] {
+                    DAISY_FINAL_GUARD_ACTIVE[entry_id] = true;
+                    crate::boss_log!("[PB][Final] Daisy entry {}: guard enabled (boss active)", entry_id);
+                }
+                WorkModule::enable_transition_term_forbid(fighter.module_accessor, *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
+                WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
+                if WorkModule::is_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL)
+                || WorkModule::is_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS)
+                || FighterManager::is_final(fighter_manager) {
+                    crate::boss_log!("[PB][Final] Daisy entry {}: clearing active Final Smash state", entry_id);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
                     WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
                     FighterManager::set_visible_finalbg(fighter_manager, false);
+                }
+            } else {
+                WorkModule::unable_transition_term_forbid(fighter.module_accessor, *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
+                if entry_id < MAX_FIGHTERS && DAISY_FINAL_GUARD_ACTIVE[entry_id] {
+                    DAISY_FINAL_GUARD_ACTIVE[entry_id] = false;
+                    crate::boss_log!("[PB][Final] Daisy entry {}: guard disabled (no boss active)", entry_id);
                 }
             }
         }
@@ -182,6 +249,107 @@ const _CRC_TABLE: [u32; 256] = [
     0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d,
 ];
 
+fn patch_selector_param_value(param: &mut ParamKind, ui_chara_hash: Hash40, selector_id: i32) -> bool {
+    if let Ok(value) = param.try_into_mut::<Hash40>() {
+        *value = ui_chara_hash;
+        return true;
+    }
+    if let Ok(value) = param.try_into_mut::<i32>() {
+        *value = selector_id;
+        return true;
+    }
+    if let Ok(value) = param.try_into_mut::<u32>() {
+        *value = selector_id as u32;
+        return true;
+    }
+    if let Ok(value) = param.try_into_mut::<i16>() {
+        if let Ok(small) = i16::try_from(selector_id) {
+            *value = small;
+            return true;
+        }
+        return false;
+    }
+    if let Ok(value) = param.try_into_mut::<u16>() {
+        if let Ok(small) = u16::try_from(selector_id) {
+            *value = small;
+            return true;
+        }
+        return false;
+    }
+    if let Ok(value) = param.try_into_mut::<i8>() {
+        if let Ok(small) = i8::try_from(selector_id) {
+            *value = small;
+            return true;
+        }
+        return false;
+    }
+    if let Ok(value) = param.try_into_mut::<u8>() {
+        if let Ok(small) = u8::try_from(selector_id) {
+            *value = small;
+            return true;
+        }
+        return false;
+    }
+    false
+}
+
+fn patch_tagged_selector_param_value(param: &mut ParamKind, selector_id: i32) -> bool {
+    let tagged_selector = 0x5000_0000u64 | ((selector_id as u64) & 0x0FFF_FFFF);
+
+    if let Ok(value) = param.try_into_mut::<u32>() {
+        if *value == 0x5000_0000 {
+            *value = tagged_selector as u32;
+            return true;
+        }
+    }
+    if let Ok(value) = param.try_into_mut::<i32>() {
+        if (*value as u32) == 0x5000_0000 {
+            *value = tagged_selector as i32;
+            return true;
+        }
+    }
+
+    false
+}
+
+fn patch_css_selector_fields(charroot: &mut ParamStruct, ui_chara_name: &str, selector_id: i32) {
+    let ui_chara_hash = to_hash40(ui_chara_name);
+    let selector_field_hashes = [
+        to_hash40("summon_boss_id"),
+        to_hash40("boss_id"),
+        to_hash40("summon_id"),
+    ];
+    let mut found_field = false;
+    let mut patched_field = false;
+    let mut tagged_patch_count = 0usize;
+    for (hash, param) in charroot.0.iter_mut() {
+        if selector_field_hashes.contains(hash) {
+            found_field = true;
+            if patch_selector_param_value(param, ui_chara_hash, selector_id) {
+                patched_field = true;
+            }
+        }
+    }
+    if !patched_field {
+        for (_hash, param) in charroot.0.iter_mut() {
+            if patch_tagged_selector_param_value(param, selector_id) {
+                patched_field = true;
+                tagged_patch_count += 1;
+            }
+        }
+    }
+    if crate::debug::enabled() {
+        crate::boss_log!(
+            "[PB][SelectionPatch] {} selector=0x{:x} found_field={} patched_field={} tagged_patches={}",
+            ui_chara_name,
+            selector_id,
+            found_field,
+            patched_field,
+            tagged_patch_count
+        );
+    }
+}
+
 // Giga Bowser
 
 #[arc_callback]
@@ -247,6 +415,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_koopag", 0x18E);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -300,6 +469,7 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_masterhand", 0x160);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -353,6 +523,7 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_crazyhand", 0x169);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -406,6 +577,7 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_darz", 0x19A);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -459,6 +631,7 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_kiila", 0x18F);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -512,6 +685,7 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_marx", 0x180);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -565,6 +739,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_ganonboss", 0x172);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -618,6 +793,7 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_dracula", 0x175);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -671,6 +847,7 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_galleom", 0x16F);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -724,6 +901,7 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_lioleus", 0x188);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -777,6 +955,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    patch_css_selector_fields(charroot, "ui_chara_mewtwo_masterhand", 0x1A6);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -1015,7 +1194,9 @@ fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     return Some(writer.position() as usize);
 }
 
-const MAX_FILE_SIZE: usize = 0xFFFF;
+// ARCropolis callback buffer needs to be >= the largest patched PRC in load order.
+// Logs showed ui_chara_db.prc around 0x9D3280, so keep comfortable headroom.
+const MAX_FILE_SIZE: usize = 0x00C00000;
 
 #[skyline::main(name = "comp_boss")]
 pub fn main() {
@@ -1042,9 +1223,11 @@ pub fn main() {
     let galleom_stage = opts.galleom_stage.unwrap_or(true);
     let dracula_stage = opts.dracula_stage.unwrap_or(true);
 
-    Agent::new("daisy").on_line(Main, once_per_fighter_frame).install();
-    Agent::new("peach").on_line(Main, once_per_fighter_frame_2).install();
+    Agent::new("peach").on_line(Main, once_per_fighter_frame).install();
+    Agent::new("daisy").on_line(Main, once_per_fighter_frame_2).install();
     Agent::new("szerosuit").on_line(Main, once_per_fighter_frame_3).install();
+    Agent::new("mario").on_line(Main, mario_boss_dispatch_frame).install();
+    selection::install();
 
     mastercrazy::install();
     playable_masterhand::install();

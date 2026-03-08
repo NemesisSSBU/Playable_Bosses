@@ -18,6 +18,8 @@ pub struct Options {
     pub boss_respawn: Option<bool>,
     #[serde(rename = "BOSS_DIFFICULTY")]
     pub boss_difficulty: Option<f32>,
+    #[serde(rename = "DEBUG_BOSS_LOGS")]
+    pub debug_boss_logs: Option<bool>,
 
     #[serde(rename = "MASTER_HAND_CSS")]
     pub master_hand_css: Option<bool>,
