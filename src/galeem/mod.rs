@@ -124,20 +124,24 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 }
                 else if smash::app::stage::get_stage_id() != 0x13A {
                     if sv_information::is_ready_go() == false {
-                        DEAD = false;
-                        CONTROLLABLE = true;
-                        JUMP_START = false;
-                        IS_ANGRY = false;
-                        STOP = false;
-                        CONTROLLER_X = 0.0;
-                        CONTROLLER_Y = 0.0;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-                        EXISTS_PUBLIC = false;
-                        RESULT_SPAWNED = false;
-                        if BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
-                            boss_helpers::clear_boss_item_slot(module_accessor, &raw mut BOSS_ID, true);
+                        let host_scale = ModelModule::scale(module_accessor);
+                        let spawn_prepared = host_scale == 0.0001;
+                        if !spawn_prepared {
+                            DEAD = false;
+                            CONTROLLABLE = true;
+                            JUMP_START = false;
+                            IS_ANGRY = false;
+                            STOP = false;
+                            CONTROLLER_X = 0.0;
+                            CONTROLLER_Y = 0.0;
+                            EXISTS_PUBLIC = false;
+                            RESULT_SPAWNED = false;
+                            if BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
+                                boss_helpers::clear_boss_item_slot(module_accessor, &raw mut BOSS_ID, true);
+                            }
                         }
                         if smash::app::smashball::is_training_mode() == false {
                             if ModelModule::scale(module_accessor) != 0.0001 && ModelModule::scale(module_accessor) != 0.0002 {
@@ -149,13 +153,23 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 ModelModule::set_scale(hidden_cpu_boma, 0.0001);
                             }
                             if MotionModule::frame(module_accessor) >= 5.0 && ModelModule::scale(module_accessor) != 0.0001 {
+                                DEAD = false;
+                                CONTROLLABLE = true;
+                                JUMP_START = false;
+                                STOP = false;
+                                RESULT_SPAWNED = false;
+                                CONTROLLER_X = 0.0;
+                                CONTROLLER_Y = 0.0;
+                                DamageModule::heal(module_accessor, -999.0, 0);
                                 EXISTS_PUBLIC = true;
                                 RESULT_SPAWNED = false;
                                 ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
-                                let boss_boma = boss_helpers::acquire_boss_item(
+                                let hidden_cpu_id = HIDDEN_CPU[boss_helpers::entry_id(module_accessor)];
+                                let boss_boma = boss_helpers::acquire_boss_item_excluding(
                                     module_accessor,
                                     &raw mut BOSS_ID,
                                     *ITEM_KIND_KIILA,
+                                    hidden_cpu_id,
                                 );
                                 
                                 let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
@@ -172,6 +186,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                                 WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                                 WorkModule::set_int(boss_boma, *ITEM_VARIATION_KIILA_DARZ, *ITEM_INSTANCE_WORK_INT_VARIATION);
+                                println!(
+                                    "[PB][Galeem][Spawn] initial hidden_cpu=0x{:x} boss_id=0x{:x} status={}",
+                                    hidden_cpu_id,
+                                    BOSS_ID[boss_helpers::entry_id(module_accessor)],
+                                    StatusModule::status_kind(boss_boma),
+                                );
                             }
                         }
                     }
@@ -226,7 +246,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             WorkModule::set_int(boss_boma, *ITEM_VARIATION_KIILA_DARZ, *ITEM_INSTANCE_WORK_INT_VARIATION);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
-                            ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
+                            println!(
+                                "[PB][Galeem][Spawn] ready_go boss_id=0x{:x} status={}",
+                                BOSS_ID[boss_helpers::entry_id(module_accessor)],
+                                StatusModule::status_kind(boss_boma),
+                            );
                         }
                     }
 
@@ -243,6 +267,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             STOP = false;
                             CONTROLLER_X = 0.0;
                             CONTROLLER_Y = 0.0;
+                            DamageModule::heal(module_accessor, -999.0, 0);
                             let lua_state = fighter.lua_state_agent;
                             let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                             ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
@@ -254,10 +279,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
-                            let boss_boma = boss_helpers::acquire_boss_item(
+                            let hidden_cpu_id = HIDDEN_CPU[boss_helpers::entry_id(module_accessor)];
+                            let boss_boma = boss_helpers::acquire_boss_item_excluding(
                                 module_accessor,
                                 &raw mut BOSS_ID,
                                 *ITEM_KIND_KIILA,
+                                hidden_cpu_id,
                             );
                             
                             let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
@@ -268,6 +295,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                             WorkModule::set_int(boss_boma, *ITEM_VARIATION_KIILA_DARZ, *ITEM_INSTANCE_WORK_INT_VARIATION);
+                            println!(
+                                "[PB][Galeem][Spawn] rebirth hidden_cpu=0x{:x} boss_id=0x{:x} status={}",
+                                hidden_cpu_id,
+                                BOSS_ID[boss_helpers::entry_id(module_accessor)],
+                                StatusModule::status_kind(boss_boma),
+                            );
 
                             let x = PostureModule::pos_x(module_accessor);
                             let y = PostureModule::pos_y(boss_boma);
@@ -294,7 +327,13 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if sv_information::is_ready_go() == true {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
-                        if WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP) != 999.0 {
+                        if !JUMP_START {
+                            if DamageModule::damage(module_accessor, 0) > 0.0 {
+                                DamageModule::heal(module_accessor, -999.0, 0);
+                            }
+                            WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+                        }
+                        else if WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP) != 999.0 {
                             let sub_hp = 999.0 - WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP);
                             DamageModule::add_damage(module_accessor, sub_hp, 0);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
@@ -567,7 +606,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if FighterUtil::is_hp_mode(module_accessor) == false {
                                 
                                 let hp = CONFIG.options.galeem_hp.unwrap_or(400.0);
-                                if DamageModule::damage(module_accessor, 0) >= hp {
+                                if JUMP_START && DamageModule::damage(module_accessor, 0) >= hp {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         DEAD = true;
@@ -620,6 +659,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if JUMP_START == false {
                                 JUMP_START = true;
                                 CONTROLLABLE = false;
+                                DamageModule::heal(module_accessor, -999.0, 0);
                                 if lua_bind::PostureModule::lr(boss_boma) == -1.0 { // left
                                     let vec3 = Vector3f{x: 0.0, y: 90.0, z: 0.0};
                                     PostureModule::set_rot(boss_boma,&vec3,0);
@@ -629,6 +669,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     PostureModule::set_rot(boss_boma,&vec3,0);
                                 }
                                 StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_MANAGER_WAIT, true);
+                                println!(
+                                    "[PB][Galeem][Spawn] jump_start boss_id=0x{:x} status={}",
+                                    BOSS_ID[boss_helpers::entry_id(module_accessor)],
+                                    StatusModule::status_kind(boss_boma),
+                                );
                             }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WAIT {
@@ -664,12 +709,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         && StatusModule::status_kind(boss_boma) != *ITEM_KIILA_STATUS_KIND_CRUSH_DOWN
                         && !CONTROLLABLE {
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_TELEPORT, true);
-                        }
-                        if StatusModule::status_kind(boss_boma) == *ITEM_KIILA_STATUS_KIND_CRUSH_DOWN {
-                            CONTROLLABLE = false;
-                            if MotionModule::frame(boss_boma) >= MotionModule::end_frame(boss_boma) - 8.0 {
-                                CONTROLLABLE = true;
-                            }
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WARP {
                             CONTROLLABLE = false;
@@ -807,7 +846,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         }
                                         if RANDOM_ATTACK == 10 {
                                             CONTROLLABLE = false;
-                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_CRUSH_DOWN, true);
+                                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_CRUSH_DOWN_START, true);
                                         }
                                     }
                                 }
@@ -1010,7 +1049,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 CONTROLLABLE = false;
                                 CONTROLLER_X = 0.0;
                                 CONTROLLER_Y = 0.0;
-                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_CRUSH_DOWN, true);
+                                StatusModule::change_status_request_from_script(boss_boma, *ITEM_KIILA_STATUS_KIND_CRUSH_DOWN_START, true);
                             }
                         }
                     }

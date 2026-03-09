@@ -81,6 +81,35 @@ pub unsafe fn acquire_boss_item(
     sv_battle_object::module_accessor(boss_id)
 }
 
+pub unsafe fn acquire_boss_item_excluding(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    slot_ids: *mut [u32; 8],
+    item_kind: i32,
+    excluded_item_id: u32,
+) -> *mut BattleObjectModuleAccessor {
+    if module_accessor.is_null() || slot_ids.is_null() {
+        return std::ptr::null_mut();
+    }
+    ItemModule::have_item(module_accessor, ItemKind(item_kind), 0, 0, false, false);
+    SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
+    let entry = entry_id(module_accessor);
+    let mut boss_id = 0;
+    for slot in 0..4 {
+        if ItemModule::is_have_item(module_accessor, slot) {
+            let candidate = ItemModule::get_have_item_id(module_accessor, slot) as u32;
+            if candidate != 0 && candidate != excluded_item_id {
+                boss_id = candidate;
+                break;
+            }
+        }
+    }
+    if boss_id == 0 {
+        boss_id = ItemModule::get_have_item_id(module_accessor, 0) as u32;
+    }
+    (*slot_ids)[entry] = boss_id;
+    sv_battle_object::module_accessor(boss_id)
+}
+
 #[inline(always)]
 pub unsafe fn clear_boss_item_slot(
     module_accessor: *mut BattleObjectModuleAccessor,

@@ -112,13 +112,13 @@ static MASTERCRAZY_NRO_HOOK_ONCE: Once = Once::new();
 
 const MASTER_FLOAT_FLOOR_CLEARANCE: f32 = 0.1;
 const CRAZY_FLOAT_FLOOR_CLEARANCE: f32 = 0.1;
-const MASTER_KENZAN_GROUND_CLEARANCE: f32 = 1.0;
-const MASTER_KENZAN_SPAWN_X_OFFSET: f32 = 10.0;
+const MASTER_KENZAN_GROUND_CLEARANCE: f32 = 0.5;
+const MASTER_KENZAN_SPAWN_X_OFFSET: f32 = 18.5;
 const CRAZY_KUMO_ASCENT: f32 = 70.0;
 const CRAZY_KUMO_DESCEND_FRAME: f32 = 110.0;
 const CRAZY_KUMO_GROUND_CLEARANCE: f32 = 0.1;
 const CRAZY_NOTAUTSU_GROUND_CLEARANCE: f32 = 0.1;
-const MASTER_IRON_BALL_OFFSTAGE_LIMIT: i32 = 50;
+const MASTER_IRON_BALL_OFFSTAGE_LIMIT: i32 = 30;
 const MASTER_IRON_BALL_END_TAIL_FRAMES: f32 = 40.0;
 const CRAZY_KUMO_END_TAIL_FRAMES: f32 = 45.0;
 
@@ -149,12 +149,19 @@ unsafe fn boss_floor_y(
 }
 
 #[inline(always)]
-unsafe fn boss_floor_distance(
+unsafe fn boss_floor_dist(
     module_accessor: *mut BattleObjectModuleAccessor,
     boss_boma: *mut BattleObjectModuleAccessor,
-) -> Option<f32> {
-    boss_floor_y(module_accessor, boss_boma)
-        .map(|floor_y| PostureModule::pos_y(boss_boma) - floor_y)
+) -> f32 {
+    if module_accessor.is_null() || boss_boma.is_null() {
+        return -1.0;
+    }
+    let boss_pos = Vector3f {
+        x: PostureModule::pos_x(boss_boma),
+        y: PostureModule::pos_y(boss_boma),
+        z: PostureModule::pos_z(boss_boma),
+    };
+    GroundModule::get_distance_to_floor(module_accessor, &boss_pos, boss_pos.y, true)
 }
 
 #[inline(always)]
@@ -189,6 +196,27 @@ unsafe fn mark_boss_player_owned(boss_boma: *mut BattleObjectModuleAccessor, ent
     }
     WorkModule::on_flag(boss_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
     WorkModule::set_int(boss_boma, entry_id, ITEM_INSTANCE_WORK_INT_ENTRY_ID);
+}
+
+#[inline(always)]
+unsafe fn configure_boss_owner_mode(
+    boss_boma: *mut BattleObjectModuleAccessor,
+    entry_id: usize,
+) {
+    if boss_boma.is_null() {
+        return;
+    }
+    let fighter_manager = boss_helpers::fighter_manager();
+    if boss_helpers::is_operation_cpu_entry(fighter_manager, entry_id) {
+        WorkModule::off_flag(boss_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+        WorkModule::set_int(boss_boma, entry_id as i32, ITEM_INSTANCE_WORK_INT_ENTRY_ID);
+        println!(
+            "[PB][MasterCrazy] entry={} cpu item_owner=native_ai",
+            entry_id,
+        );
+    } else {
+        mark_boss_player_owned(boss_boma, entry_id as i32);
+    }
 }
 
 #[inline(always)]
@@ -285,7 +313,7 @@ unsafe fn acquire_master_hand_item(
         &raw mut BOSS_ID,
         *ITEM_KIND_MASTERHAND,
     );
-    mark_boss_player_owned(boss_boma, entry_id as i32);
+    configure_boss_owner_mode(boss_boma, entry_id);
     boss_boma
 }
 
@@ -310,6 +338,16 @@ unsafe fn cancel_master_iron_ball(
             if !held_item_boma.is_null()
             && smash::app::utility::get_kind(&mut *held_item_boma) == *ITEM_KIND_MASTERHANDIRONBALL {
                 ItemModule::remove_item(module_accessor, 0);
+            }
+        }
+    }
+    if !boss_boma.is_null() && ItemModule::is_have_item(boss_boma, 0) {
+        let held_item_id = ItemModule::get_have_item_id(boss_boma, 0) as u32;
+        if held_item_id != 0 && sv_battle_object::is_active(held_item_id) {
+            let held_item_boma = sv_battle_object::module_accessor(held_item_id);
+            if !held_item_boma.is_null()
+            && smash::app::utility::get_kind(&mut *held_item_boma) == *ITEM_KIND_MASTERHANDIRONBALL {
+                ItemModule::remove_item(boss_boma, 0);
             }
         }
     }
@@ -346,7 +384,7 @@ unsafe fn acquire_crazy_hand_item(
         &raw mut BOSS_ID_2,
         *ITEM_KIND_CRAZYHAND,
     );
-    mark_boss_player_owned(boss_boma, entry_id as i32);
+    configure_boss_owner_mode(boss_boma, entry_id);
     boss_boma
 }
 
@@ -1282,6 +1320,14 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == true {
                             CONTROLLABLE = false;
+                        }
+                        if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == true
+                        && StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT {
+                            StatusModule::change_status_request_from_script(
+                                boss_boma,
+                                *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
+                                true,
+                            );
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_LOOP && !DEAD {
                             MotionModule::set_rate(boss_boma, 1.0);
@@ -2748,7 +2794,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     }
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_S_L) {
-                                    if GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) <= 50.0 && GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) > 0.0 {
+                                    let floor_dist = boss_floor_dist(module_accessor, boss_boma);
+                                    if floor_dist <= 50.0 && floor_dist > 0.0 {
                                         if let Some(floor_y) = boss_floor_y(module_accessor, boss_boma) {
                                             let target_y = floor_y + MASTER_KENZAN_GROUND_CLEARANCE;
                                             println!(
@@ -3340,8 +3387,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     PostureModule::set_pos(module_accessor, &boss_pos);
                                 }
                             }
-                            let crazy_floor_clearance =
-                                if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_NOTAUTSU {
+                            let crazy_floor_clearance = if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_NOTAUTSU {
                                     CRAZY_NOTAUTSU_GROUND_CLEARANCE
                                 } else if StatusModule::status_kind(boss_boma) == *ITEM_CRAZYHAND_STATUS_KIND_KUMO {
                                     CRAZY_KUMO_GROUND_CLEARANCE
@@ -3368,6 +3414,14 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     }
                     else {
                         CRAZY_USABLE = false;
+                    }
+                    if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID_2) == true
+                    && StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT {
+                        StatusModule::change_status_request_from_script(
+                            boss_boma_2,
+                            *ITEM_CRAZYHAND_STATUS_KIND_WAIT_CHASE,
+                            true,
+                        );
                     }
 
                     if BARK && !DEAD_2 && MASTER_EXISTS && MotionModule::motion_kind(boss_boma_2) != smash::hash40("bark") && CRAZY_USABLE {
@@ -4753,17 +4807,17 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_GROW_FINGER_START, true);
                                 }
                                 if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_LW3 != 0 {
-                                    if let Some(floor_dist) = boss_floor_distance(module_accessor, boss_boma_2) {
-                                        if floor_dist > 0.0 && floor_dist <= 220.0 {
+                                    let floor_dist = boss_floor_dist(module_accessor, boss_boma_2);
+                                    if floor_dist > 0.0 && floor_dist <= 50.0 {
                                             CONTROLLABLE_2 = false;
                                             CONTROLLER_X_CRAZY = 0.0;
                                             CONTROLLER_Y_CRAZY = 0.0;
                                             CRAZY_KUMO_ACTIVE = false;
+                                            CRAZY_KUMO_ENDING = false;
                                             CRAZY_KUMO_START_Y = PostureModule::pos_y(boss_boma_2);
                                             StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_KUMO, true);
-                                        } else {
-                                            StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_NIGIRU_CAPTURE, true);
-                                        }
+                                    } else {
+                                        StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_NIGIRU_CAPTURE, true);
                                     }
                                 }
                                 if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_ATTACK_HI3 != 0 {
@@ -4796,13 +4850,12 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     }
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_LW) {
-                                    if GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) <= 30.0 && GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) > 0.0 {
+                                    if GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) <= 30.0
+                                    && GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) > 0.0 {
                                         CONTROLLABLE_2 = false;
                                         CONTROLLER_X_CRAZY = 0.0;
                                         CONTROLLER_Y_CRAZY = 0.0;
                                         StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_NOTAUTSU, true);
-                                    } else {
-                                        StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_NIGIRU_CAPTURE, true);
                                     }
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_APPEAL_S_L) {
