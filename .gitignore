@@ -1,0 +1,3 @@
+# We REALLY need to ignore these in the repo.
+target/
+*.lock
