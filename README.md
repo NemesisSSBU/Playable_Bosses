@@ -211,7 +211,7 @@ This document contains the **full player input mapping** for all playable bosses
 
 ## Hidden Mechanics
 
-- Press **Attack during Grow Finger** → cancels move
+- Press **Attack during Grow Finger** → immediately works
 - Hold **Attack** → speeds up Drill
 
 ---
