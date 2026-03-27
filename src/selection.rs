@@ -222,11 +222,9 @@ unsafe fn cached_css_boss_hash(entry_idx: usize) -> Option<u64> {
     if is_boss_css_hash(by_entry) {
         return Some(by_entry);
     }
-
-    if is_boss_css_hash(CACHED_BOSS_UI_HASH_GLOBAL) {
-        return Some(CACHED_BOSS_UI_HASH_GLOBAL);
-    }
-
+    // Do not fall back to the global cache for live entry resolution.
+    // A global boss hash is useful for capture/debug, but using it here lets
+    // unrelated Mario entries inherit another player's boss pick.
     None
 }
 

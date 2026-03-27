@@ -12,6 +12,8 @@ use smash::app::lua_bind;
 use smash::hash40;
 use smash::phx::Hash40;
 use std::sync::Once;
+use std::arch::asm;
+use skyline::hooks::InlineCtx;
 use crate::config::CONFIG;
 use crate::selection;
 use crate::boss_helpers;
@@ -60,6 +62,9 @@ static mut MASTER_LAST_IRON_BALL_ID: u32 = 0;
 static mut MASTER_IRON_BALL_OFFSTAGE_FRAMES: i32 = 0;
 static mut MASTER_IRON_BALL_SMOOTH_CANCEL: bool = false;
 static mut MASTER_KENZAN_SPAWNED: bool = false;
+static mut MASTER_CPU_IDLE_STALL_FRAMES: [i32; 8] = [0; 8];
+static mut MASTER_CPU_LAST_X: [f32; 8] = [0.0; 8];
+static mut MASTER_CPU_LAST_Y: [f32; 8] = [0.0; 8];
 
 // Crazy Hand
 static mut CONTROLLABLE_2 : bool = true;
@@ -77,6 +82,11 @@ static mut CRAZY_TEAM : u64 = 98;
 static mut CRAZY_KUMO_ACTIVE: bool = false;
 static mut CRAZY_KUMO_START_Y: f32 = 0.0;
 static mut CRAZY_KUMO_ENDING: bool = false;
+static mut CRAZY_CPU_IDLE_STALL_FRAMES: [i32; 8] = [0; 8];
+static mut CRAZY_CPU_LAST_X: [f32; 8] = [0.0; 8];
+static mut CRAZY_CPU_LAST_Y: [f32; 8] = [0.0; 8];
+static mut CRAZY_FIRE_CHARIOT_PINKY_LATCH: [bool; 8] = [false; 8];
+static mut CRAZY_FIRE_CHARIOT_THUMB_LATCH: [bool; 8] = [false; 8];
 
 
 extern "C" {
@@ -106,6 +116,10 @@ static mut MH_CHAKRAM_THROW_SUB: usize = 0x5643f0;
 static mut MH_IRON_BALL_THROW_SUB: usize = 0x569d50;
 static mut MH_KENZAN_NEEDLE_SUB: usize = 0x56e7f0;
 static mut MH_WAIT_TIME_SETTING: usize = 0x54cd90;
+static mut CH_FIRE_CHARIOT_MOTION: usize = 0x36ba10;
+static mut CH_CHARIOT_SPEED: usize = 0x36c038;
+static mut CH_CHARIOT_RADIUS_MIN: usize = 0x36c0fc;
+static mut CH_CHARIOT_RADIUS_MAX: usize = 0x36c0fc;
 
 static MASTERCRAZY_ITEM_HOOKS_ONCE: Once = Once::new();
 static MASTERCRAZY_NRO_HOOK_ONCE: Once = Once::new();
@@ -165,7 +179,174 @@ unsafe fn boss_floor_dist(
 }
 
 #[inline(always)]
+unsafe fn reset_master_cpu_idle_recovery(entry_id: usize) {
+    if entry_id < 8 {
+        MASTER_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
+        MASTER_CPU_LAST_X[entry_id] = 0.0;
+        MASTER_CPU_LAST_Y[entry_id] = 0.0;
+    }
+}
+
+#[inline(always)]
+unsafe fn reset_crazy_cpu_idle_recovery(entry_id: usize) {
+    if entry_id < 8 {
+        CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
+        CRAZY_CPU_LAST_X[entry_id] = 0.0;
+        CRAZY_CPU_LAST_Y[entry_id] = 0.0;
+    }
+}
+
+#[inline(always)]
+unsafe fn reset_crazy_fire_chariot_latches(entry_id: usize) {
+    if entry_id < 8 {
+        CRAZY_FIRE_CHARIOT_PINKY_LATCH[entry_id] = false;
+        CRAZY_FIRE_CHARIOT_THUMB_LATCH[entry_id] = false;
+    }
+}
+
+#[inline(always)]
+unsafe fn master_cpu_wait_family_status(status: i32) -> bool {
+    status == *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE
+        || status == *ITEM_MASTERHAND_STATUS_KIND_WAIT_FEINT
+        || status == *ITEM_MASTERHAND_STATUS_KIND_WAIT_TIME
+        || status == *ITEM_MASTERHAND_STATUS_KIND_COMPOUND_ATTACK_WAIT
+        || status == *ITEM_MASTERHAND_STATUS_KIND_PH_RANDOM_TIME_WAIT
+        || status == *ITEM_MASTERHAND_STATUS_KIND_RND_WAIT
+        || status == *ITEM_MASTERHAND_STATUS_KIND_WAIT_TO_POINT
+        || status == *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT
+        || status == *ITEM_STATUS_KIND_WAIT
+}
+
+#[inline(always)]
+unsafe fn crazy_cpu_wait_family_status(status: i32) -> bool {
+    status == *ITEM_CRAZYHAND_STATUS_KIND_WAIT_CHASE
+        || status == *ITEM_CRAZYHAND_STATUS_KIND_WAIT_FEINT
+        || status == *ITEM_CRAZYHAND_STATUS_KIND_WAIT_TIME
+        || status == *ITEM_CRAZYHAND_STATUS_KIND_COMPOUND_ATTACK_WAIT
+        || status == *ITEM_CRAZYHAND_STATUS_KIND_PH_RANDOM_TIME_WAIT
+        || status == *ITEM_CRAZYHAND_STATUS_KIND_RND_WAIT
+        || status == *ITEM_CRAZYHAND_STATUS_KIND_WAIT_TO_POINT
+        || status == *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT
+        || status == *ITEM_STATUS_KIND_WAIT
+}
+
+#[inline(always)]
+unsafe fn maybe_recover_master_cpu_idle(
+    boss_boma: *mut BattleObjectModuleAccessor,
+    entry_id: usize,
+) {
+    if boss_boma.is_null() || entry_id >= 8 {
+        return;
+    }
+    let status = StatusModule::status_kind(boss_boma);
+    if !master_cpu_wait_family_status(status) {
+        reset_master_cpu_idle_recovery(entry_id);
+        return;
+    }
+
+    let current_x = PostureModule::pos_x(boss_boma);
+    let current_y = PostureModule::pos_y(boss_boma);
+    let moved = (current_x - MASTER_CPU_LAST_X[entry_id]).abs()
+        + (current_y - MASTER_CPU_LAST_Y[entry_id]).abs();
+
+    if moved < 0.25 {
+        MASTER_CPU_IDLE_STALL_FRAMES[entry_id] += 1;
+    } else {
+        MASTER_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
+    }
+
+    MASTER_CPU_LAST_X[entry_id] = current_x;
+    MASTER_CPU_LAST_Y[entry_id] = current_y;
+
+    if MASTER_CPU_IDLE_STALL_FRAMES[entry_id] >= 90 {
+        MASTER_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
+        MotionModule::change_motion(
+            boss_boma,
+            Hash40::new("wait"),
+            0.0,
+            1.0,
+            false,
+            0.0,
+            false,
+            false,
+        );
+        StatusModule::change_status_request_from_script(
+            boss_boma,
+            *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
+            true,
+        );
+        println!(
+            "[PB][MasterHand][CPURecovery] entry={} status={} pos=({:.2},{:.2},{:.2})",
+            entry_id,
+            status,
+            current_x,
+            current_y,
+            PostureModule::pos_z(boss_boma),
+        );
+    }
+}
+
+#[inline(always)]
+unsafe fn maybe_recover_crazy_cpu_idle(
+    boss_boma: *mut BattleObjectModuleAccessor,
+    entry_id: usize,
+) {
+    if boss_boma.is_null() || entry_id >= 8 {
+        return;
+    }
+    let status = StatusModule::status_kind(boss_boma);
+    if !crazy_cpu_wait_family_status(status) {
+        reset_crazy_cpu_idle_recovery(entry_id);
+        return;
+    }
+
+    let current_x = PostureModule::pos_x(boss_boma);
+    let current_y = PostureModule::pos_y(boss_boma);
+    let moved = (current_x - CRAZY_CPU_LAST_X[entry_id]).abs()
+        + (current_y - CRAZY_CPU_LAST_Y[entry_id]).abs();
+
+    if moved < 0.25 {
+        CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] += 1;
+    } else {
+        CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
+    }
+
+    CRAZY_CPU_LAST_X[entry_id] = current_x;
+    CRAZY_CPU_LAST_Y[entry_id] = current_y;
+
+    if CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] >= 90 {
+        CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
+        MotionModule::change_motion(
+            boss_boma,
+            Hash40::new("wait"),
+            0.0,
+            1.0,
+            false,
+            0.0,
+            false,
+            false,
+        );
+        StatusModule::change_status_request_from_script(
+            boss_boma,
+            *ITEM_CRAZYHAND_STATUS_KIND_WAIT_CHASE,
+            true,
+        );
+        println!(
+            "[PB][CrazyHand][CPURecovery] entry={} status={} pos=({:.2},{:.2},{:.2})",
+            entry_id,
+            status,
+            current_x,
+            current_y,
+            PostureModule::pos_z(boss_boma),
+        );
+    }
+}
+
+#[inline(always)]
 unsafe fn master_should_clamp_floor(boss_boma: *mut BattleObjectModuleAccessor) -> bool {
+    if !CONTROLLABLE {
+        return false;
+    }
     let status = StatusModule::status_kind(boss_boma);
     status != *ITEM_MASTERHAND_STATUS_KIND_DOWN_START
         && status != *ITEM_MASTERHAND_STATUS_KIND_DOWN_FALL
@@ -175,6 +356,9 @@ unsafe fn master_should_clamp_floor(boss_boma: *mut BattleObjectModuleAccessor) 
 
 #[inline(always)]
 unsafe fn crazy_should_clamp_floor(boss_boma: *mut BattleObjectModuleAccessor) -> bool {
+    if !CONTROLLABLE_2 {
+        return false;
+    }
     let status = StatusModule::status_kind(boss_boma);
     status != *ITEM_CRAZYHAND_STATUS_KIND_DOWN_START
         && status != *ITEM_CRAZYHAND_STATUS_KIND_DOWN_FALL
@@ -255,6 +439,7 @@ unsafe fn reset_master_runtime_for_spawn() {
     MASTER_IRON_BALL_OFFSTAGE_FRAMES = 0;
     MASTER_IRON_BALL_SMOOTH_CANCEL = false;
     MASTER_KENZAN_SPAWNED = false;
+    reset_master_cpu_idle_recovery(ENTRY_ID);
     reset_mastercrazy_shared_runtime();
 }
 
@@ -265,6 +450,8 @@ unsafe fn reset_crazy_runtime_for_spawn() {
     CRAZY_KUMO_ACTIVE = false;
     CRAZY_KUMO_START_Y = 0.0;
     CRAZY_KUMO_ENDING = false;
+    reset_crazy_cpu_idle_recovery(ENTRY_ID_2);
+    reset_crazy_fire_chariot_latches(ENTRY_ID_2);
     reset_mastercrazy_shared_runtime();
 }
 
@@ -287,6 +474,9 @@ unsafe fn reset_mastercrazy_result_runtime() {
     MASTER_IRON_BALL_OFFSTAGE_FRAMES = 0;
     MASTER_IRON_BALL_SMOOTH_CANCEL = false;
     MASTER_KENZAN_SPAWNED = false;
+    MASTER_CPU_IDLE_STALL_FRAMES = [0; 8];
+    MASTER_CPU_LAST_X = [0.0; 8];
+    MASTER_CPU_LAST_Y = [0.0; 8];
 
     CONTROLLABLE_2 = true;
     ENTRY_ID_2 = 0;
@@ -301,6 +491,11 @@ unsafe fn reset_mastercrazy_result_runtime() {
     CRAZY_KUMO_ACTIVE = false;
     CRAZY_KUMO_START_Y = 0.0;
     CRAZY_KUMO_ENDING = false;
+    CRAZY_CPU_IDLE_STALL_FRAMES = [0; 8];
+    CRAZY_CPU_LAST_X = [0.0; 8];
+    CRAZY_CPU_LAST_Y = [0.0; 8];
+    CRAZY_FIRE_CHARIOT_PINKY_LATCH = [false; 8];
+    CRAZY_FIRE_CHARIOT_THUMB_LATCH = [false; 8];
 }
 
 #[inline(always)]
@@ -493,6 +688,50 @@ unsafe fn mh_wait_time_setting(item: &mut L2CAgentBase) -> L2CValue {
     original!()(item)
 }
 
+#[skyline::hook(replace = CH_FIRE_CHARIOT_MOTION, inline)]
+unsafe fn ch_chariot_motion(ctx: &InlineCtx) {
+    let agent_base: &mut L2CAgentBase =
+        &mut *std::ptr::with_exposed_provenance_mut::<L2CAgentBase>(ctx.registers[20].x() as usize);
+    if WorkModule::is_flag(agent_base.module_accessor, ITEM_INSTANCE_WORK_FLAG_PLAYER) == false {
+        return;
+    }
+    let value: u64 = hash40("fire_chariot_start_5");
+    asm!("mov x0, {}", in(reg) value);
+}
+
+#[skyline::hook(replace = CH_CHARIOT_SPEED, inline)]
+unsafe fn ch_chariot_speed(ctx: &InlineCtx) {
+    let agent_base: &mut L2CAgentBase =
+        &mut *std::ptr::with_exposed_provenance_mut::<L2CAgentBase>(ctx.registers[22].x() as usize);
+    if WorkModule::is_flag(agent_base.module_accessor, ITEM_INSTANCE_WORK_FLAG_PLAYER) == false {
+        return;
+    }
+    let chariot_speed: f32 = 10.0;
+    asm!("fmov s0, w8", in("w8") chariot_speed);
+}
+
+#[skyline::hook(replace = CH_CHARIOT_RADIUS_MIN, inline)]
+unsafe fn ch_chariot_radius_min(ctx: &InlineCtx) {
+    let agent_base: &mut L2CAgentBase =
+        &mut *std::ptr::with_exposed_provenance_mut::<L2CAgentBase>(ctx.registers[22].x() as usize);
+    if WorkModule::is_flag(agent_base.module_accessor, ITEM_INSTANCE_WORK_FLAG_PLAYER) == false {
+        return;
+    }
+    let min_radius: f32 = 35.0;
+    asm!("fmov s0, w8", in("w8") min_radius);
+}
+
+#[skyline::hook(replace = CH_CHARIOT_RADIUS_MAX, inline)]
+unsafe fn ch_chariot_radius_max(ctx: &InlineCtx) {
+    let agent_base: &mut L2CAgentBase =
+        &mut *std::ptr::with_exposed_provenance_mut::<L2CAgentBase>(ctx.registers[22].x() as usize);
+    if WorkModule::is_flag(agent_base.module_accessor, ITEM_INSTANCE_WORK_FLAG_PLAYER) == false {
+        return;
+    }
+    let max_radius: f32 = 70.0;
+    asm!("fmov s0, w8", in("w8") max_radius);
+}
+
 unsafe fn mh_kenzan_coroutine(item: &mut L2CAgentBase) -> L2CValue {
     let lua_state = item.lua_state_agent;
     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -571,6 +810,14 @@ fn nro_hook(info: &skyline::nro::NroInfo) {
     if info.name == "item" {
         MASTERCRAZY_ITEM_HOOKS_ONCE.call_once(|| unsafe {
             let module_base = (*info.module.ModuleObject).module_base as usize;
+            CH_FIRE_CHARIOT_MOTION += module_base;
+            skyline::install_hook!(ch_chariot_motion);
+            CH_CHARIOT_SPEED += module_base;
+            skyline::install_hook!(ch_chariot_speed);
+            CH_CHARIOT_RADIUS_MAX += module_base;
+            skyline::install_hook!(ch_chariot_radius_max);
+            CH_CHARIOT_RADIUS_MIN += module_base;
+            skyline::install_hook!(ch_chariot_radius_min);
             MH_WAIT_TIME_SETTING += module_base;
             skyline::install_hook!(mh_wait_time_setting);
             MH_CHAKRAM_THROW_SUB += module_base;
@@ -1328,6 +1575,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
                                 true,
                             );
+                        }
+                        if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == true {
+                            maybe_recover_master_cpu_idle(boss_boma, ENTRY_ID);
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_DOWN_LOOP && !DEAD {
                             MotionModule::set_rate(boss_boma, 1.0);
@@ -3423,6 +3673,9 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             true,
                         );
                     }
+                    if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID_2) == true {
+                        maybe_recover_crazy_cpu_idle(boss_boma_2, ENTRY_ID_2);
+                    }
 
                     if BARK && !DEAD_2 && MASTER_EXISTS && MotionModule::motion_kind(boss_boma_2) != smash::hash40("bark") && CRAZY_USABLE {
                         MotionModule::set_rate(boss_boma_2, 1.0);
@@ -3648,12 +3901,20 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma_2, 1.2);
                         }
                         if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID_2) == false {
-                            if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_FIRE_CHARIOT_START {
-                                if MotionModule::frame(boss_boma_2) == 40.0 {
+                            if StatusModule::status_kind(boss_boma_2) != *ITEM_CRAZYHAND_STATUS_KIND_FIRE_CHARIOT_START {
+                                reset_crazy_fire_chariot_latches(ENTRY_ID_2);
+                            } else {
+                                if MotionModule::frame(boss_boma_2) >= 40.0
+                                    && !CRAZY_FIRE_CHARIOT_PINKY_LATCH[ENTRY_ID_2]
+                                {
                                     WorkModule::set_flag(boss_boma_2, true, *ITEM_CRAZYHAND_INSTANCE_WORK_FLAG_FIRE_CHARIOT_PINKY);
+                                    CRAZY_FIRE_CHARIOT_PINKY_LATCH[ENTRY_ID_2] = true;
                                 }
-                                if MotionModule::frame(boss_boma_2) == 55.0 {
+                                if MotionModule::frame(boss_boma_2) >= 55.0
+                                    && !CRAZY_FIRE_CHARIOT_THUMB_LATCH[ENTRY_ID_2]
+                                {
                                     WorkModule::set_flag(boss_boma_2, true, *ITEM_CRAZYHAND_INSTANCE_WORK_FLAG_FIRE_CHARIOT_THUMB);
+                                    CRAZY_FIRE_CHARIOT_THUMB_LATCH[ENTRY_ID_2] = true;
                                 }
                             }
                         }

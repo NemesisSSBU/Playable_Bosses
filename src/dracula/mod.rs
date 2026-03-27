@@ -24,6 +24,11 @@ static mut RESULT_SPAWNED : bool = false;
 static mut STOP : bool = false;
 static mut EXISTS_PUBLIC : bool = false;
 static mut INITIAL_Y_POS: f32 = 0.0;
+static mut TRANSFORM_POS_X: f32 = 0.0;
+static mut TRANSFORM_POS_Y: f32 = 0.0;
+static mut TRANSFORM_POS_Z: f32 = 0.0;
+static mut TRANSFORM_LR: f32 = 1.0;
+static mut TRANSFORM_POS_VALID: bool = false;
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -32,6 +37,72 @@ extern "C" {
 
 pub unsafe fn check_status() -> bool {
     return EXISTS_PUBLIC;
+}
+
+unsafe fn set_dracula_item_collision(
+    boss_boma: *mut smash::app::BattleObjectModuleAccessor,
+    hit_enabled: bool,
+    jostle_enabled: bool,
+) {
+    let hit_status = if hit_enabled {
+        *HIT_STATUS_NORMAL
+    } else {
+        *HIT_STATUS_OFF
+    };
+    HitModule::set_whole(boss_boma, smash::app::HitStatus(hit_status), 0);
+    JostleModule::set_status(boss_boma, jostle_enabled);
+}
+
+unsafe fn sync_dracula_transform_entry(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+    boss_boma: *mut smash::app::BattleObjectModuleAccessor,
+) {
+    if !TRANSFORM_POS_VALID {
+        return;
+    }
+
+    let transform_pos = Vector3f {
+        x: TRANSFORM_POS_X,
+        y: TRANSFORM_POS_Y,
+        z: TRANSFORM_POS_Z,
+    };
+    PostureModule::set_pos(module_accessor, &transform_pos);
+    PostureModule::set_pos(boss_boma, &transform_pos);
+    PostureModule::set_lr(module_accessor, TRANSFORM_LR);
+    PostureModule::set_lr(boss_boma, TRANSFORM_LR);
+    PostureModule::update_rot_y_lr(module_accessor);
+    PostureModule::update_rot_y_lr(boss_boma);
+
+    if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_ENTRY {
+        TRANSFORM_POS_VALID = false;
+    }
+}
+
+unsafe fn update_dracula_item_collision(
+    boss_boma: *mut smash::app::BattleObjectModuleAccessor,
+    transformed_mode: bool,
+) {
+    let status = StatusModule::status_kind(boss_boma);
+    if !transformed_mode {
+        if status == *ITEM_DRACULA_STATUS_KIND_TELEPORT_START
+        || status == *ITEM_DRACULA_STATUS_KIND_TELEPORT_END {
+            set_dracula_item_collision(boss_boma, false, false);
+        } else if status != *ITEM_STATUS_KIND_DEAD
+        && status != *ITEM_STATUS_KIND_ENTRY
+        && status != *ITEM_STATUS_KIND_TRANS_PHASE
+        && status != *ITEM_DRACULA_STATUS_KIND_CHANGE_START {
+            set_dracula_item_collision(boss_boma, true, true);
+        }
+        return;
+    }
+
+    if status == *ITEM_DRACULA2_STATUS_KIND_FRONT_JUMP
+    || status == *ITEM_DRACULA2_STATUS_KIND_BACK_JUMP {
+        set_dracula_item_collision(boss_boma, false, false);
+    } else if status != *ITEM_STATUS_KIND_DEAD
+    && status != *ITEM_STATUS_KIND_ENTRY {
+        set_dracula_item_collision(boss_boma, true, true);
+    }
 }
 
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
@@ -73,6 +144,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         JUMP_START = false;
                         TRANSFORMED_MODE = false;
+                        TRANSFORM_POS_VALID = false;
                         STOP = false;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -513,10 +585,19 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let x = PostureModule::pos_x(boss_boma);
                             let y = PostureModule::pos_y(boss_boma);
                             let z = PostureModule::pos_z(boss_boma);
+                            TRANSFORM_POS_X = x;
+                            TRANSFORM_POS_Y = y;
+                            TRANSFORM_POS_Z = z;
+                            TRANSFORM_LR = PostureModule::lr(boss_boma);
+                            TRANSFORM_POS_VALID = true;
                             let boss_pos = Vector3f{x: x, y: y, z: z};
 
                             PostureModule::set_pos(module_accessor, &boss_pos);
                             PostureModule::set_pos(boss_boma, &boss_pos);
+                            PostureModule::set_lr(module_accessor, TRANSFORM_LR);
+                            PostureModule::set_lr(boss_boma, TRANSFORM_LR);
+                            PostureModule::update_rot_y_lr(module_accessor);
+                            PostureModule::update_rot_y_lr(boss_boma);
                             ModelModule::set_scale(module_accessor, 1.0);
                             StatusModule::change_status_force(boss_boma, *ITEM_STATUS_KIND_STANDBY, true);
                             StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
@@ -532,6 +613,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                             WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
                             WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
+                            PostureModule::set_pos(boss_boma, &boss_pos);
+                            PostureModule::set_lr(boss_boma, TRANSFORM_LR);
+                            PostureModule::update_rot_y_lr(boss_boma);
 
                             StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_ENTRY, true);
@@ -541,9 +625,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                     if sv_information::is_ready_go() == true {
+                        update_dracula_item_collision(boss_boma, TRANSFORMED_MODE);
                         if TRANSFORMED_MODE {
-                            let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
+                            sync_dracula_transform_entry(module_accessor, boss_boma);
                             if WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP) != 999.0 {
                                 if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_DEAD {
                                     let sub_hp = 999.0 - WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP);

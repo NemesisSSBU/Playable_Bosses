@@ -39,9 +39,29 @@ pub unsafe fn check_status() -> bool {
 }
 
 #[inline(always)]
+unsafe fn update_marx_item_collision(
+    boss_boma: *mut smash::app::BattleObjectModuleAccessor,
+) {
+    let status = StatusModule::status_kind(boss_boma);
+    let intangible = status == *ITEM_MARX_STATUS_KIND_MOVE_TELEPORT
+        || status == *ITEM_MARX_STATUS_KIND_AVOID_TELEPORT
+        || status == *ITEM_STATUS_KIND_WARP;
+    let hit_status = if intangible {
+        *HIT_STATUS_OFF
+    } else {
+        *HIT_STATUS_NORMAL
+    };
+    HitModule::set_whole(boss_boma, smash::app::HitStatus(hit_status), 0);
+    JostleModule::set_status(boss_boma, !intangible);
+}
+
+#[inline(always)]
 unsafe fn marx_should_clamp_floor(
     boss_boma: *mut smash::app::BattleObjectModuleAccessor,
 ) -> bool {
+    if !CONTROLLABLE {
+        return false;
+    }
     MotionModule::motion_kind(boss_boma) != smash::hash40("wait_convulsion")
 }
 
@@ -549,7 +569,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
-                    HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
+                    update_marx_item_collision(boss_boma);
 
                     for i in 0..10 {
                         if AttackModule::is_attack(boss_boma, i, false) {
