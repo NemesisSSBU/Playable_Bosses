@@ -111,3 +111,354 @@ Thanks to [KyoDusk](https://gamebanana.com/members/1834863) for the beautiful CS
 * [Cargo Skyline](https://github.com/jam1garner/cargo-skyline)
 * [acmd](https://github.com/ultimate-research/skyline-acmd.git)
 * [Smash Script](https://github.com/blu-dev/smash-script.git)
+
+## Move List
+
+# Playable Bosses – Complete Move List
+
+This document contains the **full player input mapping** for all playable bosses in the mod.
+
+## Control Legend
+
+| Input | Meaning |
+|------|--------|
+| Attack | A |
+| Special | B |
+| Tilt | Direction + A |
+| Guard | Shield |
+| Taunt | D-Pad |
+| Jump | Jump Button |
+
+---
+
+# Master Hand
+
+## Core Controls
+
+| Input | Move |
+|------|------|
+| Jump | Electroshock *(requires Crazy Hand)* |
+| Attack | Grab (ground) / Paint Ball (air) |
+| Special | Finger Gun |
+| Guard | Teleport |
+| Side + B | Iron Ball |
+| Up + B | Satellite Gun (ground) / Airplane (air) |
+| Down + B | Finger Beam |
+| Side Tilt | Slap Hold |
+| Up Tilt | Drill |
+| Down Tilt | Palm Crush (ground) / Energy Shot (air) |
+
+---
+
+## Taunts
+
+| Input | Move |
+|------|------|
+| Up Taunt | Bark *(requires Crazy Hand)* |
+| Down Taunt | Scratch Blow (with partner) / Snap |
+| Left Taunt | Spike *(ground only)* |
+| Right Taunt | Chakram |
+
+---
+
+## Conditions Required
+
+- Electroshock and Bark require:
+  - Crazy Hand exists
+  - Same team
+  - Facing each other
+- Several moves change based on **ground vs air state**
+
+---
+
+## Hidden Mechanics
+
+- Holding **Attack** → speeds up Drill
+- Pressing **Attack during Snap** → cancels early
+- Holding **Special (Finger Gun)** → enables multishot tracking mode
+
+---
+
+# Crazy Hand
+
+## Core Controls
+
+| Input | Move |
+|------|------|
+| Jump | Combo attack *(requires Master Hand)* |
+| Attack | Dig (ground) / Slap (air) |
+| Special | Bomb Attack |
+| Guard | Teleport |
+| Side + B | Grow Finger |
+| Up + B | Fire Chariot (ground) / Look (air) |
+| Down + B | Finger Beam |
+| Side Tilt | Slap Hold |
+| Up Tilt | Drill |
+| Down Tilt | Web (ground) / Grab (air) |
+
+---
+
+## Taunts
+
+| Input | Move |
+|------|------|
+| Up Taunt | Finger Beam Combo *(requires Master Hand)* |
+| Down Taunt | Flail *(ground only)* |
+| Left Taunt | Gravity Ball |
+| Right Taunt | Airplane |
+
+---
+
+## Hidden Mechanics
+
+- Press **Attack during Grow Finger** → cancels move
+- Hold **Attack** → speeds up Drill
+
+---
+
+# Galeem
+
+## Controls
+
+| Input | Move |
+|------|------|
+| Attack | Static Missile |
+| Special | Cross Bomb |
+| Guard | Teleport |
+| Side + B | Laser Rush |
+| Up + B | Explode Shot |
+| Down + B | Chase Spear |
+| Up Tilt | Threat |
+| Down Tilt | Smart Bomb |
+
+---
+
+## Taunts
+
+| Input | Move |
+|------|------|
+| Up Taunt | Torrent |
+| Down Taunt | Summon Fighter |
+| Left Taunt | Crush Down |
+
+---
+
+## Special Behavior
+
+- Galeem enters **rage mode** based on HP threshold
+
+---
+
+# Dharkon
+
+## Controls
+
+| Input | Move |
+|------|------|
+| Attack | Tear Up |
+| Special | Cross Bomb |
+| Guard | Teleport |
+| Side + B | Space Rush |
+| Up + B | Centipede |
+| Down + B | Pierce |
+| Up Tilt | Dark Pillar |
+| Down Tilt | Tear Up |
+| Side Tilt | Gatling |
+
+---
+
+## Taunts
+
+| Input | Move |
+|------|------|
+| Up Taunt | Chase Hammer |
+| Down Taunt | Summon Fighter |
+| Right Taunt | Torrent |
+
+---
+
+## Special Behavior
+
+- Rage mode triggered by HP threshold
+
+---
+
+# 🎭 Marx
+
+## Controls
+
+| Input | Move |
+|------|------|
+| Jump | Cutter |
+| Attack | Ice Bomb |
+| Special | Plant Attack |
+| Guard | Teleport |
+| Side + B | Eye Laser |
+| Up + B | Thick Laser |
+| Down + B | Capillary |
+| Down Tilt | Black Hole |
+| Up Tilt | Follow Eye |
+| Side Tilt | Homing Dash |
+
+---
+
+## Hidden Mechanics
+
+- Holding/pressing **Special during Homing Dash** → forces early end
+
+---
+
+# Dracula
+
+## Phase-Based Moveset
+
+Dracula has **two completely different phases** depending on HP.
+
+---
+
+## Phase 1
+
+| Input | Move |
+|------|------|
+| Attack | Fill Attack |
+| Special | 3-Way Shot |
+| Guard | Teleport |
+| Side + B | Straight Shot |
+| Up + B | Pillar |
+| Down + B | Rush |
+| Tilts | Turned 3-Way Variants |
+
+---
+
+## Phase 2
+
+| Input | Move |
+|------|------|
+| Jump | Back Jump |
+| Attack | Slash |
+| Special | Step Slash |
+| Guard | Back Jump |
+| Side + B | Shockwave |
+| Up + B | Homing Shot |
+| Down + B | Step Strike |
+| Down Tilt | Fire Shot |
+| Up Tilt | Squash |
+| Side Tilt | Triple Slash |
+
+---
+
+## Taunts (Phase 2)
+
+| Input | Move |
+|------|------|
+| Up Taunt | Shockwave |
+| Right Taunt | Turn Slash |
+
+---
+
+## Special Behavior
+
+- Phase transition is **automatic (HP-based)**
+
+---
+
+# Rathalos
+
+## Grounded Moves
+
+| Input | Move |
+|------|------|
+| Jump | Switch to Air |
+| Attack | Tackle |
+| Special | Back Jump Fireball |
+| Guard | Turn |
+| Side + B | Fireball Variant |
+| Up + B | Assault |
+| Down + B | Roar |
+| Tilts | Fireball Variants |
+
+---
+
+## Airborne Moves
+
+| Input | Move |
+|------|------|
+| Jump (near ground) | Switch to Ground |
+| Attack | Air Fireball |
+| Special | Charged Fireball |
+| Guard | Air Turn |
+| Side + B | Nail Attack |
+| Up + B | Roar |
+| Down + B | Glide |
+| Tilts | Air Fireball Variants |
+
+---
+
+## Special Behavior
+
+- Moves change based on:
+  - Ground vs Air
+  - Proximity to terrain
+
+---
+
+# Galleom
+
+## Controls
+
+| Input | Move |
+|------|------|
+| Jump | Transform Fall |
+| Attack | Uppercut |
+| Special | Shoot |
+| Guard | Turn |
+| Side + B | Grab Turn |
+| Up + B | Rush Transform |
+| Down + B | Grab |
+| Tilts | Various melee attacks |
+
+---
+
+## Taunts
+
+| Input | Move |
+|------|------|
+| Up Taunt | Double Arm Press |
+| Down Taunt | Fall Down |
+| Left Taunt | Step Crush |
+| Right Taunt | Missile |
+
+---
+
+# Ganon Boss
+
+## Controls
+
+| Input | Move |
+|------|------|
+| Jump | Back Jump |
+| Attack | Laser Hold |
+| Special | Jump Slash |
+| Guard | Turn Jump / Laser Turn Jump |
+| Side + B | Homing Bomb |
+| Up + B | Body Attack |
+| Down + B | Spin Slash |
+| Tilts | Thunder/Double Slash variants |
+
+---
+
+## Taunts
+
+| Input | Move |
+|------|------|
+| Up Taunt | Big Jump |
+| Down Taunt | Back Slash |
+| Left Taunt | Thunder Turn |
+| Right Taunt | Slash Up |
+
+---
+
+# Giga Bowser
+
+- Uses **default fighter moveset**
+- No custom boss-specific input mapping
