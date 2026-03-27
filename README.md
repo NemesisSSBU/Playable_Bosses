@@ -283,7 +283,7 @@ This document contains the **full player input mapping** for all playable bosses
 
 ---
 
-# 🎭 Marx
+# Marx
 
 ## Controls
 
