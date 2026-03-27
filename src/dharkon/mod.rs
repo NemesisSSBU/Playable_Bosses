@@ -47,6 +47,9 @@ pub unsafe fn check_status() -> bool {
 unsafe fn dharkon_should_clamp_floor(
     boss_boma: *mut smash::app::BattleObjectModuleAccessor,
 ) -> bool {
+    if !CONTROLLABLE {
+        return false;
+    }
     let status = StatusModule::status_kind(boss_boma);
     status != *ITEM_DARZ_STATUS_KIND_DOWN_START
         && status != *ITEM_DARZ_STATUS_KIND_DOWN_LOOP
