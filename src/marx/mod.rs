@@ -96,6 +96,23 @@ unsafe fn store_marx_runtime(slot: *mut BossCommonRuntime) {
     (*slot).controller_y = CONTROLLER_Y;
 }
 
+pub unsafe fn reset_match_state(entry_id: usize) {
+    let entry = boss_runtime::sanitize_entry_id(entry_id);
+    CONTROLLABLE = true;
+    ENTRY_ID = entry;
+    BOSS_ID[entry] = 0;
+    DEAD = false;
+    JUMP_START = false;
+    RESULT_SPAWNED = false;
+    STOP = false;
+    EXISTS_PUBLIC = false;
+    BLACK_HOLE_END = false;
+    CONTROLLER_X = 0.0;
+    CONTROLLER_Y = 0.0;
+    CONTROL_SPEED_MUL = 2.0;
+    CONTROL_SPEED_MUL_2 = 0.05;
+}
+
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
@@ -113,7 +130,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             let selected_via_slot = selection::is_selected_css_boss(module_accessor, *ITEM_KIND_MARX);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if smash::app::stage::get_stage_id() == 0x139 {
+                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                     if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
@@ -134,7 +151,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         PostureModule::set_pos(module_accessor, &Vector3f{x: PostureModule::pos_x(module_accessor), y: 2.0, z: PostureModule::pos_z(module_accessor)});
                     }
                 }
-                else if smash::app::stage::get_stage_id() != 0x13A {
+                else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id()) {
                     if sv_information::is_ready_go() == false {
                         if ModelModule::scale(module_accessor) != 0.0001 {
                             DEAD = false;
@@ -658,12 +675,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if RESULT_SPAWNED == false {
                             EXISTS_PUBLIC = false;
                             RESULT_SPAWNED = true;
-                            let boss_boma = boss_helpers::acquire_boss_item(
-                                module_accessor,
-                                &raw mut BOSS_ID,
-                                *ITEM_KIND_MARX,
-                            );
-                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
+                            crate::boss_log!("[PB][Result][Marx] entry {}: skipping fallback result spawn", ENTRY_ID);
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
                     }

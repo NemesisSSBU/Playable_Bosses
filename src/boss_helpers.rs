@@ -11,6 +11,10 @@ use skyline::nn::ro::LookupSymbol;
 
 static mut FIGHTER_MANAGER_ADDR: usize = 0;
 
+pub const STAGE_ID_BOSS_PREVIEW: i32 = 0x139;
+pub const STAGE_ID_CLASSIC_BONUS_GAME: i32 = 0x13A;
+pub const STAGE_ID_CLASSIC_STAFFROLL: i32 = 0x13C;
+
 #[inline(always)]
 pub unsafe fn entry_id(module_accessor: *mut BattleObjectModuleAccessor) -> usize {
     if module_accessor.is_null() {
@@ -183,6 +187,69 @@ pub unsafe fn stop_hidden_host_knockout_sfx(module_accessor: *mut BattleObjectMo
 }
 
 #[inline(always)]
+pub unsafe fn restore_hidden_host_baseline(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() {
+        return;
+    }
+
+    clear_hidden_host_effects(module_accessor);
+    stop_hidden_host_mario_result_sfx(module_accessor);
+    stop_hidden_host_knockout_sfx(module_accessor);
+
+    let current_damage = DamageModule::damage(module_accessor, 0);
+    if current_damage > 0.0 {
+        DamageModule::heal(module_accessor, -current_damage, 0);
+    }
+
+    ItemModule::remove_all(module_accessor);
+    CameraModule::reset_all(module_accessor);
+    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
+    JostleModule::set_status(module_accessor, true);
+    VisibilityModule::set_whole(module_accessor, true);
+    ModelModule::set_scale(module_accessor, 1.0);
+
+    let reset_rot = Vector3f {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
+    PostureModule::set_rot(module_accessor, &reset_rot, 0);
+
+    let mut reset_joint_rot = Vector3f {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
+    ModelModule::set_joint_rotate(
+        module_accessor,
+        Hash40::new("root"),
+        &mut reset_joint_rot,
+        smash::app::MotionNodeRotateCompose {
+            _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
+        },
+        ModelModule::rotation_order(module_accessor),
+    );
+
+    MotionModule::change_motion(
+        module_accessor,
+        Hash40::new("wait"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    StatusModule::change_status_request_from_script(
+        module_accessor,
+        *FIGHTER_STATUS_KIND_WAIT,
+        true,
+    );
+}
+
+#[inline(always)]
 pub unsafe fn request_hidden_host_stock_drain(
     module_accessor: *mut BattleObjectModuleAccessor,
     fighter_manager: *mut FighterManager,
@@ -235,4 +302,23 @@ pub unsafe fn clamp_flying_boss_floor(
             PostureModule::set_pos(boss_boma, &clamped);
         }
     }
+}
+
+#[inline(always)]
+pub fn is_boss_preview_stage(stage_id: i32) -> bool {
+    // This scene still uses the hidden-host preview/interstitial presentation.
+    stage_id == STAGE_ID_BOSS_PREVIEW
+}
+
+#[inline(always)]
+pub fn is_boss_passthrough_stage(stage_id: i32) -> bool {
+    // These scenes should stay on the base fighter because the boss takeover
+    // path is not playable there.
+    stage_id == STAGE_ID_CLASSIC_BONUS_GAME
+        || stage_id == STAGE_ID_CLASSIC_STAFFROLL
+}
+
+#[inline(always)]
+pub fn is_boss_nonbattle_stage(stage_id: i32) -> bool {
+    is_boss_preview_stage(stage_id) || is_boss_passthrough_stage(stage_id)
 }

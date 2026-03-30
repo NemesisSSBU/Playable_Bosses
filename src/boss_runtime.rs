@@ -81,6 +81,20 @@ pub unsafe fn any_exists_public(slots: *const [BossCommonRuntime; MAX_BOSS_ENTRI
     false
 }
 
+#[inline(always)]
+pub unsafe fn reset_all_for_entry(entry_id: usize) {
+    let entry = sanitize_entry_id(entry_id);
+    PLAYABLE_MASTERHAND_RUNTIME[entry] = BossCommonRuntime::new();
+    MASTER_HAND_RUNTIME[entry] = BossCommonRuntime::new();
+    CRAZY_HAND_RUNTIME[entry] = BossCommonRuntime::new();
+    GALEEM_RUNTIME[entry] = BossCommonRuntime::new();
+    DHARKON_RUNTIME[entry] = BossCommonRuntime::new();
+    MARX_RUNTIME[entry] = BossCommonRuntime::new();
+    GALLEOM_RUNTIME[entry] = BossCommonRuntime::new();
+    GANON_RUNTIME[entry] = BossCommonRuntime::new();
+    RATHALOS_RUNTIME[entry] = BossCommonRuntime::new();
+}
+
 pub struct CommonRuntimeSyncGuard {
     slot: *mut BossCommonRuntime,
     store: unsafe fn(*mut BossCommonRuntime),

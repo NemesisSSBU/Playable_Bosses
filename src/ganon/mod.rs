@@ -66,6 +66,23 @@ unsafe fn store_ganon_runtime(slot: *mut BossCommonRuntime) {
     (*slot).controller_y = 0.0;
 }
 
+pub unsafe fn reset_match_state(entry_id: usize) {
+    let entry = boss_runtime::sanitize_entry_id(entry_id);
+    CONTROLLABLE = true;
+    ENTRY_ID = entry;
+    BOSS_ID[entry] = 0;
+    DEAD = false;
+    MOVING = false;
+    JUMP_START = false;
+    RESULT_SPAWNED = false;
+    STOP = false;
+    FRESH_CONTROL = false;
+    EXISTS_PUBLIC = false;
+    RETURN = false;
+    Y_POS = 0.0;
+    INITIAL_Y_POS = 0.0;
+}
+
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
@@ -83,7 +100,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             let selected_via_slot = selection::is_selected_css_boss(module_accessor, *ITEM_KIND_GANONBOSS);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if smash::app::stage::get_stage_id() == 0x139 {
+                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                     if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
@@ -102,7 +119,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         ModelModule::set_joint_rotate(module_accessor, smash::phx::Hash40::new("root") , &mut Vector3f{x: -270.0, y: 180.0, z: -90.0}, smash::app::MotionNodeRotateCompose{_address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8}, ModelModule::rotation_order(module_accessor));
                     }
                 }
-                else if smash::app::stage::get_stage_id() != 0x13A {
+                else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id()) {
                     if sv_information::is_ready_go() == false {
                         if ModelModule::scale(module_accessor) != 0.0001 {
                             DEAD = false;
@@ -536,12 +553,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             EXISTS_PUBLIC = false;
                             RESULT_SPAWNED = true;
                             MOVING = false;
-                            let boss_boma = boss_helpers::acquire_boss_item(
-                                module_accessor,
-                                &raw mut BOSS_ID,
-                                *ITEM_KIND_GANONBOSS,
-                            );
-                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
+                            crate::boss_log!("[PB][Result][GanonBoss] entry {}: skipping fallback result spawn", ENTRY_ID);
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
                     }

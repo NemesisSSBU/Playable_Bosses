@@ -7,6 +7,7 @@ use smash::app::sv_information;
 use smash::app::FighterUtil;
 use smashline::{Agent, Main};
 use crate::config::CONFIG;
+use crate::boss_helpers;
 
 static mut DEAD : bool = false;
 static mut STOP : bool = false;
@@ -28,7 +29,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             .as_ptr(),
         );
         if fighter_kind == *FIGHTER_KIND_KOOPAG {
-            if smash::app::stage::get_stage_id() != 0x139 {
+            if !boss_helpers::is_boss_nonbattle_stage(smash::app::stage::get_stage_id()) {
                 let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
                 FighterManager::set_cursor_whole(fighter_manager, false);
                 if sv_information::is_ready_go() == false {

@@ -2,6 +2,7 @@ use skyline::nn::ro::LookupSymbol;
 use smash::app::{BattleObjectModuleAccessor, FighterEntryID, FighterInformation, FighterManager};
 use smash::app::lua_bind::*;
 use smash::lib::lua_const::*;
+use smash::app::sv_information;
 
 const MAX_FIGHTERS: usize = 8;
 static mut FIGHTER_MANAGER_ADDR: usize = 0;
@@ -16,6 +17,8 @@ static mut CACHED_BOSS_UI_HASH_GLOBAL: u64 = 0;
 static mut CACHED_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
 static mut LAST_LOGGED_GLOBAL_CAPTURE_HASH: u64 = 0;
 static mut LAST_LOGGED_SELECTION_INFO_HASH: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
+static mut SUPPRESS_BOSS_SELECTION_BY_ENTRY: [bool; MAX_FIGHTERS] = [false; MAX_FIGHTERS];
+static mut SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY: [i32; MAX_FIGHTERS] = [i32::MIN; MAX_FIGHTERS];
 
 const UI_CHARA_KOOPAG_SELECTOR: i32 = 0x18E;
 const UI_CHARA_MASTERHAND_SELECTOR: i32 = 0x160;
@@ -101,6 +104,11 @@ unsafe fn cache_boss_hash_from_selection_info(player_id: u32, new_selection_info
         if (1..=MAX_FIGHTERS as u32).contains(&possible_css_entry) {
             entry_idx = Some((possible_css_entry - 1) as usize);
         }
+    }
+
+    if let Some(idx) = entry_idx {
+        SUPPRESS_BOSS_SELECTION_BY_ENTRY[idx] = false;
+        SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[idx] = i32::MIN;
     }
 
     // Keep this read narrow and deterministic to avoid faulting on unknown layouts.
@@ -197,6 +205,8 @@ unsafe fn update_css_cache(unk: u64) {
             let value = *((unk + offset) as *const i32);
             if value >= 0 && (value as usize) < MAX_FIGHTERS {
                 CACHED_BOSS_UI_HASH_BY_ENTRY[value as usize] = hash;
+                SUPPRESS_BOSS_SELECTION_BY_ENTRY[value as usize] = false;
+                SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[value as usize] = i32::MIN;
                 assigned_entry = Some(value as usize);
                 break;
             }
@@ -516,6 +526,12 @@ unsafe fn expected_css_hash_for_selector(expected_selector_id: i32) -> Option<u6
 }
 
 pub unsafe fn is_selected_css_boss(module_accessor: *mut BattleObjectModuleAccessor, expected_selector_id: i32) -> bool {
+    if !module_accessor.is_null() {
+        let entry_idx = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        if entry_idx < MAX_FIGHTERS && SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] {
+            return false;
+        }
+    }
     let Some(found) = selected_css_boss_selector_id(module_accessor) else {
         return false;
     };
@@ -531,5 +547,67 @@ pub unsafe fn is_selected_css_boss(module_accessor: *mut BattleObjectModuleAcces
     match decode_tagged_selector_scalar(found) {
         Some(decoded) => decoded as i32 == expected_selector_id,
         None => false,
+    }
+}
+
+pub unsafe fn suppress_boss_selection_until_ready_go(entry_idx: usize) {
+    if entry_idx >= MAX_FIGHTERS {
+        return;
+    }
+    let stage_id = smash::app::stage::get_stage_id();
+    if !SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] {
+        SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] = true;
+        SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] = stage_id;
+        if crate::debug::enabled() {
+            crate::boss_log!(
+                "[PB][Selection] suppress boss selection for entry {} until scene advances (stage=0x{:x})",
+                entry_idx,
+                stage_id
+            );
+        }
+    } else if SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] != stage_id {
+        SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] = stage_id;
+    }
+}
+
+pub unsafe fn is_boss_selection_suppressed(module_accessor: *mut BattleObjectModuleAccessor) -> bool {
+    if module_accessor.is_null() {
+        return false;
+    }
+    let entry_idx = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+    entry_idx < MAX_FIGHTERS && SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx]
+}
+
+pub unsafe fn clear_boss_selection_suppression_if_ready_go(module_accessor: *mut BattleObjectModuleAccessor) {
+    if module_accessor.is_null() {
+        return;
+    }
+    let entry_idx = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+    if entry_idx < MAX_FIGHTERS && SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] {
+        let ready_go = sv_information::is_ready_go();
+        let current_stage = smash::app::stage::get_stage_id();
+        let suppressed_stage = SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx];
+        let fighter_status = StatusModule::status_kind(module_accessor);
+        let new_round_entry =
+            fighter_status == *FIGHTER_STATUS_KIND_ENTRY
+            || fighter_status == *FIGHTER_STATUS_KIND_REBIRTH;
+        if !ready_go && current_stage == suppressed_stage && !new_round_entry {
+            return;
+        }
+        SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] = false;
+        SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] = i32::MIN;
+        if crate::debug::enabled() {
+            crate::boss_log!(
+                "[PB][Selection] clear boss selection suppression for entry {} on {}",
+                entry_idx,
+                if ready_go {
+                    "ready_go"
+                } else if new_round_entry {
+                    "fighter_entry"
+                } else {
+                    "scene_change"
+                }
+            );
+        }
     }
 }

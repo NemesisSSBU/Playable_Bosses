@@ -498,6 +498,47 @@ unsafe fn reset_mastercrazy_result_runtime() {
     CRAZY_FIRE_CHARIOT_THUMB_LATCH = [false; 8];
 }
 
+pub unsafe fn reset_match_state(entry_id: usize) {
+    let entry = boss_runtime::sanitize_entry_id(entry_id);
+
+    reset_mastercrazy_shared_runtime();
+
+    CONTROLLABLE = true;
+    ENTRY_ID = entry;
+    BOSS_ID[entry] = 0;
+    MULTIPLE_BULLETS = 0;
+    DEAD = false;
+    JUMP_START = false;
+    RESULT_SPAWNED = false;
+    STOP = false;
+    MASTER_EXISTS = false;
+    EXISTS_PUBLIC = false;
+    Y_POS = 0.0;
+    MASTER_TEAM = 99;
+    MASTER_LAST_IRON_BALL_ID = 0;
+    MASTER_IRON_BALL_OFFSTAGE_FRAMES = 0;
+    MASTER_IRON_BALL_SMOOTH_CANCEL = false;
+    MASTER_KENZAN_SPAWNED = false;
+    reset_master_cpu_idle_recovery(entry);
+
+    CONTROLLABLE_2 = true;
+    ENTRY_ID_2 = entry;
+    BOSS_ID_2[entry] = 0;
+    DEAD_2 = false;
+    JUMP_START_2 = false;
+    RESULT_SPAWNED_2 = false;
+    STOP_2 = false;
+    CRAZY_EXISTS = false;
+    EXISTS_PUBLIC_2 = false;
+    Y_POS_2 = 0.0;
+    CRAZY_TEAM = 98;
+    CRAZY_KUMO_ACTIVE = false;
+    CRAZY_KUMO_START_Y = 0.0;
+    CRAZY_KUMO_ENDING = false;
+    reset_crazy_cpu_idle_recovery(entry);
+    reset_crazy_fire_chariot_latches(entry);
+}
+
 #[inline(always)]
 unsafe fn acquire_master_hand_item(
     module_accessor: *mut BattleObjectModuleAccessor,
@@ -917,7 +958,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             let selected_via_slot = selection::is_selected_css_boss(module_accessor, *ITEM_KIND_MASTERHAND);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if smash::app::stage::get_stage_id() == 0x139 {
+                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                     if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
@@ -932,7 +973,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         ModelModule::set_joint_rotate(module_accessor, Hash40::new("root") , &mut Vector3f{x: -270.0, y: 180.0, z: -90.0}, smash::app::MotionNodeRotateCompose{_address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8}, ModelModule::rotation_order(module_accessor));
                     }
                 }
-                else if smash::app::stage::get_stage_id() != 0x13A {
+                else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id()) {
                     if sv_information::is_ready_go() == false {
                         if ModelModule::scale(module_accessor) != 0.0001 {
                             DEAD = false;
@@ -1217,8 +1258,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if RESULT_SPAWNED == false {
                             RESULT_SPAWNED = true;
                             reset_mastercrazy_result_runtime();
-                            let boss_boma = acquire_master_hand_item(module_accessor, ENTRY_ID);
-                            StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
+                            crate::boss_log!("[PB][Result][MasterHand] entry {}: skipping fallback result spawn", ENTRY_ID);
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
                     }
@@ -3106,7 +3146,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
             let selected_via_slot = selection::is_selected_css_boss(module_accessor, *ITEM_KIND_CRAZYHAND);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if smash::app::stage::get_stage_id() == 0x139 {
+                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                     if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
@@ -3121,7 +3161,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         ModelModule::set_joint_rotate(module_accessor, Hash40::new("root") , &mut Vector3f{x: -270.0, y: 180.0, z: -90.0}, smash::app::MotionNodeRotateCompose{_address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8}, ModelModule::rotation_order(module_accessor));
                     }
                 }
-                else if smash::app::stage::get_stage_id() != 0x13A {
+                else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id()) {
                     if sv_information::is_ready_go() == false {
                         if ModelModule::scale(module_accessor) != 0.0001 {
                             DEAD_2 = false;
@@ -3383,9 +3423,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         if RESULT_SPAWNED_2 == false {
                             RESULT_SPAWNED_2 = true;
                             reset_mastercrazy_result_runtime();
-                            let boss_boma_2 = acquire_crazy_hand_item(module_accessor, ENTRY_ID_2);
-                            ItemModule::throw_item(fighter.module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
-                            MotionModule::change_motion(boss_boma_2,Hash40::new("entry"),0.0,1.0,false,0.0,false,false);
+                            crate::boss_log!("[PB][Result][CrazyHand] entry {}: skipping fallback result spawn", ENTRY_ID_2);
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
                     }

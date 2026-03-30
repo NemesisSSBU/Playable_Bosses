@@ -36,6 +36,12 @@ pub static mut FIGHTER_MANAGER_2: usize = 0;
 const MAX_FIGHTERS: usize = 8;
 static mut PEACH_FINAL_GUARD_ACTIVE: [bool; 8] = [false; 8];
 static mut DAISY_FINAL_GUARD_ACTIVE: [bool; 8] = [false; 8];
+static mut BOSS_MATCH_STARTED: [bool; 8] = [false; 8];
+static mut TRANSITION_DEBUG_LAST_STAGE: [i32; 8] = [-1; 8];
+static mut TRANSITION_DEBUG_LAST_STATUS: [i32; 8] = [i32::MIN; 8];
+static mut TRANSITION_DEBUG_LAST_FLAGS: [u16; 8] = [u16::MAX; 8];
+static mut TRANSITION_DEBUG_LAST_HAVE_ITEM: [i32; 8] = [i32::MIN; 8];
+static mut TRANSITION_DEBUG_LAST_SCALE_BITS: [u32; 8] = [u32::MAX; 8];
 
 static mut ENTRY_ID_3 : usize = 0;
 pub static mut FIGHTER_MANAGER_3: usize = 0;
@@ -70,9 +76,138 @@ unsafe fn suppress_hidden_host_result_audio(module_accessor: *mut smash::app::Ba
     boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
 }
 
+unsafe fn log_hidden_host_transition_snapshot(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() {
+        return;
+    }
+
+    let entry_id = boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1);
+    let fighter_manager = boss_helpers::fighter_manager();
+    let result_mode = !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager);
+    let ready_go = smash::app::sv_information::is_ready_go();
+    let hidden_host = boss_helpers::is_hidden_host(module_accessor);
+    let match_started = BOSS_MATCH_STARTED[entry_id];
+
+    if ready_go && !result_mode && !match_started {
+        return;
+    }
+
+    let stage_id = smash::app::stage::get_stage_id();
+    let fighter_status = StatusModule::status_kind(module_accessor);
+    let any_boss = any_boss_active();
+    let have_item_id = if ItemModule::is_have_item(module_accessor, 0) {
+        ItemModule::get_have_item_id(module_accessor, 0) as i32
+    } else {
+        -1
+    };
+    let scale_bits = ModelModule::scale(module_accessor).to_bits();
+    let flags =
+        (ready_go as u16)
+        | ((result_mode as u16) << 1)
+        | ((hidden_host as u16) << 2)
+        | ((match_started as u16) << 3)
+        | ((any_boss as u16) << 4);
+
+    if TRANSITION_DEBUG_LAST_STAGE[entry_id] == stage_id
+        && TRANSITION_DEBUG_LAST_STATUS[entry_id] == fighter_status
+        && TRANSITION_DEBUG_LAST_FLAGS[entry_id] == flags
+        && TRANSITION_DEBUG_LAST_HAVE_ITEM[entry_id] == have_item_id
+        && TRANSITION_DEBUG_LAST_SCALE_BITS[entry_id] == scale_bits
+    {
+        return;
+    }
+
+    TRANSITION_DEBUG_LAST_STAGE[entry_id] = stage_id;
+    TRANSITION_DEBUG_LAST_STATUS[entry_id] = fighter_status;
+    TRANSITION_DEBUG_LAST_FLAGS[entry_id] = flags;
+    TRANSITION_DEBUG_LAST_HAVE_ITEM[entry_id] = have_item_id;
+    TRANSITION_DEBUG_LAST_SCALE_BITS[entry_id] = scale_bits;
+
+    crate::boss_log!(
+        "[PB][TransitionState] entry={} stage=0x{:x} ready_go={} result_mode={} hidden_host={} match_started={} any_boss={} fighter_status={} have_item_id={} scale={:.4}",
+        entry_id,
+        stage_id,
+        ready_go,
+        result_mode,
+        hidden_host,
+        match_started,
+        any_boss,
+        fighter_status,
+        have_item_id,
+        f32::from_bits(scale_bits)
+    );
+}
+
+unsafe fn cleanup_hidden_host_post_match_transition(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() {
+        return;
+    }
+
+    let entry_id = boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1);
+    let fighter_manager = boss_helpers::fighter_manager();
+    let result_mode = !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager);
+    let hidden_host = boss_helpers::is_hidden_host(module_accessor);
+    let ready_go = smash::app::sv_information::is_ready_go();
+
+    if ready_go {
+        if hidden_host || any_boss_active() {
+            BOSS_MATCH_STARTED[entry_id] = true;
+        }
+        return;
+    }
+
+    if result_mode {
+        if BOSS_MATCH_STARTED[entry_id] {
+            selection::suppress_boss_selection_until_ready_go(entry_id);
+        }
+        return;
+    }
+
+    if !BOSS_MATCH_STARTED[entry_id] {
+        return;
+    }
+
+    let stage_id = smash::app::stage::get_stage_id();
+    selection::suppress_boss_selection_until_ready_go(entry_id);
+    BOSS_MATCH_STARTED[entry_id] = false;
+    boss_runtime::reset_all_for_entry(entry_id);
+    playable_masterhand::reset_match_state(entry_id);
+    mastercrazy::reset_match_state(entry_id);
+    galeem::reset_match_state(entry_id);
+    dharkon::reset_match_state(entry_id);
+    marx::reset_match_state(entry_id);
+    dracula::reset_match_state(entry_id);
+    rathalos::reset_match_state(entry_id);
+    galleom::reset_match_state(entry_id);
+    ganon::reset_match_state(entry_id);
+
+    crate::boss_log!(
+        "[PB][TransitionCleanup] entry {}: restoring boss host after non-result match transition on stage=0x{:x} hidden_host={}",
+        entry_id,
+        stage_id,
+        hidden_host
+    );
+
+    boss_helpers::restore_hidden_host_baseline(module_accessor);
+
+    if !fighter_manager.is_null() {
+        FighterManager::set_cursor_whole(fighter_manager, true);
+        FighterManager::set_position_lock(
+            fighter_manager,
+            smash::app::FighterEntryID(entry_id as i32),
+            false,
+        );
+    }
+}
+
 extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let module_accessor = fighter.module_accessor;
+        selection::clear_boss_selection_suppression_if_ready_go(module_accessor);
         mastercrazy::master_frame(fighter);
         mastercrazy::crazy_frame(fighter);
         playable_masterhand::frame(fighter);
@@ -83,7 +218,9 @@ extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
         rathalos::frame(fighter);
         galleom::frame(fighter);
         ganon::frame(fighter);
+        log_hidden_host_transition_snapshot(module_accessor);
         suppress_hidden_host_result_audio(module_accessor);
+        cleanup_hidden_host_post_match_transition(module_accessor);
     }
 }
 

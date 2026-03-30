@@ -87,6 +87,25 @@ unsafe fn store_dharkon_runtime(slot: *mut BossCommonRuntime) {
     (*slot).controller_y = CONTROLLER_Y;
 }
 
+pub unsafe fn reset_match_state(entry_id: usize) {
+    let entry = boss_runtime::sanitize_entry_id(entry_id);
+    CONTROLLABLE = true;
+    IS_ANGRY = false;
+    ENTRY_ID = entry;
+    RANDOM_ATTACK = 0;
+    BOSS_ID[entry] = 0;
+    DEAD = false;
+    JUMP_START = false;
+    RESULT_SPAWNED = false;
+    STOP = false;
+    EXISTS_PUBLIC = false;
+    CONTROLLER_X = 0.0;
+    CONTROLLER_Y = 0.0;
+    CONTROL_SPEED_MUL = 1.25;
+    CONTROL_SPEED_MUL_2 = 0.05;
+    HIDDEN_CPU[entry] = 0;
+}
+
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
@@ -104,7 +123,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             let selected_via_slot = selection::is_selected_css_boss(module_accessor, *ITEM_KIND_DARZ);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if smash::app::stage::get_stage_id() == 0x139 {
+                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                     if ModelModule::scale(module_accessor) != 0.0001 || !ItemModule::is_have_item(module_accessor, 0) {
@@ -125,7 +144,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         PostureModule::set_pos(module_accessor, &Vector3f{x: PostureModule::pos_x(module_accessor), y: 7.25, z: PostureModule::pos_z(module_accessor) + 3.0 });
                     }
                 }
-                else if smash::app::stage::get_stage_id() != 0x13A {
+                else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id()) {
                     if sv_information::is_ready_go() == false {
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
