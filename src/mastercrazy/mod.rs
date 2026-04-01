@@ -501,6 +501,34 @@ unsafe fn reset_mastercrazy_result_runtime() {
 pub unsafe fn reset_match_state(entry_id: usize) {
     let entry = boss_runtime::sanitize_entry_id(entry_id);
 
+    if crate::debug::enabled()
+        && (BOSS_ID[entry] != 0
+            || BOSS_ID_2[entry] != 0
+            || DEAD
+            || DEAD_2
+            || RESULT_SPAWNED
+            || RESULT_SPAWNED_2
+            || STOP
+            || STOP_2
+            || MASTER_EXISTS
+            || EXISTS_PUBLIC)
+    {
+        crate::boss_log!(
+            "[PB][MasterCrazy][Reset] entry={} master_id=0x{:x} crazy_id=0x{:x} master_exists={} exists_public={} master_dead={} crazy_dead={} master_result={} crazy_result={} master_stop={} crazy_stop={}",
+            entry,
+            BOSS_ID[entry],
+            BOSS_ID_2[entry],
+            MASTER_EXISTS,
+            EXISTS_PUBLIC,
+            DEAD,
+            DEAD_2,
+            RESULT_SPAWNED,
+            RESULT_SPAWNED_2,
+            STOP,
+            STOP_2
+        );
+    }
+
     reset_mastercrazy_shared_runtime();
 
     CONTROLLABLE = true;
@@ -550,6 +578,14 @@ unsafe fn acquire_master_hand_item(
         *ITEM_KIND_MASTERHAND,
     );
     configure_boss_owner_mode(boss_boma, entry_id);
+    crate::boss_log!(
+        "[PB][MasterHand][Acquire] entry={} tracked_id=0x{:x} boss_kind={} boss_status={} host_scale={:.4}",
+        entry_id,
+        BOSS_ID[entry_id.min(7)],
+        smash::app::utility::get_kind(&mut *boss_boma),
+        StatusModule::status_kind(boss_boma),
+        ModelModule::scale(module_accessor)
+    );
     boss_boma
 }
 
@@ -621,6 +657,14 @@ unsafe fn acquire_crazy_hand_item(
         *ITEM_KIND_CRAZYHAND,
     );
     configure_boss_owner_mode(boss_boma, entry_id);
+    crate::boss_log!(
+        "[PB][CrazyHand][Acquire] entry={} tracked_id=0x{:x} boss_kind={} boss_status={} host_scale={:.4}",
+        entry_id,
+        BOSS_ID_2[entry_id.min(7)],
+        smash::app::utility::get_kind(&mut *boss_boma),
+        StatusModule::status_kind(boss_boma),
+        ModelModule::scale(module_accessor)
+    );
     boss_boma
 }
 
@@ -660,6 +704,144 @@ unsafe fn initialize_crazy_hand_boss(
     );
     WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
     WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+}
+
+#[inline(always)]
+unsafe fn restore_master_hand_after_item_wipe(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    fighter_manager: *mut smash::app::FighterManager,
+) {
+    if module_accessor.is_null()
+    || !sv_information::is_ready_go()
+    || !boss_helpers::is_hidden_host(module_accessor)
+    || DEAD {
+        return;
+    }
+
+    let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
+    ENTRY_ID = entry;
+    let tracked_id = BOSS_ID[entry];
+    if tracked_id != 0 && sv_battle_object::is_active(tracked_id) {
+        return;
+    }
+    if let Some((_, held_id, _)) =
+        boss_helpers::held_item_by_kind(module_accessor, &[*ITEM_KIND_MASTERHAND])
+    {
+        BOSS_ID[entry] = held_id;
+        return;
+    }
+
+    ItemModule::remove_all(module_accessor);
+    reset_master_runtime_for_spawn();
+    EXISTS_PUBLIC = true;
+    RESULT_SPAWNED = false;
+    MASTER_EXISTS = true;
+    let boss_boma = acquire_master_hand_item(module_accessor, entry);
+    initialize_master_hand_boss(boss_boma, CONFIG.options.boss_difficulty.unwrap_or(10.0));
+    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+    ModelModule::set_scale(module_accessor, 0.0001);
+    let boss_pos = Vector3f {
+        x: PostureModule::pos_x(module_accessor),
+        y: PostureModule::pos_y(module_accessor),
+        z: PostureModule::pos_z(module_accessor),
+    };
+    PostureModule::set_pos(boss_boma, &boss_pos);
+    StatusModule::change_status_request_from_script(
+        boss_boma,
+        *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
+        true,
+    );
+    MotionModule::change_motion(
+        boss_boma,
+        Hash40::new("wait"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    if !boss_helpers::is_operation_cpu_entry(fighter_manager, entry) {
+        CONTROLLABLE = true;
+    }
+    crate::boss_log!(
+        "[PB][Recover] entry {}: restored Master Hand after item wipe tracked_id=0x{:x} tracked_kind={} tracked_status={} cpu_entry={} host_scale={:.4}",
+        entry,
+        BOSS_ID[entry],
+        smash::app::utility::get_kind(&mut *boss_boma),
+        StatusModule::status_kind(boss_boma),
+        boss_helpers::is_operation_cpu_entry(fighter_manager, entry),
+        ModelModule::scale(module_accessor)
+    );
+}
+
+#[inline(always)]
+unsafe fn restore_crazy_hand_after_item_wipe(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    fighter_manager: *mut smash::app::FighterManager,
+) {
+    if module_accessor.is_null()
+    || !sv_information::is_ready_go()
+    || !boss_helpers::is_hidden_host(module_accessor)
+    || DEAD_2 {
+        return;
+    }
+
+    let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
+    ENTRY_ID_2 = entry;
+    let tracked_id = BOSS_ID_2[entry];
+    if tracked_id != 0 && sv_battle_object::is_active(tracked_id) {
+        return;
+    }
+    if let Some((_, held_id, _)) =
+        boss_helpers::held_item_by_kind(module_accessor, &[*ITEM_KIND_CRAZYHAND])
+    {
+        BOSS_ID_2[entry] = held_id;
+        return;
+    }
+
+    ItemModule::remove_all(module_accessor);
+    reset_crazy_runtime_for_spawn();
+    EXISTS_PUBLIC_2 = true;
+    RESULT_SPAWNED_2 = false;
+    CRAZY_EXISTS = true;
+    let boss_boma = acquire_crazy_hand_item(module_accessor, entry);
+    initialize_crazy_hand_boss(boss_boma, CONFIG.options.boss_difficulty.unwrap_or(10.0));
+    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+    ModelModule::set_scale(module_accessor, 0.0001);
+    let boss_pos = Vector3f {
+        x: PostureModule::pos_x(module_accessor),
+        y: PostureModule::pos_y(module_accessor),
+        z: PostureModule::pos_z(module_accessor),
+    };
+    PostureModule::set_pos(boss_boma, &boss_pos);
+    StatusModule::change_status_request_from_script(
+        boss_boma,
+        *ITEM_CRAZYHAND_STATUS_KIND_WAIT_CHASE,
+        true,
+    );
+    MotionModule::change_motion(
+        boss_boma,
+        Hash40::new("wait"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    if !boss_helpers::is_operation_cpu_entry(fighter_manager, entry) {
+        CONTROLLABLE_2 = true;
+    }
+    crate::boss_log!(
+        "[PB][Recover] entry {}: restored Crazy Hand after item wipe tracked_id=0x{:x} tracked_kind={} tracked_status={} cpu_entry={} host_scale={:.4}",
+        entry,
+        BOSS_ID_2[entry],
+        smash::app::utility::get_kind(&mut *boss_boma),
+        StatusModule::status_kind(boss_boma),
+        boss_helpers::is_operation_cpu_entry(fighter_manager, entry),
+        ModelModule::scale(module_accessor)
+    );
 }
 
 #[skyline::hook(replace = MH_CHAKRAM_THROW_SUB)]
@@ -974,8 +1156,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                 }
                 else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id()) {
+                    restore_master_hand_after_item_wipe(module_accessor, fighter_manager);
                     if sv_information::is_ready_go() == false {
-                        if ModelModule::scale(module_accessor) != 0.0001 {
+                        let entry = boss_helpers::entry_id(module_accessor);
+                        let needs_entry_init =
+                            boss_helpers::needs_hidden_host_entry_init(module_accessor, &raw const BOSS_ID, entry);
+                        if needs_entry_init {
                             DEAD = false;
                             CONTROLLABLE = true;
                         }
@@ -984,7 +1170,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-                        if ModelModule::scale(module_accessor) != 0.0001 {
+                        let needs_entry_init =
+                            boss_helpers::needs_hidden_host_entry_init(module_accessor, &raw const BOSS_ID, ENTRY_ID);
+                        if needs_entry_init {
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             RESULT_SPAWNED_2 = false;
@@ -1261,6 +1449,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             crate::boss_log!("[PB][Result][MasterHand] entry {}: skipping fallback result spawn", ENTRY_ID);
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
+                        return;
                     }
 
                     if sv_information::is_ready_go() == false {
@@ -3162,8 +3351,15 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     }
                 }
                 else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id()) {
+                    restore_crazy_hand_after_item_wipe(module_accessor, fighter_manager);
                     if sv_information::is_ready_go() == false {
-                        if ModelModule::scale(module_accessor) != 0.0001 {
+                        let entry = boss_helpers::entry_id(module_accessor);
+                        let needs_entry_init = boss_helpers::needs_hidden_host_entry_init(
+                            module_accessor,
+                            &raw const BOSS_ID_2,
+                            entry,
+                        );
+                        if needs_entry_init {
                             DEAD_2 = false;
                             CONTROLLABLE_2 = true;
                         }
@@ -3172,7 +3368,12 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
                         ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-                        if ModelModule::scale(module_accessor) != 0.0001 {
+                        let needs_entry_init = boss_helpers::needs_hidden_host_entry_init(
+                            module_accessor,
+                            &raw const BOSS_ID_2,
+                            ENTRY_ID_2,
+                        );
+                        if needs_entry_init {
                             EXISTS_PUBLIC_2 = true;
                             RESULT_SPAWNED = false;
                             RESULT_SPAWNED_2 = false;
@@ -3426,6 +3627,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             crate::boss_log!("[PB][Result][CrazyHand] entry {}: skipping fallback result spawn", ENTRY_ID_2);
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
+                        return;
                     }
 
                     if sv_information::is_ready_go() == false {

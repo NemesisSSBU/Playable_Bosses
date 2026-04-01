@@ -11,6 +11,11 @@ use skyline::nn::ro::LookupSymbol;
 
 static mut FIGHTER_MANAGER_ADDR: usize = 0;
 
+pub const HIDDEN_HOST_SCALE: f32 = 0.0001;
+pub const HIDDEN_HOST_ENTRY_PREP_SCALE: f32 = 0.001;
+pub const HIDDEN_HOST_ENTRY_STAGE2_SCALE: f32 = 0.002;
+const HIDDEN_HOST_ENTRY_PREP_EPSILON: f32 = 0.00005;
+
 pub const STAGE_ID_BOSS_PREVIEW: i32 = 0x139;
 pub const STAGE_ID_CLASSIC_BONUS_GAME: i32 = 0x13A;
 pub const STAGE_ID_CLASSIC_STAFFROLL: i32 = 0x13C;
@@ -82,7 +87,42 @@ pub unsafe fn acquire_boss_item(
     let entry = entry_id(module_accessor);
     let boss_id = ItemModule::get_have_item_id(module_accessor, 0) as u32;
     (*slot_ids)[entry] = boss_id;
-    sv_battle_object::module_accessor(boss_id)
+    let boss_boma = sv_battle_object::module_accessor(boss_id);
+    if crate::debug::enabled() {
+        let fighter_status = StatusModule::status_kind(module_accessor);
+        let boss_kind = if boss_boma.is_null() {
+            -1
+        } else {
+            smash::app::utility::get_kind(&mut *boss_boma)
+        };
+        let mut slot_ids_debug = [0u32; 4];
+        let mut slot_kinds_debug = [-1i32; 4];
+        for slot in 0..4 {
+            if ItemModule::is_have_item(module_accessor, slot) {
+                let item_id = ItemModule::get_have_item_id(module_accessor, slot) as u32;
+                slot_ids_debug[slot as usize] = item_id;
+                if item_id != 0 && sv_battle_object::is_active(item_id) {
+                    let item_boma = sv_battle_object::module_accessor(item_id);
+                    if !item_boma.is_null() {
+                        slot_kinds_debug[slot as usize] = smash::app::utility::get_kind(&mut *item_boma);
+                    }
+                }
+            }
+        }
+        crate::boss_log!(
+            "[PB][BossItem] acquire entry={} requested_kind={} acquired_id=0x{:x} acquired_kind={} stage=0x{:x} fighter_status={} scale={:.4} slots={:?} slot_kinds={:?}",
+            entry,
+            item_kind,
+            boss_id,
+            boss_kind,
+            smash::app::stage::get_stage_id(),
+            fighter_status,
+            ModelModule::scale(module_accessor),
+            slot_ids_debug,
+            slot_kinds_debug
+        );
+    }
+    boss_boma
 }
 
 pub unsafe fn acquire_boss_item_excluding(
@@ -111,7 +151,54 @@ pub unsafe fn acquire_boss_item_excluding(
         boss_id = ItemModule::get_have_item_id(module_accessor, 0) as u32;
     }
     (*slot_ids)[entry] = boss_id;
-    sv_battle_object::module_accessor(boss_id)
+    let boss_boma = sv_battle_object::module_accessor(boss_id);
+    if crate::debug::enabled() {
+        let boss_kind = if boss_boma.is_null() {
+            -1
+        } else {
+            smash::app::utility::get_kind(&mut *boss_boma)
+        };
+        crate::boss_log!(
+            "[PB][BossItem] acquire_excluding entry={} requested_kind={} excluded_id=0x{:x} acquired_id=0x{:x} acquired_kind={} stage=0x{:x} fighter_status={} scale={:.4}",
+            entry,
+            item_kind,
+            excluded_item_id,
+            boss_id,
+            boss_kind,
+            smash::app::stage::get_stage_id(),
+            StatusModule::status_kind(module_accessor),
+            ModelModule::scale(module_accessor)
+        );
+    }
+    boss_boma
+}
+
+#[inline(always)]
+pub unsafe fn held_item_by_kind(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    expected_kinds: &[i32],
+) -> Option<(i32, u32, *mut BattleObjectModuleAccessor)> {
+    if module_accessor.is_null() {
+        return None;
+    }
+    for slot in 0..4 {
+        if !ItemModule::is_have_item(module_accessor, slot) {
+            continue;
+        }
+        let item_id = ItemModule::get_have_item_id(module_accessor, slot) as u32;
+        if item_id == 0 || !sv_battle_object::is_active(item_id) {
+            continue;
+        }
+        let item_boma = sv_battle_object::module_accessor(item_id);
+        if item_boma.is_null() {
+            continue;
+        }
+        let item_kind = smash::app::utility::get_kind(&mut *item_boma);
+        if expected_kinds.iter().any(|&expected_kind| expected_kind == item_kind) {
+            return Some((slot, item_id, item_boma));
+        }
+    }
+    None
 }
 
 #[inline(always)]
@@ -139,12 +226,68 @@ pub unsafe fn clear_boss_item_slot(
         }
     }
     ItemModule::remove_all(module_accessor);
+    if crate::debug::enabled() {
+        crate::boss_log!(
+            "[PB][BossItem] clear entry={} tracked_id=0x{:x} set_standby={} stage=0x{:x} fighter_status={} scale={:.4}",
+            entry,
+            boss_id,
+            set_standby,
+            smash::app::stage::get_stage_id(),
+            StatusModule::status_kind(module_accessor),
+            ModelModule::scale(module_accessor)
+        );
+    }
     (*slot_ids)[entry] = 0;
 }
 
 #[inline(always)]
 pub unsafe fn is_hidden_host(module_accessor: *mut BattleObjectModuleAccessor) -> bool {
-    !module_accessor.is_null() && ModelModule::scale(module_accessor) <= 0.0002
+    !module_accessor.is_null() && ModelModule::scale(module_accessor) <= HIDDEN_HOST_ENTRY_STAGE2_SCALE
+}
+
+#[inline(always)]
+pub unsafe fn is_hidden_host_entry_prep(module_accessor: *mut BattleObjectModuleAccessor) -> bool {
+    if module_accessor.is_null() {
+        return false;
+    }
+    let scale = ModelModule::scale(module_accessor);
+    scale >= HIDDEN_HOST_ENTRY_PREP_SCALE - HIDDEN_HOST_ENTRY_PREP_EPSILON
+        && scale <= HIDDEN_HOST_ENTRY_PREP_SCALE + HIDDEN_HOST_ENTRY_PREP_EPSILON
+}
+
+#[inline(always)]
+pub unsafe fn is_hidden_host_entry_stage_two(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) -> bool {
+    if module_accessor.is_null() {
+        return false;
+    }
+    let scale = ModelModule::scale(module_accessor);
+    scale >= HIDDEN_HOST_ENTRY_STAGE2_SCALE - HIDDEN_HOST_ENTRY_PREP_EPSILON
+        && scale <= HIDDEN_HOST_ENTRY_STAGE2_SCALE + HIDDEN_HOST_ENTRY_PREP_EPSILON
+}
+
+#[inline(always)]
+pub unsafe fn is_tracked_boss_active(slot_ids: *const [u32; 8], entry: usize) -> bool {
+    if slot_ids.is_null() {
+        return false;
+    }
+    let entry = entry.min(7);
+    let item_id = (*slot_ids)[entry];
+    item_id != 0 && sv_battle_object::is_active(item_id)
+}
+
+#[inline(always)]
+pub unsafe fn needs_hidden_host_entry_init(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    slot_ids: *const [u32; 8],
+    entry: usize,
+) -> bool {
+    if module_accessor.is_null() {
+        return false;
+    }
+    ModelModule::scale(module_accessor) > HIDDEN_HOST_ENTRY_PREP_SCALE
+        || !is_tracked_boss_active(slot_ids, entry)
 }
 
 #[inline(always)]
@@ -187,11 +330,67 @@ pub unsafe fn stop_hidden_host_knockout_sfx(module_accessor: *mut BattleObjectMo
 }
 
 #[inline(always)]
+pub unsafe fn pin_hidden_host_result_state(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() {
+        return;
+    }
+
+    clear_hidden_host_effects(module_accessor);
+    stop_hidden_host_mario_result_sfx(module_accessor);
+    stop_hidden_host_knockout_sfx(module_accessor);
+
+    ArticleModule::set_visibility_whole(
+        module_accessor,
+        *FIGHTER_MARIO_GENERATE_ARTICLE_PUMP,
+        false,
+        smash::app::ArticleOperationTarget(0),
+    );
+    ItemModule::remove_all(module_accessor);
+    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+    JostleModule::set_status(module_accessor, false);
+    VisibilityModule::set_whole(module_accessor, false);
+    ModelModule::set_scale(module_accessor, 0.0001);
+    MotionModule::change_motion(
+        module_accessor,
+        Hash40::new("none"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+}
+
+#[inline(always)]
 pub unsafe fn restore_hidden_host_baseline(
     module_accessor: *mut BattleObjectModuleAccessor,
 ) {
     if module_accessor.is_null() {
         return;
+    }
+
+    if crate::debug::enabled() {
+        let mut slot_ids = [0u32; 4];
+        for slot in 0..4 {
+            if ItemModule::is_have_item(module_accessor, slot) {
+                slot_ids[slot as usize] = ItemModule::get_have_item_id(module_accessor, slot) as u32;
+            }
+        }
+        crate::boss_log!(
+            "[PB][HiddenHost][Restore] phase=before entry={} stage=0x{:x} fighter_status={} scale={:.4} damage={:.2} pos=({:.2},{:.2},{:.2}) items={:?}",
+            entry_id(module_accessor).min(7),
+            smash::app::stage::get_stage_id(),
+            StatusModule::status_kind(module_accessor),
+            ModelModule::scale(module_accessor),
+            DamageModule::damage(module_accessor, 0),
+            PostureModule::pos_x(module_accessor),
+            PostureModule::pos_y(module_accessor),
+            PostureModule::pos_z(module_accessor),
+            slot_ids
+        );
     }
 
     clear_hidden_host_effects(module_accessor);
@@ -208,7 +407,7 @@ pub unsafe fn restore_hidden_host_baseline(
     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
     JostleModule::set_status(module_accessor, true);
     VisibilityModule::set_whole(module_accessor, true);
-    ModelModule::set_scale(module_accessor, 1.0);
+    ModelModule::set_scale(module_accessor, 0.0001);
 
     let reset_rot = Vector3f {
         x: 0.0,
@@ -232,21 +431,27 @@ pub unsafe fn restore_hidden_host_baseline(
         ModelModule::rotation_order(module_accessor),
     );
 
-    MotionModule::change_motion(
-        module_accessor,
-        Hash40::new("wait"),
-        0.0,
-        1.0,
-        false,
-        0.0,
-        false,
-        false,
-    );
-    StatusModule::change_status_request_from_script(
-        module_accessor,
-        *FIGHTER_STATUS_KIND_WAIT,
-        true,
-    );
+    if crate::debug::enabled() {
+        let mut slot_ids = [0u32; 4];
+        for slot in 0..4 {
+            if ItemModule::is_have_item(module_accessor, slot) {
+                slot_ids[slot as usize] = ItemModule::get_have_item_id(module_accessor, slot) as u32;
+            }
+        }
+        crate::boss_log!(
+            "[PB][HiddenHost][Restore] phase=after entry={} stage=0x{:x} fighter_status={} scale={:.4} damage={:.2} pos=({:.2},{:.2},{:.2}) items={:?}",
+            entry_id(module_accessor).min(7),
+            smash::app::stage::get_stage_id(),
+            StatusModule::status_kind(module_accessor),
+            ModelModule::scale(module_accessor),
+            DamageModule::damage(module_accessor, 0),
+            PostureModule::pos_x(module_accessor),
+            PostureModule::pos_y(module_accessor),
+            PostureModule::pos_z(module_accessor),
+            slot_ids
+        );
+    }
+
 }
 
 #[inline(always)]

@@ -560,9 +560,10 @@ pub unsafe fn suppress_boss_selection_until_ready_go(entry_idx: usize) {
         SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] = stage_id;
         if crate::debug::enabled() {
             crate::boss_log!(
-                "[PB][Selection] suppress boss selection for entry {} until scene advances (stage=0x{:x})",
+                "[PB][Selection] suppress boss selection for entry {} until scene advances (stage=0x{:x} cached_hash=0x{:x})",
                 entry_idx,
-                stage_id
+                stage_id,
+                CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx]
             );
         }
     } else if SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] != stage_id {
@@ -598,7 +599,7 @@ pub unsafe fn clear_boss_selection_suppression_if_ready_go(module_accessor: *mut
         SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] = i32::MIN;
         if crate::debug::enabled() {
             crate::boss_log!(
-                "[PB][Selection] clear boss selection suppression for entry {} on {}",
+                "[PB][Selection] clear boss selection suppression for entry {} on {} ready_go={} current_stage=0x{:x} suppressed_stage=0x{:x} fighter_status={} new_round_entry={} cached_hash=0x{:x}",
                 entry_idx,
                 if ready_go {
                     "ready_go"
@@ -606,7 +607,13 @@ pub unsafe fn clear_boss_selection_suppression_if_ready_go(module_accessor: *mut
                     "fighter_entry"
                 } else {
                     "scene_change"
-                }
+                },
+                ready_go,
+                current_stage,
+                suppressed_stage,
+                fighter_status,
+                new_round_entry,
+                CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx]
             );
         }
     }

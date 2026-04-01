@@ -49,6 +49,40 @@ pub static mut RATHALOS_RUNTIME: [BossCommonRuntime; MAX_BOSS_ENTRIES] =
     [BossCommonRuntime::new(); MAX_BOSS_ENTRIES];
 
 #[inline(always)]
+fn runtime_is_default(slot: &BossCommonRuntime) -> bool {
+    slot.controllable
+        && !slot.stop
+        && !slot.dead
+        && !slot.result_spawned
+        && !slot.exists_public
+        && !slot.fresh_control
+        && !slot.jump_start
+        && slot.controller_x == 0.0
+        && slot.controller_y == 0.0
+}
+
+#[inline(always)]
+unsafe fn log_runtime_reset(label: &str, entry: usize, slot: &BossCommonRuntime) {
+    if !crate::debug::enabled() || runtime_is_default(slot) {
+        return;
+    }
+    crate::boss_log!(
+        "[PB][RuntimeReset] entry={} runtime={} controllable={} stop={} dead={} result_spawned={} exists_public={} fresh_control={} jump_start={} controller=({:.2},{:.2})",
+        entry,
+        label,
+        slot.controllable,
+        slot.stop,
+        slot.dead,
+        slot.result_spawned,
+        slot.exists_public,
+        slot.fresh_control,
+        slot.jump_start,
+        slot.controller_x,
+        slot.controller_y
+    );
+}
+
+#[inline(always)]
 pub const fn sanitize_entry_id(entry_id: usize) -> usize {
     if entry_id < MAX_BOSS_ENTRIES {
         entry_id
@@ -84,6 +118,15 @@ pub unsafe fn any_exists_public(slots: *const [BossCommonRuntime; MAX_BOSS_ENTRI
 #[inline(always)]
 pub unsafe fn reset_all_for_entry(entry_id: usize) {
     let entry = sanitize_entry_id(entry_id);
+    log_runtime_reset("playable_masterhand", entry, &PLAYABLE_MASTERHAND_RUNTIME[entry]);
+    log_runtime_reset("master_hand", entry, &MASTER_HAND_RUNTIME[entry]);
+    log_runtime_reset("crazy_hand", entry, &CRAZY_HAND_RUNTIME[entry]);
+    log_runtime_reset("galeem", entry, &GALEEM_RUNTIME[entry]);
+    log_runtime_reset("dharkon", entry, &DHARKON_RUNTIME[entry]);
+    log_runtime_reset("marx", entry, &MARX_RUNTIME[entry]);
+    log_runtime_reset("galleom", entry, &GALLEOM_RUNTIME[entry]);
+    log_runtime_reset("ganon", entry, &GANON_RUNTIME[entry]);
+    log_runtime_reset("rathalos", entry, &RATHALOS_RUNTIME[entry]);
     PLAYABLE_MASTERHAND_RUNTIME[entry] = BossCommonRuntime::new();
     MASTER_HAND_RUNTIME[entry] = BossCommonRuntime::new();
     CRAZY_HAND_RUNTIME[entry] = BossCommonRuntime::new();

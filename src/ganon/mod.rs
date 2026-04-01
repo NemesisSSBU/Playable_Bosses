@@ -1,6 +1,7 @@
 use smash::lib::lua_const::*;
 use smash::app::lua_bind::*;
 use smash::lua2cpp::L2CFighterCommon;
+use smash::app::BattleObjectModuleAccessor;
 use smash::phx::Vector3f;
 use smash::app::sv_battle_object;
 use std::u32;
@@ -83,6 +84,71 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     INITIAL_Y_POS = 0.0;
 }
 
+#[inline(always)]
+unsafe fn restore_ganon_after_item_wipe(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null()
+    || !sv_information::is_ready_go()
+    || !boss_helpers::is_hidden_host(module_accessor)
+    || DEAD {
+        return;
+    }
+
+    let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
+    ENTRY_ID = entry;
+    let tracked_id = BOSS_ID[entry];
+    if tracked_id != 0 && sv_battle_object::is_active(tracked_id) {
+        return;
+    }
+    if let Some((_, held_id, _)) =
+        boss_helpers::held_item_by_kind(module_accessor, &[*ITEM_KIND_GANONBOSS])
+    {
+        BOSS_ID[entry] = held_id;
+        return;
+    }
+
+    ItemModule::remove_all(module_accessor);
+    EXISTS_PUBLIC = true;
+    RESULT_SPAWNED = false;
+    STOP = false;
+    RETURN = false;
+    let boss_boma = boss_helpers::acquire_boss_item(
+        module_accessor,
+        &raw mut BOSS_ID,
+        *ITEM_KIND_GANONBOSS,
+    );
+    let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
+    WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+    WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+    WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
+    WorkModule::set_int(boss_boma, *ITEM_TRAIT_FLAG_BOSS, *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG);
+    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+    ModelModule::set_scale(module_accessor, 0.0001);
+    let boss_pos = Vector3f {
+        x: PostureModule::pos_x(module_accessor),
+        y: PostureModule::pos_y(module_accessor),
+        z: PostureModule::pos_z(module_accessor),
+    };
+    PostureModule::set_pos(boss_boma, &boss_pos);
+    StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_WAIT, true);
+    MotionModule::change_motion(
+        boss_boma,
+        Hash40::new("wait"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    crate::boss_log!(
+        "[PB][Recover] entry {}: restored Ganon after item wipe",
+        entry
+    );
+}
+
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
@@ -120,8 +186,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                 }
                 else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id()) {
+                    restore_ganon_after_item_wipe(module_accessor);
                     if sv_information::is_ready_go() == false {
-                        if ModelModule::scale(module_accessor) != 0.0001 {
+                        let entry = boss_helpers::entry_id(module_accessor);
+                        let needs_entry_init =
+                            boss_helpers::needs_hidden_host_entry_init(module_accessor, &raw const BOSS_ID, entry);
+                        if needs_entry_init {
                             DEAD = false;
                             CONTROLLABLE = true;
                         }
@@ -133,7 +203,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-                        if ModelModule::scale(module_accessor) != 0.0001 {
+                        let needs_entry_init =
+                            boss_helpers::needs_hidden_host_entry_init(module_accessor, &raw const BOSS_ID, ENTRY_ID);
+                        if needs_entry_init {
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             let boss_boma = boss_helpers::acquire_boss_item(
@@ -556,6 +628,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             crate::boss_log!("[PB][Result][GanonBoss] entry {}: skipping fallback result spawn", ENTRY_ID);
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
+                        return;
                     }
 
                     //STUBS AI

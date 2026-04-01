@@ -1,6 +1,7 @@
 use smash::lib::lua_const::*;
 use smash::app::lua_bind::*;
 use smash::lua2cpp::L2CFighterCommon;
+use smash::app::BattleObjectModuleAccessor;
 use smash::phx::Vector3f;
 use smash::app::ItemKind;
 use smash::app::sv_battle_object;
@@ -89,6 +90,30 @@ unsafe fn store_dharkon_runtime(slot: *mut BossCommonRuntime) {
 
 pub unsafe fn reset_match_state(entry_id: usize) {
     let entry = boss_runtime::sanitize_entry_id(entry_id);
+    if crate::debug::enabled()
+        && (BOSS_ID[entry] != 0
+            || HIDDEN_CPU[entry] != 0
+            || DEAD
+            || RESULT_SPAWNED
+            || STOP
+            || EXISTS_PUBLIC)
+    {
+        crate::boss_log!(
+            "[PB][Dharkon][Reset] entry={} tracked_id=0x{:x} hidden_cpu=0x{:x} controllable={} stop={} dead={} result_spawned={} exists_public={} jump_start={} angry={} controller=({:.2},{:.2})",
+            entry,
+            BOSS_ID[entry],
+            HIDDEN_CPU[entry],
+            CONTROLLABLE,
+            STOP,
+            DEAD,
+            RESULT_SPAWNED,
+            EXISTS_PUBLIC,
+            JUMP_START,
+            IS_ANGRY,
+            CONTROLLER_X,
+            CONTROLLER_Y
+        );
+    }
     CONTROLLABLE = true;
     IS_ANGRY = false;
     ENTRY_ID = entry;
@@ -104,6 +129,208 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     CONTROL_SPEED_MUL = 1.25;
     CONTROL_SPEED_MUL_2 = 0.05;
     HIDDEN_CPU[entry] = 0;
+}
+
+#[inline(always)]
+unsafe fn log_dharkon_entry_phase(
+    tag: &str,
+    module_accessor: *mut BattleObjectModuleAccessor,
+    boss_active: bool,
+    stage_one_prepared: bool,
+    stage_two_prepared: bool,
+) {
+    if module_accessor.is_null() || !crate::debug::enabled() {
+        return;
+    }
+    let entry = boss_helpers::entry_id(module_accessor).min(7);
+    let tracked_id = BOSS_ID[entry];
+    let hidden_cpu_id = HIDDEN_CPU[entry];
+    let tracked_active = boss_active;
+    let tracked_status = if tracked_active {
+        let tracked_boma = sv_battle_object::module_accessor(tracked_id);
+        if tracked_boma.is_null() {
+            -1
+        } else {
+            StatusModule::status_kind(tracked_boma)
+        }
+    } else {
+        -1
+    };
+    let hidden_cpu_active = hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id);
+    let hidden_cpu_status = if hidden_cpu_active {
+        let hidden_cpu_boma = sv_battle_object::module_accessor(hidden_cpu_id);
+        if hidden_cpu_boma.is_null() {
+            -1
+        } else {
+            StatusModule::status_kind(hidden_cpu_boma)
+        }
+    } else {
+        -1
+    };
+    crate::boss_log!(
+        "[PB][Dharkon][Phase] tag={} entry={} stage=0x{:x} ready_go={} fighter_status={} frame={:.2} scale={:.4} tracked_id=0x{:x} tracked_active={} tracked_status={} hidden_cpu=0x{:x} hidden_cpu_active={} hidden_cpu_status={} stage1={} stage2={} exists_public={} controllable={} dead={} stop={} result_spawned={}",
+        tag,
+        entry,
+        smash::app::stage::get_stage_id(),
+        sv_information::is_ready_go(),
+        StatusModule::status_kind(module_accessor),
+        MotionModule::frame(module_accessor),
+        ModelModule::scale(module_accessor),
+        tracked_id,
+        tracked_active,
+        tracked_status,
+        hidden_cpu_id,
+        hidden_cpu_active,
+        hidden_cpu_status,
+        stage_one_prepared,
+        stage_two_prepared,
+        EXISTS_PUBLIC,
+        CONTROLLABLE,
+        DEAD,
+        STOP,
+        RESULT_SPAWNED
+    );
+}
+
+#[inline(always)]
+unsafe fn log_dharkon_spawn_state(
+    tag: &str,
+    module_accessor: *mut BattleObjectModuleAccessor,
+    boss_boma: *mut BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() || !crate::debug::enabled() {
+        return;
+    }
+    let entry = boss_helpers::entry_id(module_accessor).min(7);
+    let hidden_cpu_id = HIDDEN_CPU[entry];
+    let hidden_cpu_active = hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id);
+    let hidden_cpu_boma = if hidden_cpu_active {
+        sv_battle_object::module_accessor(hidden_cpu_id)
+    } else {
+        std::ptr::null_mut()
+    };
+    let hidden_cpu_status = if hidden_cpu_boma.is_null() {
+        -1
+    } else {
+        StatusModule::status_kind(hidden_cpu_boma)
+    };
+    let boss_status = if boss_boma.is_null() {
+        -1
+    } else {
+        StatusModule::status_kind(boss_boma)
+    };
+    crate::boss_log!(
+        "[PB][Dharkon][SpawnState] tag={} entry={} stage=0x{:x} ready_go={} host_status={} host_scale={:.4} host_pos=({:.2},{:.2},{:.2}) tracked_id=0x{:x} boss_status={} boss_pos=({:.2},{:.2},{:.2}) hidden_cpu=0x{:x} hidden_cpu_active={} hidden_cpu_status={} hidden_pos=({:.2},{:.2},{:.2})",
+        tag,
+        entry,
+        smash::app::stage::get_stage_id(),
+        sv_information::is_ready_go(),
+        StatusModule::status_kind(module_accessor),
+        ModelModule::scale(module_accessor),
+        PostureModule::pos_x(module_accessor),
+        PostureModule::pos_y(module_accessor),
+        PostureModule::pos_z(module_accessor),
+        BOSS_ID[entry],
+        boss_status,
+        if boss_boma.is_null() { 0.0 } else { PostureModule::pos_x(boss_boma) },
+        if boss_boma.is_null() { 0.0 } else { PostureModule::pos_y(boss_boma) },
+        if boss_boma.is_null() { 0.0 } else { PostureModule::pos_z(boss_boma) },
+        hidden_cpu_id,
+        hidden_cpu_active,
+        hidden_cpu_status,
+        if hidden_cpu_boma.is_null() { 0.0 } else { PostureModule::pos_x(hidden_cpu_boma) },
+        if hidden_cpu_boma.is_null() { 0.0 } else { PostureModule::pos_y(hidden_cpu_boma) },
+        if hidden_cpu_boma.is_null() { 0.0 } else { PostureModule::pos_z(hidden_cpu_boma) }
+    );
+}
+
+#[inline(always)]
+unsafe fn restore_dharkon_after_item_wipe(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null()
+    || !sv_information::is_ready_go()
+    || !boss_helpers::is_hidden_host(module_accessor)
+    || DEAD {
+        return;
+    }
+
+    let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
+    ENTRY_ID = entry;
+    let tracked_id = BOSS_ID[entry];
+    let hidden_cpu_id = HIDDEN_CPU[entry];
+    let tracked_active = tracked_id != 0 && sv_battle_object::is_active(tracked_id);
+    let hidden_cpu_active = hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id);
+    if tracked_active && hidden_cpu_active {
+        return;
+    }
+
+    ItemModule::remove_all(module_accessor);
+    ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
+    SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
+    HIDDEN_CPU[entry] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
+    let hidden_cpu_boma = sv_battle_object::module_accessor(HIDDEN_CPU[entry]);
+    if hidden_cpu_boma.is_null() {
+        return;
+    }
+    ModelModule::set_scale(hidden_cpu_boma, 0.0001);
+    ItemModule::throw_item(module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
+
+    let hidden_cpu_id = HIDDEN_CPU[entry];
+    let boss_boma = boss_helpers::acquire_boss_item_excluding(
+        module_accessor,
+        &raw mut BOSS_ID,
+        *ITEM_KIND_DARZ,
+        hidden_cpu_id,
+    );
+    let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
+    WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+    WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+    WorkModule::set_int(boss_boma, *ITEM_VARIATION_DARZ_KIILA, *ITEM_INSTANCE_WORK_INT_VARIATION);
+    ModelModule::set_scale(module_accessor, 0.0001);
+    let boss_pos = Vector3f {
+        x: PostureModule::pos_x(module_accessor),
+        y: PostureModule::pos_y(module_accessor),
+        z: PostureModule::pos_z(module_accessor),
+    };
+    PostureModule::set_pos(boss_boma, &boss_pos);
+    PostureModule::set_pos(hidden_cpu_boma, &boss_pos);
+    DamageModule::set_damage_lock(hidden_cpu_boma, true);
+    JostleModule::set_status(hidden_cpu_boma, false);
+    WorkModule::set_float(hidden_cpu_boma, 0.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+    WorkModule::set_float(hidden_cpu_boma, 0.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+    WorkModule::set_float(hidden_cpu_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+    WorkModule::set_float(hidden_cpu_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+    if StatusModule::status_kind(hidden_cpu_boma) != *ITEM_STATUS_KIND_NONE {
+        StatusModule::change_status_request_from_script(hidden_cpu_boma, *ITEM_STATUS_KIND_NONE, true);
+    }
+    StatusModule::change_status_request_from_script(
+        boss_boma,
+        *ITEM_DARZ_STATUS_KIND_MANAGER_WAIT,
+        true,
+    );
+    MotionModule::change_motion(
+        boss_boma,
+        smash::phx::Hash40::new("wait"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    EXISTS_PUBLIC = true;
+    RESULT_SPAWNED = false;
+    crate::boss_log!(
+        "[PB][Recover] entry {}: restored Dharkon after item wipe tracked_id=0x{:x} hidden_cpu=0x{:x} tracked_active={} hidden_cpu_active={}",
+        entry,
+        BOSS_ID[entry],
+        HIDDEN_CPU[entry],
+        BOSS_ID[entry] != 0 && sv_battle_object::is_active(BOSS_ID[entry]),
+        HIDDEN_CPU[entry] != 0 && sv_battle_object::is_active(HIDDEN_CPU[entry])
+    );
 }
 
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
@@ -145,13 +372,24 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                 }
                 else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id()) {
+                    restore_dharkon_after_item_wipe(module_accessor);
                     if sv_information::is_ready_go() == false {
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                         ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-                        let host_scale = ModelModule::scale(module_accessor);
-                        let spawn_prepared = host_scale == 0.0001;
-                        if !spawn_prepared {
+                        let boss_active =
+                            boss_helpers::is_tracked_boss_active(&raw const BOSS_ID, ENTRY_ID);
+                        let stage_one_prepared = boss_helpers::is_hidden_host_entry_prep(module_accessor);
+                        let stage_two_prepared =
+                            boss_helpers::is_hidden_host_entry_stage_two(module_accessor);
+                        log_dharkon_entry_phase(
+                            "pre_ready_go_gate",
+                            module_accessor,
+                            boss_active,
+                            stage_one_prepared,
+                            stage_two_prepared,
+                        );
+                        if !boss_active && !stage_one_prepared && !stage_two_prepared {
                             DEAD = false;
                             CONTROLLABLE = true;
                             JUMP_START = false;
@@ -166,15 +404,30 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
                         if smash::app::smashball::is_training_mode() == false {
-                            if ModelModule::scale(module_accessor) != 0.0001 && ModelModule::scale(module_accessor) != 0.0002 {
-                                ModelModule::set_scale(module_accessor, 0.0002);
+                            if !boss_active && !stage_one_prepared && !stage_two_prepared {
+                                ModelModule::set_scale(module_accessor, boss_helpers::HIDDEN_HOST_ENTRY_PREP_SCALE);
                                 ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DRACULA2), 0, 0, false, false);
                                 SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
                                 HIDDEN_CPU[boss_helpers::entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
                                 let hidden_cpu_boma = sv_battle_object::module_accessor(HIDDEN_CPU[boss_helpers::entry_id(module_accessor)]);
-                                ModelModule::set_scale(hidden_cpu_boma, 0.0001);
+                                ModelModule::set_scale(hidden_cpu_boma, boss_helpers::HIDDEN_HOST_SCALE);
+                                log_dharkon_entry_phase("stage1_prepare", module_accessor, false, true, false);
                             }
-                            if MotionModule::frame(module_accessor) >= 5.0 && ModelModule::scale(module_accessor) != 0.0001 {
+                            if MotionModule::frame(module_accessor) >= 2.0
+                                && !boss_active
+                                && stage_one_prepared
+                            {
+                                ModelModule::set_scale(
+                                    module_accessor,
+                                    boss_helpers::HIDDEN_HOST_ENTRY_STAGE2_SCALE,
+                                );
+                                log_dharkon_entry_phase("stage2_prepare", module_accessor, false, false, true);
+                            }
+                            if MotionModule::frame(module_accessor) >= 5.0
+                                && !boss_active
+                                && boss_helpers::is_hidden_host_entry_stage_two(module_accessor)
+                            {
+                                log_dharkon_entry_phase("initial_spawn_start", module_accessor, false, false, true);
                                 DEAD = false;
                                 CONTROLLABLE = true;
                                 JUMP_START = false;
@@ -196,7 +449,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 );
                                 WorkModule::set_float(boss_boma, get_boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
                                 WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-                                ModelModule::set_scale(module_accessor, 0.0001);
+                                ModelModule::set_scale(module_accessor, boss_helpers::HIDDEN_HOST_SCALE);
                                 if galeem::check_status() {
                                     // MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("entry2"),0.0,1.0,false,0.0,false,false);
                                     StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
@@ -213,6 +466,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     BOSS_ID[boss_helpers::entry_id(module_accessor)],
                                     StatusModule::status_kind(boss_boma),
                                 );
+                                log_dharkon_spawn_state("initial", module_accessor, boss_boma);
                             }
                         }
                     }
@@ -282,6 +536,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 BOSS_ID[boss_helpers::entry_id(module_accessor)],
                                 StatusModule::status_kind(boss_boma),
                             );
+                            log_dharkon_spawn_state("rebirth", module_accessor, boss_boma);
 
                             let x = PostureModule::pos_x(module_accessor);
                             let y = PostureModule::pos_y(boss_boma);
@@ -349,7 +604,19 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == true
                     && (smash::app::smashball::is_training_mode() == true
                     || CONFIG.options.boss_respawn.unwrap_or(false)) {
-                        if ModelModule::scale(module_accessor) != 0.0002 && ModelModule::scale(module_accessor) != 0.0001 {
+                        let boss_active =
+                            boss_helpers::is_tracked_boss_active(&raw const BOSS_ID, ENTRY_ID);
+                        let stage_one_prepared = boss_helpers::is_hidden_host_entry_prep(module_accessor);
+                        let stage_two_prepared =
+                            boss_helpers::is_hidden_host_entry_stage_two(module_accessor);
+                        log_dharkon_entry_phase(
+                            "ready_go_gate",
+                            module_accessor,
+                            boss_active,
+                            stage_one_prepared,
+                            stage_two_prepared,
+                        );
+                        if !boss_active && !stage_one_prepared && !stage_two_prepared {
                             DEAD = false;
                             CONTROLLABLE = true;
                             JUMP_START = false;
@@ -358,9 +625,18 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let lua_state = fighter.lua_state_agent;
                             let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
                             ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-                            ModelModule::set_scale(module_accessor, 0.0002);
+                            ModelModule::set_scale(module_accessor, boss_helpers::HIDDEN_HOST_ENTRY_PREP_SCALE);
+                            log_dharkon_entry_phase("ready_go_stage1", module_accessor, false, true, false);
                         }
-                        if ModelModule::scale(module_accessor) == 0.0002 {
+                        if !boss_active && stage_one_prepared {
+                            ModelModule::set_scale(
+                                module_accessor,
+                                boss_helpers::HIDDEN_HOST_ENTRY_STAGE2_SCALE,
+                            );
+                            log_dharkon_entry_phase("ready_go_stage2", module_accessor, false, false, true);
+                        }
+                        if !boss_active && stage_two_prepared {
+                            log_dharkon_entry_phase("ready_go_spawn_start", module_accessor, false, false, true);
                             RESULT_SPAWNED = false;
                             let boss_boma = boss_helpers::acquire_boss_item(
                                 module_accessor,
@@ -374,13 +650,14 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                             WorkModule::set_int(boss_boma, *ITEM_VARIATION_DARZ_KIILA, *ITEM_INSTANCE_WORK_INT_VARIATION);
-                            ModelModule::set_scale(module_accessor, 0.0001);
+                            ModelModule::set_scale(module_accessor, boss_helpers::HIDDEN_HOST_SCALE);
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START, true);
                             println!(
                                 "[PB][Dharkon][Spawn] ready_go boss_id=0x{:x} status={}",
                                 BOSS_ID[boss_helpers::entry_id(module_accessor)],
                                 StatusModule::status_kind(boss_boma),
                             );
+                            log_dharkon_spawn_state("ready_go", module_accessor, boss_boma);
                         }
                     }
 
@@ -615,6 +892,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             // StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
+                        return;
                     }
 
                     if sv_information::is_ready_go() == true {
@@ -699,6 +977,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     BOSS_ID[boss_helpers::entry_id(module_accessor)],
                                     StatusModule::status_kind(boss_boma),
                                 );
+                                log_dharkon_spawn_state("jump_start", module_accessor, boss_boma);
                             }
                         }
 
