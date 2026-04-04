@@ -16,6 +16,7 @@ pub const HIDDEN_HOST_ENTRY_PREP_SCALE: f32 = 0.001;
 pub const HIDDEN_HOST_ENTRY_STAGE2_SCALE: f32 = 0.002;
 const HIDDEN_HOST_ENTRY_PREP_EPSILON: f32 = 0.00005;
 
+pub const STAGE_ID_RESULTS: i32 = 0x136;
 pub const STAGE_ID_BOSS_PREVIEW: i32 = 0x139;
 pub const STAGE_ID_CLASSIC_BONUS_GAME: i32 = 0x13A;
 pub const STAGE_ID_CLASSIC_STAFFROLL: i32 = 0x13C;
@@ -365,8 +366,9 @@ pub unsafe fn pin_hidden_host_result_state(
 }
 
 #[inline(always)]
-pub unsafe fn restore_hidden_host_baseline(
+unsafe fn restore_hidden_host_baseline_impl(
     module_accessor: *mut BattleObjectModuleAccessor,
+    reset_camera: bool,
 ) {
     if module_accessor.is_null() {
         return;
@@ -403,7 +405,9 @@ pub unsafe fn restore_hidden_host_baseline(
     }
 
     ItemModule::remove_all(module_accessor);
-    CameraModule::reset_all(module_accessor);
+    if reset_camera {
+        CameraModule::reset_all(module_accessor);
+    }
     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
     JostleModule::set_status(module_accessor, true);
     VisibilityModule::set_whole(module_accessor, true);
@@ -452,6 +456,20 @@ pub unsafe fn restore_hidden_host_baseline(
         );
     }
 
+}
+
+#[inline(always)]
+pub unsafe fn restore_hidden_host_baseline(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) {
+    restore_hidden_host_baseline_impl(module_accessor, true);
+}
+
+#[inline(always)]
+pub unsafe fn restore_hidden_host_baseline_without_camera_reset(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) {
+    restore_hidden_host_baseline_impl(module_accessor, false);
 }
 
 #[inline(always)]
@@ -519,7 +537,8 @@ pub fn is_boss_preview_stage(stage_id: i32) -> bool {
 pub fn is_boss_passthrough_stage(stage_id: i32) -> bool {
     // These scenes should stay on the base fighter because the boss takeover
     // path is not playable there.
-    stage_id == STAGE_ID_CLASSIC_BONUS_GAME
+    stage_id == STAGE_ID_RESULTS
+        || stage_id == STAGE_ID_CLASSIC_BONUS_GAME
         || stage_id == STAGE_ID_CLASSIC_STAFFROLL
 }
 

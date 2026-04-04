@@ -592,19 +592,22 @@ pub unsafe fn clear_boss_selection_suppression_if_ready_go(module_accessor: *mut
         let new_round_entry =
             fighter_status == *FIGHTER_STATUS_KIND_ENTRY
             || fighter_status == *FIGHTER_STATUS_KIND_REBIRTH;
-        if !ready_go && current_stage == suppressed_stage && !new_round_entry {
+        let preview_stage = crate::boss_helpers::is_boss_preview_stage(current_stage);
+        if !ready_go && !new_round_entry && !preview_stage {
             return;
         }
         SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] = false;
         SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] = i32::MIN;
         if crate::debug::enabled() {
             crate::boss_log!(
-                "[PB][Selection] clear boss selection suppression for entry {} on {} ready_go={} current_stage=0x{:x} suppressed_stage=0x{:x} fighter_status={} new_round_entry={} cached_hash=0x{:x}",
+                "[PB][Selection] clear boss selection suppression for entry {} on {} ready_go={} current_stage=0x{:x} suppressed_stage=0x{:x} fighter_status={} new_round_entry={} preview_stage={} cached_hash=0x{:x}",
                 entry_idx,
                 if ready_go {
                     "ready_go"
                 } else if new_round_entry {
                     "fighter_entry"
+                } else if preview_stage {
+                    "preview_stage"
                 } else {
                     "scene_change"
                 },
@@ -613,6 +616,7 @@ pub unsafe fn clear_boss_selection_suppression_if_ready_go(module_accessor: *mut
                 suppressed_stage,
                 fighter_status,
                 new_round_entry,
+                preview_stage,
                 CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx]
             );
         }

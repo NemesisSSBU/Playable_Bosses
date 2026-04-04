@@ -213,6 +213,12 @@ unsafe fn cleanup_hidden_host_post_match_transition(
         return;
     }
 
+    if galeem::entry_transition_in_progress(module_accessor)
+        || dharkon::entry_transition_in_progress(module_accessor)
+    {
+        return;
+    }
+
     selection::suppress_boss_selection_until_ready_go(entry_id);
     BOSS_MATCH_STARTED[entry_id] = false;
     boss_runtime::reset_all_for_entry(entry_id);
@@ -233,7 +239,9 @@ unsafe fn cleanup_hidden_host_post_match_transition(
         hidden_host
     );
 
-    boss_helpers::restore_hidden_host_baseline(module_accessor);
+    // Preserve the game's own scene-transition camera here. Resetting it in
+    // this handoff window can strand the final classic-mode route on black.
+    boss_helpers::restore_hidden_host_baseline_without_camera_reset(module_accessor);
     ModelModule::set_scale(module_accessor, 1.0);
     crate::boss_log!(
         "[PB][TransitionCleanupState] entry {}: post-match restore complete stage=0x{:x} fighter_status={} scale={:.4} pos=({:.2},{:.2},{:.2})",

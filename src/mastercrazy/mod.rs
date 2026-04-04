@@ -518,14 +518,14 @@ pub unsafe fn reset_match_state(entry_id: usize) {
             entry,
             BOSS_ID[entry],
             BOSS_ID_2[entry],
-            MASTER_EXISTS,
-            EXISTS_PUBLIC,
-            DEAD,
-            DEAD_2,
-            RESULT_SPAWNED,
-            RESULT_SPAWNED_2,
-            STOP,
-            STOP_2
+            core::ptr::addr_of!(MASTER_EXISTS).read(),
+            core::ptr::addr_of!(EXISTS_PUBLIC).read(),
+            core::ptr::addr_of!(DEAD).read(),
+            core::ptr::addr_of!(DEAD_2).read(),
+            core::ptr::addr_of!(RESULT_SPAWNED).read(),
+            core::ptr::addr_of!(RESULT_SPAWNED_2).read(),
+            core::ptr::addr_of!(STOP).read(),
+            core::ptr::addr_of!(STOP_2).read()
         );
     }
 
@@ -713,7 +713,6 @@ unsafe fn restore_master_hand_after_item_wipe(
 ) {
     if module_accessor.is_null()
     || !sv_information::is_ready_go()
-    || !boss_helpers::is_hidden_host(module_accessor)
     || DEAD {
         return;
     }
@@ -782,7 +781,6 @@ unsafe fn restore_crazy_hand_after_item_wipe(
 ) {
     if module_accessor.is_null()
     || !sv_information::is_ready_go()
-    || !boss_helpers::is_hidden_host(module_accessor)
     || DEAD_2 {
         return;
     }
@@ -1242,7 +1240,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     // Flags and new damage stuff
 
-                    if sv_information::is_ready_go() == true {
+                    if sv_information::is_ready_go() == true && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                         let x = PostureModule::pos_x(boss_boma);
                         let y = PostureModule::pos_y(boss_boma);
@@ -1269,21 +1267,21 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         JostleModule::set_status(module_accessor, false);
                     }
 
-                    if sv_information::is_ready_go() {
+                    if sv_information::is_ready_go() && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_BARK && !CRAZY_USABLE {
                             BARK = false;
                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_MASTERHAND_STATUS_KIND_WAIT_FEINT, true);
                         }
                     }
-                    if sv_information::is_ready_go() == true {
+                    if sv_information::is_ready_go() == true && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                         if MotionModule::motion_kind(boss_boma) == hash40("wait") && !DEAD {
                             SoundModule::stop_se(boss_boma, smash::phx::Hash40::new("se_boss_masterhand_chakram_fly"), 0);
                         }
                     }
                     // Team Attack Trigger
-                    if sv_information::is_ready_go() == true && !DEAD {
+                    if sv_information::is_ready_go() == true && !DEAD && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                         let curr_pos = Vector3f{x: PostureModule::pos_x(module_accessor), y: PostureModule::pos_y(module_accessor), z: PostureModule::pos_z(module_accessor)};
                         if MotionModule::motion_kind(boss_boma) == hash40("wait") && boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == true {
@@ -1337,7 +1335,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     // STUBS AI
 
-                    if sv_information::is_ready_go() && !DEAD {
+                    if sv_information::is_ready_go() && !DEAD && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                         if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == false && StatusModule::status_kind(boss_boma) != *ITEM_MASTERHAND_STATUS_KIND_GOOPAA && StatusModule::status_kind(boss_boma) != *ITEM_MASTERHAND_STATUS_KIND_WFINGER_BEAM_START {
                             if CONTROLLABLE {
@@ -1367,7 +1365,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     if sv_information::is_ready_go() == true {
-                        if DEAD == true {
+                        if DEAD == true && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                             if STOP == false && CONFIG.options.boss_respawn.unwrap_or(false) && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
                                 StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
@@ -1396,7 +1394,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     if DEAD == true {
-                        if sv_information::is_ready_go() == true {
+                        if sv_information::is_ready_go() == true && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                             if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD {
                                 if StatusModule::status_kind(boss_boma) != *ITEM_STATUS_KIND_STANDBY {
@@ -1446,7 +1444,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if RESULT_SPAWNED == false {
                             RESULT_SPAWNED = true;
                             reset_mastercrazy_result_runtime();
-                            crate::boss_log!("[PB][Result][MasterHand] entry {}: skipping fallback result spawn", ENTRY_ID);
+                            crate::boss_log!("[PB][Result][MasterHand] entry {}: skipping fallback result spawn", core::ptr::addr_of!(ENTRY_ID).read());
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
                         return;
@@ -1460,7 +1458,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    if ModelModule::scale(module_accessor) == 0.0001 {
+                    if ModelModule::scale(module_accessor) == 0.0001 && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                         if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY && !CRAZY_EXISTS {
                             MotionModule::set_rate(boss_boma, 2.0);
@@ -1513,7 +1511,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if DEAD == false {
                         // SET POS AND STOPS OUT OF BOUNDS
-                        if ModelModule::scale(module_accessor) == 0.0001 {
+                        if ModelModule::scale(module_accessor) == 0.0001 && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                             if FighterUtil::is_hp_mode(module_accessor) == true {
                                 if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD
@@ -1685,7 +1683,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     // DAMAGE MODULES
-                    
+
+                    if BOSS_ID[boss_helpers::entry_id(module_accessor)] == 0 { return; }
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
                     HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
@@ -3443,7 +3442,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
 
                     // Flags and new damage stuff
 
-                    if sv_information::is_ready_go() == true {
+                    if sv_information::is_ready_go() == true && BOSS_ID_2[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID_2[boss_helpers::entry_id(module_accessor)]);
                         let x = PostureModule::pos_x(boss_boma);
                         let y = PostureModule::pos_y(boss_boma);
@@ -3472,7 +3471,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
 
                     // STUBS AI
 
-                    if sv_information::is_ready_go() && !DEAD_2 {
+                    if sv_information::is_ready_go() && !DEAD_2 && BOSS_ID_2[boss_helpers::entry_id(module_accessor)] != 0 {
                         if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID_2) == false {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID_2[boss_helpers::entry_id(module_accessor)]);
                             if CONTROLLABLE_2 {
@@ -3508,7 +3507,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     }
 
                     // Team Attack Trigger
-                    if sv_information::is_ready_go() == true && !DEAD_2 {
+                    if sv_information::is_ready_go() == true && !DEAD_2 && BOSS_ID_2[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[boss_helpers::entry_id(module_accessor)]);
                         let curr_pos = Vector3f{x: PostureModule::pos_x(module_accessor), y: PostureModule::pos_y(module_accessor), z: PostureModule::pos_z(module_accessor)};
                         if MotionModule::motion_kind(boss_boma_2) == hash40("wait") && boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID_2) == true {
@@ -3547,7 +3546,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     }
 
                     if sv_information::is_ready_go() == true {
-                        if DEAD_2 == true {
+                        if DEAD_2 == true && BOSS_ID_2[boss_helpers::entry_id(module_accessor)] != 0 {
                             let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[boss_helpers::entry_id(module_accessor)]);
                             if STOP_2 == false && CONFIG.options.boss_respawn.unwrap_or(false) && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY {
                                 StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_STANDBY, true);
@@ -3575,7 +3574,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     }
 
                     if DEAD_2 == true {
-                        if sv_information::is_ready_go() == true {
+                        if sv_information::is_ready_go() == true && BOSS_ID_2[boss_helpers::entry_id(module_accessor)] != 0 {
                             let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[boss_helpers::entry_id(module_accessor)]);
                             if StatusModule::status_kind(boss_boma_2) == *ITEM_STATUS_KIND_DEAD {
                                 if StatusModule::status_kind(boss_boma_2) != *ITEM_STATUS_KIND_STANDBY {
@@ -3624,7 +3623,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         if RESULT_SPAWNED_2 == false {
                             RESULT_SPAWNED_2 = true;
                             reset_mastercrazy_result_runtime();
-                            crate::boss_log!("[PB][Result][CrazyHand] entry {}: skipping fallback result spawn", ENTRY_ID_2);
+                            crate::boss_log!("[PB][Result][CrazyHand] entry {}: skipping fallback result spawn", core::ptr::addr_of!(ENTRY_ID_2).read());
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
                         return;
@@ -3638,7 +3637,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    if ModelModule::scale(module_accessor) == 0.0001 && !DEAD_2 {
+                    if ModelModule::scale(module_accessor) == 0.0001 && !DEAD_2 && BOSS_ID_2[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[boss_helpers::entry_id(module_accessor)]);
                         if StatusModule::status_kind(boss_boma_2) == *ITEM_STATUS_KIND_ENTRY && !MASTER_EXISTS {
                             MotionModule::set_rate(boss_boma_2, 2.0);
@@ -3662,6 +3661,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
 
                     //DAMAGE MODULES
 
+                    if BOSS_ID_2[boss_helpers::entry_id(module_accessor)] == 0 { return; }
                     let boss_boma_2 = sv_battle_object::module_accessor(BOSS_ID_2[boss_helpers::entry_id(module_accessor)]);
                     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
                     HitModule::set_whole(boss_boma_2, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
@@ -3716,7 +3716,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
 
                     if DEAD_2 == false {
                         // SET POS AND STOPS OUT OF BOUNDS
-                        if ModelModule::scale(module_accessor) == 0.0001 {
+                        if ModelModule::scale(module_accessor) == 0.0001 && BOSS_ID_2[boss_helpers::entry_id(module_accessor)] != 0 {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID_2[boss_helpers::entry_id(module_accessor)]);
                             if FighterUtil::is_hp_mode(module_accessor) == true {
                                 if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD

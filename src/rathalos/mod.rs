@@ -85,7 +85,6 @@ unsafe fn restore_rathalos_after_item_wipe(
 ) {
     if module_accessor.is_null()
     || !sv_information::is_ready_go()
-    || !boss_helpers::is_hidden_host(module_accessor)
     || DEAD {
         return;
     }
@@ -309,7 +308,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     // Flags and new damage stuff
 
-                    if sv_information::is_ready_go() == true {
+                    if sv_information::is_ready_go() == true && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                         if WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP) != 999.0 {
                             let sub_hp = 999.0 - WorkModule::get_float(boss_boma, *ITEM_INSTANCE_WORK_FLOAT_HP);
@@ -334,7 +333,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     //STUBS AI
 
-                    if sv_information::is_ready_go() == true && !DEAD {
+                    if sv_information::is_ready_go() == true && !DEAD && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                         if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == false && DEAD == false {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                             if CONTROLLABLE == true {
@@ -382,7 +381,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    if ModelModule::scale(module_accessor) == 0.0001 {
+                    if ModelModule::scale(module_accessor) == 0.0001 && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                         if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY {
                             MotionModule::set_rate(boss_boma, 2.75);
@@ -420,7 +419,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     if DEAD == false {
                         // SET POS AND STOPS OUT OF BOUNDS
-                        if ModelModule::scale(module_accessor) == 0.0001 {
+                        if ModelModule::scale(module_accessor) == 0.0001 && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                             if FighterUtil::is_hp_mode(module_accessor) == true {
                                 if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD
@@ -586,7 +585,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     //DAMAGE MODULES
-                    
+
+                    if BOSS_ID[boss_helpers::entry_id(module_accessor)] == 0 { return; }
                     let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
                     HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
@@ -600,7 +600,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == true {
                         if DEAD == false {
                             if FighterUtil::is_hp_mode(module_accessor) == false {
-                                
+
                                 let hp = CONFIG.options.rathalos_hp.unwrap_or(600.0);
                                 if DamageModule::damage(module_accessor, 0) >= hp {
                                     CONTROLLABLE = false;
@@ -645,7 +645,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         EXISTS_PUBLIC = false;
                         if RESULT_SPAWNED == false {
                             RESULT_SPAWNED = true;
-                            crate::boss_log!("[PB][Result][Rathalos] entry {}: skipping fallback result spawn", ENTRY_ID);
+                            crate::boss_log!("[PB][Result][Rathalos] entry {}: skipping fallback result spawn", core::ptr::addr_of!(ENTRY_ID).read());
                         }
                         boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
                         return;

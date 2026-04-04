@@ -109,15 +109,15 @@ pub unsafe fn reset_match_state(entry_id: usize) {
             "[PB][WOL_MH][Reset] entry={} tracked_id=0x{:x} controllable={} stop={} dead={} result_spawned={} exists_public={} fresh_control={} jump_start={} controller=({:.2},{:.2})",
             entry,
             BOSS_ID[entry],
-            CONTROLLABLE,
-            STOP,
-            DEAD,
-            RESULT_SPAWNED,
-            EXISTS_PUBLIC,
-            FRESH_CONTROL,
-            JUMP_START,
-            CONTROLLER_X,
-            CONTROLLER_Y
+            core::ptr::addr_of!(CONTROLLABLE).read(),
+            core::ptr::addr_of!(STOP).read(),
+            core::ptr::addr_of!(DEAD).read(),
+            core::ptr::addr_of!(RESULT_SPAWNED).read(),
+            core::ptr::addr_of!(EXISTS_PUBLIC).read(),
+            core::ptr::addr_of!(FRESH_CONTROL).read(),
+            core::ptr::addr_of!(JUMP_START).read(),
+            core::ptr::addr_of!(CONTROLLER_X).read(),
+            core::ptr::addr_of!(CONTROLLER_Y).read()
         );
     }
     CONTROLLABLE = true;
@@ -246,11 +246,11 @@ unsafe fn log_playable_masterhand_transition_snapshot(
         tracked_id,
         tracked_active,
         boss_status,
-        EXISTS_PUBLIC,
-        CONTROLLABLE,
-        DEAD,
-        STOP,
-        RESULT_SPAWNED
+        core::ptr::addr_of!(EXISTS_PUBLIC).read(),
+        core::ptr::addr_of!(CONTROLLABLE).read(),
+        core::ptr::addr_of!(DEAD).read(),
+        core::ptr::addr_of!(STOP).read(),
+        core::ptr::addr_of!(RESULT_SPAWNED).read()
     );
 }
 
@@ -276,7 +276,7 @@ unsafe fn acquire_cpu_world_masterhand(
     }
     crate::boss_log!(
         "[PB][WOL_MH][Acquire] mode=cpu entry={} requested_kind={} tracked_id=0x{:x} boss_kind={} boss_status={} host_scale={:.4}",
-        ENTRY_ID,
+        core::ptr::addr_of!(ENTRY_ID).read(),
         *ITEM_KIND_MASTERHAND,
         BOSS_ID[ENTRY_ID.min(7)],
         smash::app::utility::get_kind(&mut *boss_boma),
@@ -300,7 +300,7 @@ unsafe fn acquire_player_world_masterhand(
     ModelModule::set_scale(module_accessor, HIDDEN_HOST_SCALE);
     crate::boss_log!(
         "[PB][WOL_MH][Acquire] mode=player entry={} requested_kind={} tracked_id=0x{:x} boss_kind={} boss_status={} host_scale={:.4}",
-        ENTRY_ID,
+        core::ptr::addr_of!(ENTRY_ID).read(),
         *ITEM_KIND_PLAYABLE_MASTERHAND,
         BOSS_ID[ENTRY_ID.min(7)],
         smash::app::utility::get_kind(&mut *boss_boma),
@@ -344,7 +344,6 @@ unsafe fn restore_world_masterhand_after_item_wipe(
 ) {
     if module_accessor.is_null()
     || !sv_information::is_ready_go()
-    || !boss_helpers::is_hidden_host(module_accessor)
     || DEAD {
         return;
     }
@@ -807,7 +806,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     if DEAD == false {
-                        if ModelModule::scale(module_accessor) == 0.0001 {
+                        if ModelModule::scale(module_accessor) == 0.0001 && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                             let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
                             if FighterUtil::is_hp_mode(module_accessor) == true {
                                 if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD
