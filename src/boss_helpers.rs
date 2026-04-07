@@ -20,6 +20,7 @@ pub const STAGE_ID_RESULTS: i32 = 0x136;
 pub const STAGE_ID_BOSS_PREVIEW: i32 = 0x139;
 pub const STAGE_ID_CLASSIC_BONUS_GAME: i32 = 0x13A;
 pub const STAGE_ID_CLASSIC_STAFFROLL: i32 = 0x13C;
+pub const STAGE_ID_CLASSIC_ROUTE_FINAL_BATTLE: i32 = 0x144;
 
 #[inline(always)]
 pub unsafe fn entry_id(module_accessor: *mut BattleObjectModuleAccessor) -> usize {
@@ -465,12 +466,6 @@ pub unsafe fn restore_hidden_host_baseline(
     restore_hidden_host_baseline_impl(module_accessor, true);
 }
 
-#[inline(always)]
-pub unsafe fn restore_hidden_host_baseline_without_camera_reset(
-    module_accessor: *mut BattleObjectModuleAccessor,
-) {
-    restore_hidden_host_baseline_impl(module_accessor, false);
-}
 
 #[inline(always)]
 pub unsafe fn request_hidden_host_stock_drain(
@@ -545,4 +540,9 @@ pub fn is_boss_passthrough_stage(stage_id: i32) -> bool {
 #[inline(always)]
 pub fn is_boss_nonbattle_stage(stage_id: i32) -> bool {
     is_boss_preview_stage(stage_id) || is_boss_passthrough_stage(stage_id)
+}
+
+#[inline(always)]
+pub fn is_classic_route_terminal_battle(stage_id: i32) -> bool {
+    stage_id == STAGE_ID_CLASSIC_ROUTE_FINAL_BATTLE
 }

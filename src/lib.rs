@@ -8,6 +8,7 @@ use smash::app::lua_bind::*;
 use skyline::nn::ro::LookupSymbol;
 use smash::lua2cpp::L2CFighterCommon;
 use smashline::{Agent, Main};
+use std::fs;
 
 mod mastercrazy;
 mod playable_masterhand;
@@ -220,6 +221,12 @@ unsafe fn cleanup_hidden_host_post_match_transition(
     }
 
     selection::suppress_boss_selection_until_ready_go(entry_id);
+    if boss_helpers::is_classic_route_terminal_battle(stage_id) {
+        selection::clear_cached_boss_hash_for_entry(
+            entry_id,
+            "classic_route_terminal_battle",
+        );
+    }
     BOSS_MATCH_STARTED[entry_id] = false;
     boss_runtime::reset_all_for_entry(entry_id);
     playable_masterhand::reset_match_state(entry_id);
@@ -239,29 +246,19 @@ unsafe fn cleanup_hidden_host_post_match_transition(
         hidden_host
     );
 
-    // Preserve the game's own scene-transition camera here. Resetting it in
-    // this handoff window can strand the final classic-mode route on black.
-    boss_helpers::restore_hidden_host_baseline_without_camera_reset(module_accessor);
-    ModelModule::set_scale(module_accessor, 1.0);
+    // Do NOT call any game module APIs here (pin_hidden_host_result_state,
+    // FighterManager::set_cursor_whole, set_position_lock, etc.).
+    // The fighter NRO unloads and reloads between stages, giving a fresh
+    // fighter state.  Calling module APIs during the post-match transition
+    // window can corrupt the game's internal transition state machine —
+    // intermediate battles recover because the next stage load resets
+    // everything, but the final classic-mode battle has no next stage,
+    // causing a softlock (black screen, no credits).
     crate::boss_log!(
-        "[PB][TransitionCleanupState] entry {}: post-match restore complete stage=0x{:x} fighter_status={} scale={:.4} pos=({:.2},{:.2},{:.2})",
+        "[PB][TransitionCleanupState] entry {}: bookkeeping-only cleanup complete stage=0x{:x} (no game API calls)",
         entry_id,
         stage_id,
-        StatusModule::status_kind(module_accessor),
-        ModelModule::scale(module_accessor),
-        PostureModule::pos_x(module_accessor),
-        PostureModule::pos_y(module_accessor),
-        PostureModule::pos_z(module_accessor)
     );
-
-    if !fighter_manager.is_null() {
-        FighterManager::set_cursor_whole(fighter_manager, true);
-        FighterManager::set_position_lock(
-            fighter_manager,
-            smash::app::FighterEntryID(entry_id as i32),
-            false,
-        );
-    }
 }
 
 extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
@@ -375,7 +372,7 @@ pub fn to_hash40(word: &str) -> Hash40 {
     Hash40(crc32_with_len(word))
 }
 
-fn crc32_with_len(word: &str) -> u64 {
+pub fn crc32_with_len(word: &str) -> u64 {
     let mut hash = !0u32;
     let mut len: u8 = 0;
     for b in word.bytes() {
@@ -523,6 +520,338 @@ fn patch_css_selector_fields(charroot: &mut ParamStruct, ui_chara_name: &str, se
     }
 }
 
+fn find_mod_asset_path(relative_path: &str) -> Option<String> {
+    let default_path = format!("sd:/ultimate/mods/Bosses/{}", relative_path);
+    if fs::metadata(&default_path).is_ok() {
+        return Some(default_path);
+    }
+
+    let mods_root = "sd:/ultimate/mods";
+    let mut preferred = Vec::new();
+    let mut others = Vec::new();
+    if let Ok(entries) = fs::read_dir(mods_root) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                let dir_name = entry.file_name().to_string_lossy().to_lowercase();
+                let candidate = format!("{}/{}", entry.path().to_string_lossy(), relative_path);
+                if fs::metadata(&candidate).is_ok() {
+                    if dir_name.contains("boss") || dir_name.contains("comp_boss") {
+                        preferred.push(candidate);
+                    } else {
+                        others.push(candidate);
+                    }
+                }
+            }
+        }
+    }
+
+    preferred.into_iter().chain(others.into_iter()).next()
+}
+
+fn upsert_hash_param(struct_params: &mut ParamStruct, field_name: &str, value: Hash40) {
+    let field_hash = to_hash40(field_name);
+    if let Some((_, param)) = struct_params
+        .0
+        .iter_mut()
+        .find(|(hash, _)| *hash == field_hash)
+    {
+        *param = ParamKind::Hash(value);
+    } else {
+        struct_params.0.push((field_hash, ParamKind::Hash(value)));
+    }
+}
+
+fn upsert_u8_param(struct_params: &mut ParamStruct, field_name: &str, value: u8) {
+    let field_hash = to_hash40(field_name);
+    if let Some((_, param)) = struct_params
+        .0
+        .iter_mut()
+        .find(|(hash, _)| *hash == field_hash)
+    {
+        *param = ParamKind::U8(value);
+    } else {
+        struct_params.0.push((field_hash, ParamKind::U8(value)));
+    }
+}
+
+fn apply_mario_redirect_metadata(charroot: &mut ParamStruct) {
+    // Mirror the CSK redirected-entry metadata so the boss rows inherit Mario's
+    // unlock context without leaving Mario's own CSS tile in an undefined state.
+    upsert_hash_param(charroot, "original_ui_chara_hash", to_hash40("ui_chara_mario"));
+    upsert_u8_param(charroot, "color_start_index", 0);
+}
+
+#[derive(Clone, Debug)]
+struct SarcEntry {
+    name: String,
+    data_start: usize,
+    data_end: usize,
+}
+
+fn read_u16_le(data: &[u8], offset: usize) -> Option<u16> {
+    let bytes: [u8; 2] = data.get(offset..offset + 2)?.try_into().ok()?;
+    Some(u16::from_le_bytes(bytes))
+}
+
+fn read_u32_le(data: &[u8], offset: usize) -> Option<u32> {
+    let bytes: [u8; 4] = data.get(offset..offset + 4)?.try_into().ok()?;
+    Some(u32::from_le_bytes(bytes))
+}
+
+fn parse_sarc(data: &[u8]) -> Option<(usize, Vec<SarcEntry>)> {
+    if data.get(0..4)? != b"SARC" {
+        return None;
+    }
+
+    let header_size = read_u16_le(data, 4)? as usize;
+    let data_offset = read_u32_le(data, 0x0C)? as usize;
+    if data_offset > data.len() {
+        return None;
+    }
+
+    let sfat_offset = header_size;
+    if data.get(sfat_offset..sfat_offset + 4)? != b"SFAT" {
+        return None;
+    }
+    let node_count = read_u16_le(data, sfat_offset + 6)? as usize;
+    let nodes_offset = sfat_offset + 0x0C;
+
+    let sfnt_offset = nodes_offset + (node_count * 0x10);
+    if data.get(sfnt_offset..sfnt_offset + 4)? != b"SFNT" {
+        return None;
+    }
+    let names_offset = sfnt_offset + 0x08;
+
+    let mut entries = Vec::with_capacity(node_count);
+    for index in 0..node_count {
+        let node_offset = nodes_offset + (index * 0x10);
+        let attributes = read_u32_le(data, node_offset + 0x04)?;
+        let has_name = (attributes & 0x0100_0000) != 0;
+        if !has_name {
+            return None;
+        }
+
+        let name_word_offset = (attributes & 0x00FF_FFFF) as usize;
+        let name_offset = names_offset + (name_word_offset * 4);
+        let name_end = data.get(name_offset..)?.iter().position(|byte| *byte == 0)?;
+        let name = std::str::from_utf8(data.get(name_offset..name_offset + name_end)?).ok()?.to_string();
+
+        let file_start = read_u32_le(data, node_offset + 0x08)? as usize;
+        let file_end = read_u32_le(data, node_offset + 0x0C)? as usize;
+        if data_offset + file_end > data.len() || file_end < file_start {
+            return None;
+        }
+
+        entries.push(SarcEntry {
+            name,
+            data_start: data_offset + file_start,
+            data_end: data_offset + file_end,
+        });
+    }
+
+    Some((data_offset, entries))
+}
+
+fn replace_sarc_member_in_place(
+    patched_data: &mut [u8],
+    original_data: &[u8],
+    member_name: &str,
+) -> Result<bool, &'static str> {
+    let (_, patched_entries) = parse_sarc(patched_data).ok_or("patched_sarc_parse_failed")?;
+    let (_, original_entries) = parse_sarc(original_data).ok_or("original_sarc_parse_failed")?;
+
+    let patched_entry = patched_entries
+        .iter()
+        .find(|entry| entry.name == member_name)
+        .ok_or("patched_member_missing")?;
+    let original_entry = original_entries
+        .iter()
+        .find(|entry| entry.name == member_name)
+        .ok_or("original_member_missing")?;
+
+    let patched_len = patched_entry.data_end - patched_entry.data_start;
+    let original_len = original_entry.data_end - original_entry.data_start;
+    if patched_len != original_len {
+        return Err("member_size_mismatch");
+    }
+
+    if patched_data[patched_entry.data_start..patched_entry.data_end]
+        == original_data[original_entry.data_start..original_entry.data_end]
+    {
+        return Ok(false);
+    }
+
+    patched_data[patched_entry.data_start..patched_entry.data_end]
+        .copy_from_slice(&original_data[original_entry.data_start..original_entry.data_end]);
+    Ok(true)
+}
+
+#[arc_callback]
+fn callback_chara_icon_arrangement(hash: u64, data: &mut [u8]) -> Option<usize> {
+    let original_capacity = data.len().max(0x0004_0000);
+    let mut original_data = vec![0u8; original_capacity];
+    let original_size = match load_original_file(hash, original_data.as_mut_slice()) {
+        Some(size) => size,
+        None => {
+            crate::boss_log!(
+                "[PB][ArrangementPatch] failed to load original arrangement buffer={}",
+                original_capacity
+            );
+            return None;
+        }
+    };
+
+    if original_size > data.len() {
+        crate::boss_log!(
+            "[PB][ArrangementPatch] original arrangement larger than callback buffer output={} buffer={}",
+            original_size,
+            data.len()
+        );
+        return None;
+    }
+
+    crate::boss_log!(
+        "[PB][ArrangementPatch] replaced full chara_icon_arrangement.prc with original file size={}",
+        original_size
+    );
+
+    data[..original_size].copy_from_slice(&original_data[..original_size]);
+    Some(original_size)
+}
+
+fn log_sarc_member_diffs(layout_name: &str, patched_data: &[u8], original_data: &[u8]) {
+    if !crate::debug::enabled() {
+        return;
+    }
+
+    let (_, patched_entries) = match parse_sarc(patched_data) {
+        Some(parsed) => parsed,
+        None => {
+            crate::boss_log!(
+                "[PB][LayoutPatch] {} could not diff members reason=patched_sarc_parse_failed",
+                layout_name
+            );
+            return;
+        }
+    };
+    let (_, original_entries) = match parse_sarc(original_data) {
+        Some(parsed) => parsed,
+        None => {
+            crate::boss_log!(
+                "[PB][LayoutPatch] {} could not diff members reason=original_sarc_parse_failed",
+                layout_name
+            );
+            return;
+        }
+    };
+
+    let mut diff_count = 0usize;
+    for patched_entry in patched_entries.iter() {
+        let Some(original_entry) = original_entries
+            .iter()
+            .find(|entry| entry.name == patched_entry.name) else {
+            continue;
+        };
+        let patched_bytes = &patched_data[patched_entry.data_start..patched_entry.data_end];
+        let original_bytes = &original_data[original_entry.data_start..original_entry.data_end];
+        if patched_bytes != original_bytes {
+            diff_count += 1;
+            if diff_count <= 24 {
+                crate::boss_log!(
+                    "[PB][LayoutPatch] {} diff member={} patched_size={} original_size={}",
+                    layout_name,
+                    patched_entry.name,
+                    patched_bytes.len(),
+                    original_bytes.len()
+                );
+            }
+        }
+    }
+
+    crate::boss_log!(
+        "[PB][LayoutPatch] {} total differing members={}",
+        layout_name,
+        diff_count
+    );
+}
+
+fn patch_layout_arc_members(hash: u64, data: &mut [u8], layout_name: &str) -> Option<usize> {
+    let relative_path = match layout_name {
+        "chara_select/layout.arc" => "ui/layout/menu/chara_select/chara_select/layout.arc",
+        "compe_chara_select/layout.arc" => "ui/layout/menu/compe_chara_select/compe_chara_select/layout.arc",
+        _ => return None,
+    };
+    let modded_path = find_mod_asset_path(relative_path)?;
+    let mut modded_data = fs::read(&modded_path).ok()?;
+
+    let mut original_data = vec![0u8; data.len()];
+    let original_size = load_original_file(hash, original_data.as_mut_slice())?;
+    let original_data = &original_data[..original_size];
+
+    log_sarc_member_diffs(layout_name, modded_data.as_slice(), original_data);
+
+    let target_members = [
+        "blyt/chara_select_btn0_00.bflyt",
+        "blyt/com_lct_chara_hd.bflyt",
+    ];
+
+    let mut patched_members = 0usize;
+    for member_name in target_members {
+        match replace_sarc_member_in_place(modded_data.as_mut_slice(), original_data, member_name) {
+            Ok(true) => {
+                patched_members += 1;
+                crate::boss_log!(
+                    "[PB][LayoutPatch] {} replaced member {} from original layout",
+                    layout_name,
+                    member_name
+                );
+            }
+            Ok(false) => {
+                crate::boss_log!(
+                    "[PB][LayoutPatch] {} member {} already matched original",
+                    layout_name,
+                    member_name
+                );
+            }
+            Err(reason) => {
+                crate::boss_log!(
+                    "[PB][LayoutPatch] {} could not replace member {} reason={}",
+                    layout_name,
+                    member_name,
+                    reason
+                );
+            }
+        }
+    }
+
+    if patched_members == 0 {
+        return None;
+    }
+
+    if modded_data.len() > data.len() {
+        crate::boss_log!(
+            "[PB][LayoutPatch] {} patched file larger than callback buffer output={} buffer={}",
+            layout_name,
+            modded_data.len(),
+            data.len()
+        );
+        return None;
+    }
+
+    data[..modded_data.len()].copy_from_slice(&modded_data);
+    Some(modded_data.len())
+}
+
+#[arc_callback]
+fn callback_chara_select_layout(hash: u64, data: &mut [u8]) -> Option<usize> {
+    patch_layout_arc_members(hash, data, "chara_select/layout.arc")
+}
+
+#[arc_callback]
+fn callback_compe_chara_select_layout(hash: u64, data: &mut [u8]) -> Option<usize> {
+    patch_layout_arc_members(hash, data, "compe_chara_select/layout.arc")
+}
+
 // Giga Bowser
 
 #[arc_callback]
@@ -569,10 +898,10 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_koopa");
         }
-        if *hash == to_hash40("disp_order") {
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
             *param.try_into_mut::<i8>().unwrap() = 15;
         }
-        if *hash == to_hash40("skill_list_order") {
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 15;
         }
         if *hash == to_hash40("save_no") {
@@ -588,6 +917,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_koopag", 0x18E);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -620,11 +950,11 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 118;
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 117;
         }
-        if *hash == to_hash40("skill_list_order") {
-            *param.try_into_mut::<i8>().unwrap() = 87;
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 86;
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
@@ -635,13 +965,11 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("fighter_type") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
-        if *hash == to_hash40("fighter_kind") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
-        }
         if *hash == to_hash40("ui_series_id") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_masterhand", 0x160);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -674,17 +1002,14 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 119;
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 118;
         }
-        if *hash == to_hash40("skill_list_order") {
-            *param.try_into_mut::<i8>().unwrap() = 88;
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 87;
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("fighter_kind") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_crazyhand");
@@ -696,6 +1021,7 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_crazyhand", 0x169);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -728,17 +1054,14 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 120;
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 119;
         }
-        if *hash == to_hash40("skill_list_order") {
-            *param.try_into_mut::<i8>().unwrap() = 89;
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 88;
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("fighter_kind") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_darz");
@@ -750,6 +1073,7 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_darz", 0x19A);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -782,17 +1106,14 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 121;
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 120;
         }
-        if *hash == to_hash40("skill_list_order") {
-            *param.try_into_mut::<i8>().unwrap() = 90;
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 89;
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("fighter_kind") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_kiila");
@@ -804,6 +1125,7 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_kiila", 0x18F);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -836,17 +1158,14 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 122;
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 121;
         }
-        if *hash == to_hash40("skill_list_order") {
-            *param.try_into_mut::<i8>().unwrap() = 91;
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 90;
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("fighter_kind") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_marx");
@@ -858,6 +1177,7 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_marx", 0x180);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -890,17 +1210,14 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 123;
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 122;
         }
-        if *hash == to_hash40("skill_list_order") {
-            *param.try_into_mut::<i8>().unwrap() = 92;
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 91;
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("fighter_kind") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_ganonboss");
@@ -912,6 +1229,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_ganonboss", 0x172);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -944,17 +1262,14 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 124;
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 123;
         }
-        if *hash == to_hash40("skill_list_order") {
-            *param.try_into_mut::<i8>().unwrap() = 93;
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 92;
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("fighter_kind") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_dracula");
@@ -966,6 +1281,7 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_dracula", 0x175);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -998,17 +1314,14 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 125;
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 124;
         }
-        if *hash == to_hash40("skill_list_order") {
-            *param.try_into_mut::<i8>().unwrap() = 94;
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 93;
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("fighter_kind") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_galleom");
@@ -1020,6 +1333,7 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_galleom", 0x16F);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -1052,17 +1366,14 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
         }
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 126;
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 125;
         }
-        if *hash == to_hash40("skill_list_order") {
-            *param.try_into_mut::<i8>().unwrap() = 95;
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 94;
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("fighter_kind") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_rathalos");
@@ -1074,6 +1385,7 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_lioleus", 0x188);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -1106,17 +1418,14 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
-        if *hash == to_hash40("disp_order") {
-            *param.try_into_mut::<i8>().unwrap() = 127;
+        if use_builtin_css_ordering() && *hash == to_hash40("disp_order") {
+            *param.try_into_mut::<i8>().unwrap() = 126;
         }
-        if *hash == to_hash40("skill_list_order") {
-            *param.try_into_mut::<i8>().unwrap() = 96;
+        if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
+            *param.try_into_mut::<i8>().unwrap() = 95;
         }
         if *hash == to_hash40("save_no") {
             *param.try_into_mut::<i8>().unwrap() = 0;
-        }
-        if *hash == to_hash40("fighter_kind") {
-            *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_kind_mario");
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_masterhandwol2");
@@ -1128,6 +1437,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("fighter_type_normal");
         }
     });
+    apply_mario_redirect_metadata(charroot);
     patch_css_selector_fields(charroot, "ui_chara_mewtwo_masterhand", 0x1A6);
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -1370,13 +1680,18 @@ fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 // ARCropolis callback buffer needs to be >= the largest patched PRC in load order.
 // Logs showed ui_chara_db.prc around 0x9D3280, so keep comfortable headroom.
 const MAX_FILE_SIZE: usize = 0x00C00000;
+const MENU_PARAM_FILE_SIZE: usize = 0x00010000;
+const MENU_LAYOUT_FILE_SIZE: usize = 0x00800000;
+
+fn use_builtin_css_ordering() -> bool {
+    !CONFIG.options.custom_css.unwrap_or(false)
+}
 
 #[skyline::main(name = "comp_boss")]
 pub fn main() {
     let cfg = &*CONFIG;
     let opts = &cfg.options;
     let giga_bowser_normal = !opts.giga_bowser_normal.unwrap_or(false);
-    let use_disp_order_char = !opts.custom_css.unwrap_or(false);
     let master_hand_css = opts.master_hand_css.unwrap_or(true);
     let crazy_hand_css = opts.crazy_hand_css.unwrap_or(true);
     let dharkon_css = opts.dharkon_css.unwrap_or(true);
@@ -1399,6 +1714,9 @@ pub fn main() {
     Agent::new("fighter").on_line(Main, boss_final_guard_frame).install();
     Agent::new("mario").on_line(Main, mario_boss_dispatch_frame).install();
     selection::install();
+    callback_chara_icon_arrangement::install("ui/param/menu/chara_icon_arrangement.prc", MENU_PARAM_FILE_SIZE);
+    callback_chara_select_layout::install("ui/layout/menu/chara_select/chara_select/layout.arc", MENU_LAYOUT_FILE_SIZE);
+    callback_compe_chara_select_layout::install("ui/layout/menu/compe_chara_select/compe_chara_select/layout.arc", MENU_LAYOUT_FILE_SIZE);
 
     mastercrazy::install();
     playable_masterhand::install();
@@ -1411,19 +1729,17 @@ pub fn main() {
     ganon::install();
     if giga_bowser_normal { gigabowser::install(); }
 
-    if use_disp_order_char {
-        if giga_bowser_css { callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-        if master_hand_css { callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-        if crazy_hand_css { callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-        if dharkon_css { callback_dharkon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-        if galeem_css { callback_galeem::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-        if dracula_css { callback_dracula::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-        if marx_css { callback_marx::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-        if ganon_css { callback_ganon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-        if galleom_css { callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-        if rathalos_css { callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-        if wol_master_hand_css { callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
-    }
+    if giga_bowser_css { callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+    if master_hand_css { callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+    if crazy_hand_css { callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+    if dharkon_css { callback_dharkon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+    if galeem_css { callback_galeem::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+    if dracula_css { callback_dracula::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+    if marx_css { callback_marx::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+    if ganon_css { callback_ganon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+    if galleom_css { callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+    if rathalos_css { callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
+    if wol_master_hand_css { callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE); }
 
     if final2_stage { callback_map_1::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }
     if final3_stage { callback_map_2::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE); }

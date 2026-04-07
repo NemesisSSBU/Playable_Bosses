@@ -106,11 +106,6 @@ unsafe fn cache_boss_hash_from_selection_info(player_id: u32, new_selection_info
         }
     }
 
-    if let Some(idx) = entry_idx {
-        SUPPRESS_BOSS_SELECTION_BY_ENTRY[idx] = false;
-        SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[idx] = i32::MIN;
-    }
-
     // Keep this read narrow and deterministic to avoid faulting on unknown layouts.
     let ui_chara_hash_combined = (new_selection_info + 0x18) as *const u64;
     let raw_field_value = std::ptr::read_unaligned(ui_chara_hash_combined);
@@ -205,8 +200,6 @@ unsafe fn update_css_cache(unk: u64) {
             let value = *((unk + offset) as *const i32);
             if value >= 0 && (value as usize) < MAX_FIGHTERS {
                 CACHED_BOSS_UI_HASH_BY_ENTRY[value as usize] = hash;
-                SUPPRESS_BOSS_SELECTION_BY_ENTRY[value as usize] = false;
-                SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[value as usize] = i32::MIN;
                 assigned_entry = Some(value as usize);
                 break;
             }
@@ -232,9 +225,11 @@ unsafe fn cached_css_boss_hash(entry_idx: usize) -> Option<u64> {
     if is_boss_css_hash(by_entry) {
         return Some(by_entry);
     }
-    // Do not fall back to the global cache for live entry resolution.
-    // A global boss hash is useful for capture/debug, but using it here lets
-    // unrelated Mario entries inherit another player's boss pick.
+
+    if is_boss_css_hash(CACHED_BOSS_UI_HASH_GLOBAL) {
+        return Some(CACHED_BOSS_UI_HASH_GLOBAL);
+    }
+
     None
 }
 
@@ -579,6 +574,50 @@ pub unsafe fn is_boss_selection_suppressed(module_accessor: *mut BattleObjectMod
     entry_idx < MAX_FIGHTERS && SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx]
 }
 
+pub unsafe fn clear_cached_boss_hash_for_entry(entry_idx: usize, reason: &str) {
+    if entry_idx >= MAX_FIGHTERS {
+        return;
+    }
+
+    let previous_entry_hash = CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx];
+    let previous_global_hash = CACHED_BOSS_UI_HASH_GLOBAL;
+
+    CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx] = 0;
+
+    let mut any_cached_boss_hash = false;
+    for idx in 0..MAX_FIGHTERS {
+        if is_boss_css_hash(CACHED_BOSS_UI_HASH_BY_ENTRY[idx]) {
+            any_cached_boss_hash = true;
+            break;
+        }
+    }
+
+    if !any_cached_boss_hash || previous_global_hash == previous_entry_hash {
+        CACHED_BOSS_UI_HASH_GLOBAL = 0;
+        LAST_LOGGED_GLOBAL_CAPTURE_HASH = 0;
+    }
+
+    LAST_LOGGED_SELECTION_INFO_HASH[entry_idx] = u64::MAX;
+    LAST_LOGGED_SELECTOR_ID[entry_idx] = u64::MAX;
+    LAST_LOGGED_LOG_SELECTOR_ID[entry_idx] = u64::MAX;
+    LAST_LOGGED_NORMALIZED_SELECTOR_ID[entry_idx] = u64::MAX;
+    LAST_LOGGED_RESOLVED_SELECTOR_ID[entry_idx] = u64::MAX;
+    LAST_LOGGED_SELECTION_LOG_SELECTOR_ID[entry_idx] = u64::MAX;
+    LAST_LOGGED_CACHE_SELECTOR_ID[entry_idx] = u64::MAX;
+    LOG_INT_SELECTOR_KEY[entry_idx] = None;
+
+    if crate::debug::enabled() && (previous_entry_hash != 0 || previous_global_hash != 0) {
+        crate::boss_log!(
+            "[PB][Selection] clear cached boss hash for entry {} reason={} stage=0x{:x} previous_entry=0x{:x} previous_global=0x{:x}",
+            entry_idx,
+            reason,
+            smash::app::stage::get_stage_id(),
+            previous_entry_hash,
+            previous_global_hash
+        );
+    }
+}
+
 pub unsafe fn clear_boss_selection_suppression_if_ready_go(module_accessor: *mut BattleObjectModuleAccessor) {
     if module_accessor.is_null() {
         return;
@@ -593,7 +632,7 @@ pub unsafe fn clear_boss_selection_suppression_if_ready_go(module_accessor: *mut
             fighter_status == *FIGHTER_STATUS_KIND_ENTRY
             || fighter_status == *FIGHTER_STATUS_KIND_REBIRTH;
         let preview_stage = crate::boss_helpers::is_boss_preview_stage(current_stage);
-        if !ready_go && !new_round_entry && !preview_stage {
+        if !ready_go && current_stage == suppressed_stage && !new_round_entry && !preview_stage {
             return;
         }
         SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] = false;
