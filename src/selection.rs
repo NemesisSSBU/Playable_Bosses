@@ -1,10 +1,16 @@
+use crate::config::CONFIG;
+use once_cell::sync::Lazy;
+use skyline::nn::oe::{DisplayVersion, GetDisplayVersion, Initialize};
 use skyline::nn::ro::LookupSymbol;
+use smash::app::sv_battle_object;
 use smash::app::{BattleObjectModuleAccessor, FighterEntryID, FighterInformation, FighterManager};
 use smash::app::lua_bind::*;
 use smash::lib::lua_const::*;
 use smash::app::sv_information;
 
 const MAX_FIGHTERS: usize = 8;
+const DETECT_CHARACTER_NAME_ENTRY_STRIDE: u64 = 0x260;
+const DETECT_CHARACTER_NAME_TEXT_OFFSET: u64 = 0x8E;
 static mut FIGHTER_MANAGER_ADDR: usize = 0;
 static mut LAST_LOGGED_SELECTOR_ID: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut LAST_LOGGED_LOG_SELECTOR_ID: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
@@ -17,8 +23,25 @@ static mut CACHED_BOSS_UI_HASH_GLOBAL: u64 = 0;
 static mut CACHED_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
 static mut LAST_LOGGED_GLOBAL_CAPTURE_HASH: u64 = 0;
 static mut LAST_LOGGED_SELECTION_INFO_HASH: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
+static mut LAST_LOGGED_NAME_SELECTOR_HASH: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
+static mut LAST_LOGGED_NAME_SELECTOR_RESULT: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut SUPPRESS_BOSS_SELECTION_BY_ENTRY: [bool; MAX_FIGHTERS] = [false; MAX_FIGHTERS];
 static mut SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY: [i32; MAX_FIGHTERS] = [i32::MIN; MAX_FIGHTERS];
+
+static TITLE_VERSION: Lazy<(u16, u16, u16)> = Lazy::new(|| unsafe {
+    Initialize();
+    let mut display_version = DisplayVersion { name: [0; 16] };
+    GetDisplayVersion(&mut display_version);
+    let name = std::str::from_utf8(&display_version.name)
+        .unwrap_or_default()
+        .trim_end_matches(char::from(0))
+        .to_string();
+    let mut parts = name.split('.').filter_map(|s| s.parse::<u16>().ok());
+    let major = parts.next().unwrap_or(0);
+    let minor = parts.next().unwrap_or(0);
+    let micro = parts.next().unwrap_or(0);
+    (major, minor, micro)
+});
 
 const UI_CHARA_KOOPAG_SELECTOR: i32 = 0x18E;
 const UI_CHARA_MASTERHAND_SELECTOR: i32 = 0x160;
@@ -49,6 +72,189 @@ const HASH40_MASK: u64 = 0xFFFF_FFFFFF;
 const SELECTION_UPDATE_SELECTED_FIGHTER_13_0_1: usize = 0x3310760;
 const SELECTION_UPDATE_SELECTED_FIGHTER_13_0_2_PLUS: usize = 0x3311190;
 const SELECTION_UPDATE_CSS_13_0_1_PLUS: usize = 0x1A12460;
+
+fn detect_character_name_enabled() -> bool {
+    CONFIG.options.detect_character_name.unwrap_or(false)
+}
+
+fn canonicalize_detected_character_name(name: &str) -> String {
+    let mut canonical = String::with_capacity(name.len());
+    let mut last_was_space = false;
+
+    for mut ch in name.trim().chars() {
+        if matches!(ch, '_' | '-') {
+            ch = ' ';
+        }
+
+        if ch.is_ascii_whitespace() {
+            if !canonical.is_empty() && !last_was_space {
+                canonical.push(' ');
+                last_was_space = true;
+            }
+            continue;
+        }
+
+        if ch.is_ascii() {
+            canonical.push(ch.to_ascii_uppercase());
+        } else {
+            canonical.push(ch);
+        }
+        last_was_space = false;
+    }
+
+    canonical
+}
+
+fn detected_character_name_to_ui_hash(name: &str) -> Option<u64> {
+    match canonicalize_detected_character_name(name).as_str() {
+        "GIGA BOWSER" | "GIGABOWSER" | "KOOPAG" => Some(UI_CHARA_KOOPAG_HASH),
+        "MASTER HAND"
+        | "MASTERHAND"
+        | "マスターハンド"
+        | "CRÉA MAIN"
+        | "CRÉA-MAIN"
+        | "MEISTER HAND"
+        | "大师之手"
+        | "大師之手"
+        | "마스터 핸드"
+        | "ГЛАВНАЯ РУКА"
+        | "MÃO MESTRA" => Some(UI_CHARA_MASTERHAND_HASH),
+        "CRAZY HAND" | "CRAZYHAND" | "クレイジーハンド" => Some(UI_CHARA_CRAZYHAND_HASH),
+        "DHARKON" | "DARZ" => Some(UI_CHARA_DARZ_HASH),
+        "GALEEM" | "KIILA" => Some(UI_CHARA_KIILA_HASH),
+        "MARX" => Some(UI_CHARA_MARX_HASH),
+        "GANON" | "GANON BOSS" | "GANONBOSS" => Some(UI_CHARA_GANONBOSS_HASH),
+        "DRACULA" => Some(UI_CHARA_DRACULA_HASH),
+        "GALLEOM" => Some(UI_CHARA_GALLEOM_HASH),
+        "RATHALOS" | "LIOLEUS" => Some(UI_CHARA_LIOLEUS_HASH),
+        "WOL MASTER HAND"
+        | "WOL MASTERHAND"
+        | "WORLD OF LIGHT MASTER HAND"
+        | "PLAYABLE MASTER HAND"
+        | "PLAYABLE MASTERHAND"
+        | "MEWTWO MASTERHAND"
+        | "MEWTWO MASTER HAND" => Some(UI_CHARA_MEWTWO_MASTERHAND_HASH),
+        _ => None,
+    }
+}
+
+unsafe fn detect_character_name_text_base() -> u64 {
+    let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
+    let offset = match *TITLE_VERSION {
+        (13, 0, 4) => 0x52C4758,
+        (13, 0, 3) => 0x52C5758,
+        (13, 0, 2) => 0x52C3758,
+        _ => 0x52C4758,
+    };
+    text + offset
+}
+
+unsafe fn read_detected_character_name(addr: u64) -> Option<String> {
+    let mut bytes = Vec::with_capacity(32);
+    let mut cursor = addr as *const u16;
+
+    for _ in 0..64 {
+        let value = std::ptr::read_unaligned(cursor);
+        if value == 0 {
+            break;
+        }
+        bytes.push(value as u8);
+        cursor = cursor.add(1);
+    }
+
+    if bytes.is_empty() {
+        return None;
+    }
+
+    Some(String::from_utf8_lossy(&bytes).trim().to_string())
+}
+
+unsafe fn entry_idx_for_detected_character_name(
+    mut module_accessor: *mut BattleObjectModuleAccessor,
+) -> Option<usize> {
+    if module_accessor.is_null() {
+        return None;
+    }
+
+    if smash::app::utility::get_kind(&mut *module_accessor) == *WEAPON_KIND_PTRAINER_PTRAINER {
+        let entry_id = WorkModule::get_int(
+            module_accessor,
+            *WEAPON_PTRAINER_PTRAINER_INSTANCE_WORK_ID_INT_FIGHTER_ENTRY_ID,
+        );
+        return (0..MAX_FIGHTERS as i32)
+            .contains(&entry_id)
+            .then_some(entry_id as usize);
+    }
+
+    if smash::app::utility::get_category(&mut *module_accessor) == *BATTLE_OBJECT_CATEGORY_FIGHTER {
+        let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID);
+        return (0..MAX_FIGHTERS as i32)
+            .contains(&entry_id)
+            .then_some(entry_id as usize);
+    }
+
+    for _ in 0..8 {
+        let owner_id = WorkModule::get_int(module_accessor, *WEAPON_INSTANCE_WORK_ID_INT_LINK_OWNER);
+        if owner_id < 0 {
+            return None;
+        }
+
+        let owner = sv_battle_object::module_accessor(owner_id as u32);
+        if owner.is_null() {
+            return None;
+        }
+
+        if smash::app::utility::get_category(&mut *owner) == *BATTLE_OBJECT_CATEGORY_FIGHTER {
+            let entry_id = WorkModule::get_int(owner, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID);
+            return (0..MAX_FIGHTERS as i32)
+                .contains(&entry_id)
+                .then_some(entry_id as usize);
+        }
+
+        module_accessor = owner;
+    }
+
+    None
+}
+
+unsafe fn selected_boss_selector_id_from_character_name(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) -> Option<u64> {
+    if !detect_character_name_enabled() {
+        return None;
+    }
+
+    let entry_idx = entry_idx_for_detected_character_name(module_accessor)?;
+    let name_base = detect_character_name_text_base();
+    let addr =
+        name_base + DETECT_CHARACTER_NAME_ENTRY_STRIDE * entry_idx as u64 + DETECT_CHARACTER_NAME_TEXT_OFFSET;
+    let detected_name = read_detected_character_name(addr)?;
+    let resolved = detected_character_name_to_ui_hash(&detected_name);
+
+    if crate::debug::enabled() {
+        let canonical = canonicalize_detected_character_name(&detected_name);
+        let name_hash = smash::hash40(canonical.as_str());
+        let resolved_hash = resolved.unwrap_or(0);
+        if LAST_LOGGED_NAME_SELECTOR_HASH[entry_idx] != name_hash
+            || LAST_LOGGED_NAME_SELECTOR_RESULT[entry_idx] != resolved_hash
+        {
+            LAST_LOGGED_NAME_SELECTOR_HASH[entry_idx] = name_hash;
+            LAST_LOGGED_NAME_SELECTOR_RESULT[entry_idx] = resolved_hash;
+            crate::boss_log!(
+                "[PB][SelectionName] entry {} version={}.{}.{} name=\"{}\" canonical=\"{}\" resolved=0x{:x}",
+                entry_idx,
+                (*TITLE_VERSION).0,
+                (*TITLE_VERSION).1,
+                (*TITLE_VERSION).2,
+                detected_name,
+                canonical,
+                resolved_hash
+            );
+        }
+    }
+
+    resolved
+}
 
 fn hash_for_ui_chara_selector_id(selector: i32) -> Option<u64> {
     match selector {
@@ -399,6 +605,10 @@ unsafe fn fighter_information(module_accessor: *mut BattleObjectModuleAccessor) 
 // Returns the raw CSS-selected boss selector value (from ui_chara_* row data),
 // not the currently held/spawned item.
 pub unsafe fn selected_css_boss_selector_id(module_accessor: *mut BattleObjectModuleAccessor) -> Option<u64> {
+    if let Some(selected_by_name) = selected_boss_selector_id_from_character_name(module_accessor) {
+        return Some(selected_by_name);
+    }
+
     let info = fighter_information(module_accessor);
     if info.is_null() {
         return None;
@@ -604,6 +814,8 @@ pub unsafe fn clear_cached_boss_hash_for_entry(entry_idx: usize, reason: &str) {
     LAST_LOGGED_RESOLVED_SELECTOR_ID[entry_idx] = u64::MAX;
     LAST_LOGGED_SELECTION_LOG_SELECTOR_ID[entry_idx] = u64::MAX;
     LAST_LOGGED_CACHE_SELECTOR_ID[entry_idx] = u64::MAX;
+    LAST_LOGGED_NAME_SELECTOR_HASH[entry_idx] = u64::MAX;
+    LAST_LOGGED_NAME_SELECTOR_RESULT[entry_idx] = u64::MAX;
     LOG_INT_SELECTOR_KEY[entry_idx] = None;
 
     if crate::debug::enabled() && (previous_entry_hash != 0 || previous_global_hash != 0) {

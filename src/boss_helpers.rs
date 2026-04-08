@@ -524,8 +524,8 @@ pub unsafe fn clamp_flying_boss_floor(
 
 #[inline(always)]
 pub fn is_boss_preview_stage(stage_id: i32) -> bool {
-    // This scene still uses the hidden-host preview/interstitial presentation.
-    stage_id == STAGE_ID_BOSS_PREVIEW
+    // These scenes use the preview/interstitial boss presentation path.
+    stage_id == STAGE_ID_BOSS_PREVIEW || stage_id == STAGE_ID_CLASSIC_STAFFROLL
 }
 
 #[inline(always)]
@@ -534,7 +534,6 @@ pub fn is_boss_passthrough_stage(stage_id: i32) -> bool {
     // path is not playable there.
     stage_id == STAGE_ID_RESULTS
         || stage_id == STAGE_ID_CLASSIC_BONUS_GAME
-        || stage_id == STAGE_ID_CLASSIC_STAFFROLL
 }
 
 #[inline(always)]

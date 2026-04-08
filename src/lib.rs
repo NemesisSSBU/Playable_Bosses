@@ -548,37 +548,14 @@ fn find_mod_asset_path(relative_path: &str) -> Option<String> {
     preferred.into_iter().chain(others.into_iter()).next()
 }
 
-fn upsert_hash_param(struct_params: &mut ParamStruct, field_name: &str, value: Hash40) {
-    let field_hash = to_hash40(field_name);
-    if let Some((_, param)) = struct_params
-        .0
-        .iter_mut()
-        .find(|(hash, _)| *hash == field_hash)
-    {
-        *param = ParamKind::Hash(value);
-    } else {
-        struct_params.0.push((field_hash, ParamKind::Hash(value)));
-    }
-}
-
-fn upsert_u8_param(struct_params: &mut ParamStruct, field_name: &str, value: u8) {
-    let field_hash = to_hash40(field_name);
-    if let Some((_, param)) = struct_params
-        .0
-        .iter_mut()
-        .find(|(hash, _)| *hash == field_hash)
-    {
-        *param = ParamKind::U8(value);
-    } else {
-        struct_params.0.push((field_hash, ParamKind::U8(value)));
-    }
-}
-
 fn apply_mario_redirect_metadata(charroot: &mut ParamStruct) {
-    // Mirror the CSK redirected-entry metadata so the boss rows inherit Mario's
-    // unlock context without leaving Mario's own CSS tile in an undefined state.
-    upsert_hash_param(charroot, "original_ui_chara_hash", to_hash40("ui_chara_mario"));
-    upsert_u8_param(charroot, "color_start_index", 0);
+    // Boss rows still need to share Mario's save slot for WoL unlock flow,
+    // but we avoid restoring the broader Mario UI metadata collisions.
+    for (hash, param) in charroot.0.iter_mut() {
+        if *hash == to_hash40("save_no") {
+            *param.try_into_mut::<i8>().unwrap() = 0;
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -890,7 +867,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
@@ -903,9 +880,6 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 15;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_koopa");
@@ -945,7 +919,7 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
@@ -955,9 +929,6 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 86;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_masterhand");
@@ -997,7 +968,7 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
@@ -1007,9 +978,6 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 87;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_crazyhand");
@@ -1049,7 +1017,7 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
@@ -1059,9 +1027,6 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 88;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_darz");
@@ -1101,7 +1066,7 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
@@ -1111,9 +1076,6 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 89;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_kiila");
@@ -1153,7 +1115,7 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
@@ -1163,9 +1125,6 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 90;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_marx");
@@ -1205,7 +1164,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
@@ -1215,9 +1174,6 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 91;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_ganonboss");
@@ -1257,7 +1213,7 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
@@ -1267,9 +1223,6 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 92;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_dracula");
@@ -1309,7 +1262,7 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
@@ -1319,9 +1272,6 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 93;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_galleom");
@@ -1361,7 +1311,7 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = false;
@@ -1371,9 +1321,6 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 94;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_rathalos");
@@ -1413,7 +1360,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<bool>().unwrap() = true;
         }
         if *hash == to_hash40("is_boss") {
-            *param.try_into_mut::<bool>().unwrap() = true;
+            *param.try_into_mut::<bool>().unwrap() = false;
         }
         if *hash == to_hash40("is_hidden_boss") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -1423,9 +1370,6 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
         if use_builtin_css_ordering() && *hash == to_hash40("skill_list_order") {
             *param.try_into_mut::<i8>().unwrap() = 95;
-        }
-        if *hash == to_hash40("save_no") {
-            *param.try_into_mut::<i8>().unwrap() = 0;
         }
         if *hash == to_hash40("characall_label_c00") {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("vc_narration_characall_masterhandwol2");

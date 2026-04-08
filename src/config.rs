@@ -20,6 +20,8 @@ pub struct Options {
     pub boss_difficulty: Option<f32>,
     #[serde(rename = "DEBUG_BOSS_LOGS")]
     pub debug_boss_logs: Option<bool>,
+    #[serde(rename = "DETECT_CHARACTER_NAME")]
+    pub detect_character_name: Option<bool>,
 
     #[serde(rename = "MASTER_HAND_CSS")]
     pub master_hand_css: Option<bool>,
