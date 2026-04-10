@@ -451,6 +451,7 @@ pub unsafe fn clamp_flying_boss_floor(
 pub fn is_boss_preview_stage(stage_id: i32) -> bool {
     // These scenes use the preview/interstitial boss presentation path.
     stage_id == STAGE_ID_BOSS_PREVIEW
+        || stage_id == STAGE_ID_CLASSIC_STAFFROLL
 }
 
 #[inline(always)]
@@ -458,7 +459,6 @@ pub fn is_boss_passthrough_stage(stage_id: i32) -> bool {
     // These scenes should stay on the base fighter because the boss takeover
     // path is not playable there.
     stage_id == STAGE_ID_CLASSIC_BONUS_GAME
-        || stage_id == STAGE_ID_CLASSIC_STAFFROLL
 }
 
 #[inline(always)]
