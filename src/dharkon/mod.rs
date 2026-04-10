@@ -45,25 +45,6 @@ pub unsafe fn check_status() -> bool {
 }
 
 #[inline(always)]
-pub unsafe fn entry_transition_in_progress(
-    module_accessor: *mut BattleObjectModuleAccessor,
-) -> bool {
-    if module_accessor.is_null()
-        || sv_information::is_ready_go()
-        || boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id())
-    {
-        return false;
-    }
-
-    let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
-    boss_helpers::is_hidden_host_entry_prep(module_accessor)
-        || boss_helpers::is_hidden_host_entry_stage_two(module_accessor)
-        || (boss_helpers::is_hidden_host(module_accessor)
-            && (boss_helpers::is_tracked_boss_active(&raw const BOSS_ID, entry)
-                || (HIDDEN_CPU[entry] != 0 && sv_battle_object::is_active(HIDDEN_CPU[entry]))))
-}
-
-#[inline(always)]
 unsafe fn dharkon_should_clamp_floor(
     boss_boma: *mut smash::app::BattleObjectModuleAccessor,
 ) -> bool {
