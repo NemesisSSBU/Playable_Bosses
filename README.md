@@ -22,7 +22,7 @@ ALL BOSSES HAVE ONE(1) LIFE
 - Ganon: 600 HP
 - Dracula: 660 HP (Phase 1 dies at 160 HP, Phase 2 dies at 500 HP. If you want to play Dracula in Stamina mode, always play Dracula with above 200 HP, or else he won't reach Phase 2)
 - Rathalos: 600 HP
-- Galleom: 700 HP (Rage at 220 HP)
+- Galleom: 700 HP (Rage at 385 HP)
 - WOL Master Hand: 400 HP
 ```
 
