@@ -256,6 +256,86 @@ unsafe fn selected_boss_selector_id_from_character_name(
     resolved
 }
 
+#[inline(always)]
+unsafe fn selected_boss_selector_id_from_runtime_sources(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) -> Option<u64> {
+    let info = fighter_information(module_accessor);
+    if info.is_null() {
+        return None;
+    }
+    let selector_id = smash::app::lua_bind::FighterInformation::summon_boss_id(info);
+    let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID);
+    let log_selector_id: Option<u64>;
+    let mut cache_selector_id: Option<u64> = None;
+    let mut selected = selector_id;
+    if crate::debug::enabled() && entry_id >= 0 && (entry_id as usize) < MAX_FIGHTERS {
+        let idx = entry_id as usize;
+        log_selector_id = log_int_css_selector_id(info, idx);
+        if !is_known_boss_selector_value(selected) {
+            if let Some(v) = log_selector_id {
+                selected = v;
+            }
+        }
+        if !is_known_boss_selector_value(selected) {
+            cache_selector_id = cached_css_boss_hash(idx);
+            if let Some(v) = cache_selector_id {
+                selected = v;
+            }
+        }
+        let normalized_selected = normalize_selector_value(selected);
+        let resolved_selected = resolve_selector_value_to_ui_hash(normalized_selected);
+        let should_log = LAST_LOGGED_SELECTOR_ID[idx] != selector_id
+            || LAST_LOGGED_NORMALIZED_SELECTOR_ID[idx] != normalized_selected
+            || LAST_LOGGED_RESOLVED_SELECTOR_ID[idx] != resolved_selected
+            || LAST_LOGGED_SELECTION_LOG_SELECTOR_ID[idx] != log_selector_id.unwrap_or(u64::MAX)
+            || LAST_LOGGED_CACHE_SELECTOR_ID[idx] != cache_selector_id.unwrap_or(u64::MAX);
+        if should_log {
+            LAST_LOGGED_SELECTOR_ID[idx] = selector_id;
+            LAST_LOGGED_NORMALIZED_SELECTOR_ID[idx] = normalized_selected;
+            LAST_LOGGED_RESOLVED_SELECTOR_ID[idx] = resolved_selected;
+            LAST_LOGGED_SELECTION_LOG_SELECTOR_ID[idx] = log_selector_id.unwrap_or(u64::MAX);
+            LAST_LOGGED_CACHE_SELECTOR_ID[idx] = cache_selector_id.unwrap_or(u64::MAX);
+            let has_item = ItemModule::is_have_item(module_accessor, 0);
+            let decoded_scalar = decode_tagged_selector_scalar(selector_id);
+            let fighter_color = smash::app::lua_bind::FighterInformation::fighter_color(info);
+            crate::boss_log!(
+                "[PB][Selection] entry {} css_selector_raw=0x{:x} css_selector_decoded={:?} normalized=0x{:x} resolved=0x{:x} log_selector={:?} cache_selector={:?} fighter_color=0x{:x} has_item={}",
+                idx,
+                selector_id,
+                decoded_scalar,
+                normalized_selected,
+                resolved_selected,
+                log_selector_id.map(|v| format!("0x{:x}", v)),
+                cache_selector_id.map(|v| format!("0x{:x}", v)),
+                fighter_color,
+                has_item
+            );
+        }
+    } else if entry_id >= 0 && (entry_id as usize) < MAX_FIGHTERS {
+        let idx = entry_id as usize;
+        log_selector_id = log_int_css_selector_id(info, idx);
+        if !is_known_boss_selector_value(selected) {
+            if let Some(v) = log_selector_id {
+                selected = v;
+            }
+        }
+        if !is_known_boss_selector_value(selected) {
+            cache_selector_id = cached_css_boss_hash(idx);
+            if let Some(v) = cache_selector_id {
+                selected = v;
+            }
+        }
+    }
+    selected = normalize_selector_value(selected);
+    selected = resolve_selector_value_to_ui_hash(selected);
+    if selected == 0 {
+        None
+    } else {
+        Some(selected)
+    }
+}
+
 fn hash_for_ui_chara_selector_id(selector: i32) -> Option<u64> {
     match selector {
         UI_CHARA_KOOPAG_SELECTOR => Some(UI_CHARA_KOOPAG_HASH),
@@ -302,14 +382,22 @@ unsafe fn cache_boss_hash_from_selection_info(player_id: u32, new_selection_info
     }
 
     let mut entry_idx: Option<usize> = None;
-    if (player_id as usize) < MAX_FIGHTERS {
+    // Prefer the explicit CSS entry encoded in the callback payload when present.
+    let possible_css_entry = std::ptr::read_unaligned(new_selection_info as *const u32);
+    if (1..=MAX_FIGHTERS as u32).contains(&possible_css_entry) {
+        entry_idx = Some((possible_css_entry - 1) as usize);
+    } else if (player_id as usize) < MAX_FIGHTERS {
         entry_idx = Some(player_id as usize);
-    } else {
-        // 13.0.2+ callback path can encode the CSS entry at the first dword.
-        let possible_css_entry = std::ptr::read_unaligned(new_selection_info as *const u32);
-        if (1..=MAX_FIGHTERS as u32).contains(&possible_css_entry) {
-            entry_idx = Some((possible_css_entry - 1) as usize);
-        }
+    }
+
+    if crate::debug::enabled() && entry_idx.is_some() {
+        crate::boss_log!(
+            "[PB][SelectionCapture] assign_entry player={} payload_entry={} resolved_entry={:?} info=0x{:x}",
+            player_id,
+            possible_css_entry,
+            entry_idx,
+            new_selection_info
+        );
     }
 
     if let Some(idx) = entry_idx {
@@ -406,26 +494,13 @@ unsafe fn update_css_cache(unk: u64) {
 
     if let Some(hash) = selected_hash {
         CACHED_BOSS_UI_HASH_GLOBAL = hash;
-        let mut assigned_entry: Option<usize> = None;
-        for offset in [0x8u64, 0x10, 0x18, 0x20, 0x24, 0x28, 0x30, 0x34, 0x40, 0x48, 0x50] {
-            let value = *((unk + offset) as *const i32);
-            if value >= 0 && (value as usize) < MAX_FIGHTERS {
-                CACHED_BOSS_UI_HASH_BY_ENTRY[value as usize] = hash;
-                SUPPRESS_BOSS_SELECTION_BY_ENTRY[value as usize] = false;
-                SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[value as usize] = i32::MIN;
-                assigned_entry = Some(value as usize);
-                break;
-            }
-        }
-
         if crate::debug::enabled() {
             crate::boss_log!(
-                "[PB][SelectionCache] css_update unk=0x{:x} a=0x{:x} b=0x{:x} cached=0x{:x} entry={:?}",
+                "[PB][SelectionCache] css_update unk=0x{:x} a=0x{:x} b=0x{:x} cached=0x{:x}",
                 unk,
                 candidate_a,
                 candidate_b,
-                hash,
-                assigned_entry
+                hash
             );
         }
     }
@@ -438,11 +513,6 @@ unsafe fn cached_css_boss_hash(entry_idx: usize) -> Option<u64> {
     if is_boss_css_hash(by_entry) {
         return Some(by_entry);
     }
-
-    if is_boss_css_hash(CACHED_BOSS_UI_HASH_GLOBAL) {
-        return Some(CACHED_BOSS_UI_HASH_GLOBAL);
-    }
-
     None
 }
 
@@ -612,84 +682,11 @@ unsafe fn fighter_information(module_accessor: *mut BattleObjectModuleAccessor) 
 // Returns the raw CSS-selected boss selector value (from ui_chara_* row data),
 // not the currently held/spawned item.
 pub unsafe fn selected_css_boss_selector_id(module_accessor: *mut BattleObjectModuleAccessor) -> Option<u64> {
-    if let Some(selected_by_name) = selected_boss_selector_id_from_character_name(module_accessor) {
-        return Some(selected_by_name);
+    if let Some(selected) = selected_boss_selector_id_from_runtime_sources(module_accessor) {
+        return Some(selected);
     }
 
-    let info = fighter_information(module_accessor);
-    if info.is_null() {
-        return None;
-    }
-    let selector_id = smash::app::lua_bind::FighterInformation::summon_boss_id(info);
-    let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID);
-    let log_selector_id: Option<u64>;
-    let mut cache_selector_id: Option<u64> = None;
-    let mut selected = selector_id;
-    if crate::debug::enabled() && entry_id >= 0 && (entry_id as usize) < MAX_FIGHTERS {
-        let idx = entry_id as usize;
-        log_selector_id = log_int_css_selector_id(info, idx);
-        if !is_known_boss_selector_value(selected) {
-            if let Some(v) = log_selector_id {
-                selected = v;
-            }
-        }
-        if !is_known_boss_selector_value(selected) {
-            cache_selector_id = cached_css_boss_hash(idx);
-            if let Some(v) = cache_selector_id {
-                selected = v;
-            }
-        }
-        let normalized_selected = normalize_selector_value(selected);
-        let resolved_selected = resolve_selector_value_to_ui_hash(normalized_selected);
-        let should_log = LAST_LOGGED_SELECTOR_ID[idx] != selector_id
-            || LAST_LOGGED_NORMALIZED_SELECTOR_ID[idx] != normalized_selected
-            || LAST_LOGGED_RESOLVED_SELECTOR_ID[idx] != resolved_selected
-            || LAST_LOGGED_SELECTION_LOG_SELECTOR_ID[idx] != log_selector_id.unwrap_or(u64::MAX)
-            || LAST_LOGGED_CACHE_SELECTOR_ID[idx] != cache_selector_id.unwrap_or(u64::MAX);
-        if should_log {
-            LAST_LOGGED_SELECTOR_ID[idx] = selector_id;
-            LAST_LOGGED_NORMALIZED_SELECTOR_ID[idx] = normalized_selected;
-            LAST_LOGGED_RESOLVED_SELECTOR_ID[idx] = resolved_selected;
-            LAST_LOGGED_SELECTION_LOG_SELECTOR_ID[idx] = log_selector_id.unwrap_or(u64::MAX);
-            LAST_LOGGED_CACHE_SELECTOR_ID[idx] = cache_selector_id.unwrap_or(u64::MAX);
-            let has_item = ItemModule::is_have_item(module_accessor, 0);
-            let decoded_scalar = decode_tagged_selector_scalar(selector_id);
-            let fighter_color = smash::app::lua_bind::FighterInformation::fighter_color(info);
-            crate::boss_log!(
-                "[PB][Selection] entry {} css_selector_raw=0x{:x} css_selector_decoded={:?} normalized=0x{:x} resolved=0x{:x} log_selector={:?} cache_selector={:?} fighter_color=0x{:x} has_item={}",
-                idx,
-                selector_id,
-                decoded_scalar,
-                normalized_selected,
-                resolved_selected,
-                log_selector_id.map(|v| format!("0x{:x}", v)),
-                cache_selector_id.map(|v| format!("0x{:x}", v)),
-                fighter_color,
-                has_item
-            );
-        }
-    } else if entry_id >= 0 && (entry_id as usize) < MAX_FIGHTERS {
-        let idx = entry_id as usize;
-        log_selector_id = log_int_css_selector_id(info, idx);
-        if !is_known_boss_selector_value(selected) {
-            if let Some(v) = log_selector_id {
-                selected = v;
-            }
-        }
-        if !is_known_boss_selector_value(selected) {
-            cache_selector_id = cached_css_boss_hash(idx);
-            if let Some(v) = cache_selector_id {
-                selected = v;
-            }
-        }
-    }
-    selected = normalize_selector_value(selected);
-    selected = resolve_selector_value_to_ui_hash(selected);
-    if selected == 0 {
-        None
-    } else {
-        Some(selected)
-    }
+    selected_boss_selector_id_from_character_name(module_accessor)
 }
 
 pub fn install() {
@@ -740,7 +737,10 @@ unsafe fn expected_css_hash_for_selector(expected_selector_id: i32) -> Option<u6
 pub unsafe fn is_selected_css_boss(module_accessor: *mut BattleObjectModuleAccessor, expected_selector_id: i32) -> bool {
     if !module_accessor.is_null() {
         let entry_idx = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-        if entry_idx < MAX_FIGHTERS && SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] {
+        if expected_selector_id == *ITEM_KIND_PLAYABLE_MASTERHAND
+            && entry_idx < MAX_FIGHTERS
+            && SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx]
+        {
             return false;
         }
     }

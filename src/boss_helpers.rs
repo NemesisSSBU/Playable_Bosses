@@ -14,7 +14,9 @@ static mut FIGHTER_MANAGER_ADDR: usize = 0;
 pub const HIDDEN_HOST_SCALE: f32 = 0.0001;
 pub const HIDDEN_HOST_ENTRY_PREP_SCALE: f32 = 0.001;
 pub const HIDDEN_HOST_ENTRY_STAGE2_SCALE: f32 = 0.002;
+pub const HIDDEN_HOST_BASELINE_SCALE: f32 = 0.008;
 const HIDDEN_HOST_ENTRY_PREP_EPSILON: f32 = 0.00005;
+const HIDDEN_HOST_BASELINE_EPSILON: f32 = 0.0005;
 
 pub const STAGE_ID_BOSS_PREVIEW: i32 = 0x139;
 pub const STAGE_ID_CLASSIC_BONUS_GAME: i32 = 0x13A;
@@ -268,6 +270,16 @@ pub unsafe fn is_hidden_host_entry_stage_two(
 }
 
 #[inline(always)]
+pub unsafe fn is_hidden_host_baseline(module_accessor: *mut BattleObjectModuleAccessor) -> bool {
+    if module_accessor.is_null() {
+        return false;
+    }
+    let scale = ModelModule::scale(module_accessor);
+    scale >= HIDDEN_HOST_BASELINE_SCALE - HIDDEN_HOST_BASELINE_EPSILON
+        && scale <= HIDDEN_HOST_BASELINE_SCALE + HIDDEN_HOST_BASELINE_EPSILON
+}
+
+#[inline(always)]
 pub unsafe fn is_tracked_boss_active(slot_ids: *const [u32; 8], entry: usize) -> bool {
     if slot_ids.is_null() {
         return false;
@@ -330,7 +342,7 @@ pub unsafe fn stop_hidden_host_knockout_sfx(module_accessor: *mut BattleObjectMo
 }
 
 #[inline(always)]
-pub unsafe fn restore_hidden_host_baseline(
+pub unsafe fn restore_plain_mario_visuals(
     module_accessor: *mut BattleObjectModuleAccessor,
 ) {
     if module_accessor.is_null() {
@@ -340,18 +352,10 @@ pub unsafe fn restore_hidden_host_baseline(
     clear_hidden_host_effects(module_accessor);
     stop_hidden_host_mario_result_sfx(module_accessor);
     stop_hidden_host_knockout_sfx(module_accessor);
-
-    let current_damage = DamageModule::damage(module_accessor, 0);
-    if current_damage > 0.0 {
-        DamageModule::heal(module_accessor, -current_damage, 0);
-    }
-
-    ItemModule::remove_all(module_accessor);
-    CameraModule::reset_all(module_accessor);
     HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
     JostleModule::set_status(module_accessor, true);
     VisibilityModule::set_whole(module_accessor, true);
-    ModelModule::set_scale(module_accessor, 0.008);
+    ModelModule::set_scale(module_accessor, 1.0);
 
     let reset_rot = Vector3f {
         x: 0.0,
@@ -373,22 +377,6 @@ pub unsafe fn restore_hidden_host_baseline(
             _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
         },
         ModelModule::rotation_order(module_accessor),
-    );
-
-    MotionModule::change_motion(
-        module_accessor,
-        Hash40::new("wait"),
-        0.0,
-        1.0,
-        false,
-        0.0,
-        false,
-        false,
-    );
-    StatusModule::change_status_request_from_script(
-        module_accessor,
-        *FIGHTER_STATUS_KIND_WAIT,
-        true,
     );
 }
 
@@ -465,4 +453,3 @@ pub fn is_boss_passthrough_stage(stage_id: i32) -> bool {
 pub fn is_boss_nonbattle_stage(stage_id: i32) -> bool {
     is_boss_preview_stage(stage_id) || is_boss_passthrough_stage(stage_id)
 }
-

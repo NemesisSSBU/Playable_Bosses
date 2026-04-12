@@ -332,6 +332,126 @@ unsafe fn restore_dharkon_after_item_wipe(
     );
 }
 
+#[inline(always)]
+unsafe fn teardown_dharkon_post_match_transition(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) -> bool {
+    if module_accessor.is_null() {
+        return false;
+    }
+
+    let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
+    let tracked_id = BOSS_ID[entry];
+    let hidden_cpu_id = HIDDEN_CPU[entry];
+    let tracked_active = tracked_id != 0 && sv_battle_object::is_active(tracked_id);
+    let hidden_cpu_active = hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id);
+    if !tracked_active && !hidden_cpu_active && !EXISTS_PUBLIC {
+        return false;
+    }
+
+    if tracked_active {
+        let boss_boma = sv_battle_object::module_accessor(tracked_id);
+        if !boss_boma.is_null() {
+            HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+            SlowModule::clear_whole(boss_boma);
+            StatusModule::change_status_request_from_script(
+                boss_boma,
+                *ITEM_STATUS_KIND_STANDBY,
+                true,
+            );
+        }
+    }
+
+    if hidden_cpu_active {
+        let hidden_cpu_boma = sv_battle_object::module_accessor(hidden_cpu_id);
+        if !hidden_cpu_boma.is_null() {
+            HitModule::set_whole(hidden_cpu_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+            SlowModule::clear_whole(hidden_cpu_boma);
+            if StatusModule::status_kind(hidden_cpu_boma) != *ITEM_STATUS_KIND_NONE {
+                StatusModule::change_status_request_from_script(
+                    hidden_cpu_boma,
+                    *ITEM_STATUS_KIND_NONE,
+                    true,
+                );
+            }
+        }
+    }
+
+    ItemModule::remove_all(module_accessor);
+    boss_helpers::clear_hidden_host_effects(module_accessor);
+    boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
+    ModelModule::set_scale(module_accessor, boss_helpers::HIDDEN_HOST_SCALE);
+    MotionModule::change_motion(
+        module_accessor,
+        smash::phx::Hash40::new("none"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    reset_match_state(entry);
+    CONTROLLABLE = false;
+
+    crate::boss_log!(
+        "[PB][Dharkon][Cleanup] entry {}: cleared Dharkon runtime on non-ready_go transition tracked_active={} hidden_cpu_active={}",
+        entry,
+        tracked_active,
+        hidden_cpu_active
+    );
+
+    true
+}
+
+#[inline(always)]
+unsafe fn cleanup_dharkon_result_state(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() {
+        return;
+    }
+
+    let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
+    if RESULT_SPAWNED {
+        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
+        return;
+    }
+
+    EXISTS_PUBLIC = false;
+    RESULT_SPAWNED = true;
+    DEAD = false;
+    STOP = false;
+    IS_ANGRY = false;
+    CONTROLLABLE = true;
+    JUMP_START = false;
+    CONTROLLER_X = 0.0;
+    CONTROLLER_Y = 0.0;
+
+    let hidden_cpu_id = HIDDEN_CPU[entry];
+    if hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id) {
+        let hidden_cpu_boma = sv_battle_object::module_accessor(hidden_cpu_id);
+        if !hidden_cpu_boma.is_null() {
+            HitModule::set_whole(hidden_cpu_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+            SlowModule::clear_whole(hidden_cpu_boma);
+            if StatusModule::status_kind(hidden_cpu_boma) != *ITEM_STATUS_KIND_NONE {
+                StatusModule::change_status_request_from_script(
+                    hidden_cpu_boma,
+                    *ITEM_STATUS_KIND_NONE,
+                    true,
+                );
+            }
+        }
+    }
+    HIDDEN_CPU[entry] = 0;
+    boss_helpers::clear_boss_item_slot(module_accessor, &raw mut BOSS_ID, true);
+    boss_helpers::restore_plain_mario_visuals(module_accessor);
+    crate::boss_log!(
+        "[PB][Dharkon][ResultCleanup] entry {}: cleared Dharkon result state",
+        entry
+    );
+}
+
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
@@ -345,8 +465,19 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 store_dharkon_runtime,
             );
             let fighter_manager = boss_helpers::fighter_manager();
+            if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
+                cleanup_dharkon_result_state(module_accessor);
+                return;
+            }
             
             let selected_via_slot = selection::is_selected_css_boss(module_accessor, *ITEM_KIND_DARZ);
+            if !selected_via_slot
+                && !sv_information::is_ready_go()
+                && (BOSS_ID[ENTRY_ID] != 0 || HIDDEN_CPU[ENTRY_ID] != 0 || EXISTS_PUBLIC)
+            {
+                teardown_dharkon_post_match_transition(module_accessor);
+                return;
+            }
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
                 if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
@@ -907,25 +1038,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
                     
-                    if FighterManager::is_result_mode(fighter_manager) == true {
-                        if RESULT_SPAWNED == false {
-                            EXISTS_PUBLIC = false;
-                            RESULT_SPAWNED = true;
-                            DEAD = false;
-                            STOP = false;
-                            IS_ANGRY = false;
-                            CONTROLLABLE = true;
-                            boss_helpers::clear_boss_item_slot(module_accessor, &raw mut BOSS_ID, true);
-                            // ItemModule::have_item(module_accessor, ItemKind(*ITEM_KIND_DARZ), 0, 0, false, false);
-                            // SoundModule::stop_se(module_accessor, smash::phx::Hash40::new("se_item_item_get"), 0);
-                            // BOSS_ID[boss_helpers::entry_id(module_accessor)] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
-                            // let boss_boma = sv_battle_object::module_accessor(BOSS_ID[boss_helpers::entry_id(module_accessor)]);
-                            // StatusModule::change_status_request_from_script(boss_boma, *ITEM_STATUS_KIND_FOR_BOSS_START,true);
-                        }
-                        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
-                        return;
-                    }
-
                     if sv_information::is_ready_go() == true && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0
                     {
                         // DAMAGE MODULES

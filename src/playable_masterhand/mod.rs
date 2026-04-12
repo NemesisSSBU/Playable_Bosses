@@ -706,11 +706,29 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     if sv_information::is_ready_go() == false {
-                        if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_ENTRY {
-                            FighterManager::set_cursor_whole(fighter_manager,false);
-                            ArticleModule::set_visibility_whole(module_accessor, *FIGHTER_MARIO_GENERATE_ARTICLE_PUMP, false, smash::app::ArticleOperationTarget(0));
-                            StatusModule::change_status_request_from_script(module_accessor, *FIGHTER_STATUS_KIND_WAIT, true);
+                        FighterManager::set_cursor_whole(fighter_manager,false);
+                        ArticleModule::set_visibility_whole(module_accessor, *FIGHTER_MARIO_GENERATE_ARTICLE_PUMP, false, smash::app::ArticleOperationTarget(0));
+                        if ModelModule::scale(module_accessor) == HIDDEN_HOST_SCALE {
+                            MotionModule::change_motion(
+                                module_accessor,
+                                Hash40::new("none"),
+                                0.0,
+                                1.0,
+                                false,
+                                0.0,
+                                false,
+                                false,
+                            );
+                            if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_WAIT {
+                                StatusModule::change_status_request_from_script(
+                                    module_accessor,
+                                    *FIGHTER_STATUS_KIND_WAIT,
+                                    true,
+                                );
+                            }
                         }
+                        CONTROLLABLE = false;
+                        FRESH_CONTROL = false;
                     }
 
                     if FighterManager::is_result_mode(fighter_manager) == true {
@@ -1152,9 +1170,10 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 MotionModule::change_motion(boss_boma, smash::phx::Hash40::new("wait"), 0.0, 1.0, false, 0.0, false, false);
                             }
 
-                            if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WAIT
+                            if sv_information::is_ready_go() == true
+                            && (StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_WAIT
                             || StatusModule::status_kind(boss_boma) == *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_WAIT
-                            || MotionModule::motion_kind(boss_boma) == smash::hash40("wait") {
+                            || MotionModule::motion_kind(boss_boma) == smash::hash40("wait")) {
                                 if !CONTROLLABLE {
                                     CONTROLLABLE = true;
                                     FRESH_CONTROL = true;
@@ -1171,7 +1190,10 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 PostureModule::set_pos(boss_boma, &boss_pos);
                             }
 
-                            if StatusModule::status_kind(boss_boma) != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_TURN && CONTROLLABLE && !DEAD {
+                            if sv_information::is_ready_go() == true
+                            && StatusModule::status_kind(boss_boma) != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_TURN
+                            && CONTROLLABLE
+                            && !DEAD {
                                 apply_smoothed_playable_masterhand_input(module_accessor, boss_boma, 1.0);
 
                                 if PostureModule::lr(boss_boma) == 1.0 { // right

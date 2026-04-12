@@ -172,6 +172,16 @@ unsafe fn cleanup_hidden_host_post_match_transition(
     }
 
     let stage_id = smash::app::stage::get_stage_id();
+    let boss_selected = selection::selected_css_boss_selector_id(module_accessor).is_some();
+    if boss_selected {
+        crate::boss_log!(
+            "[PB][TransitionCleanup] entry {}: deferred cleanup because a boss selection is armed on stage=0x{:x}",
+            entry_id,
+            stage_id
+        );
+        return;
+    }
+
     selection::suppress_boss_selection_until_ready_go(entry_id);
     BOSS_MATCH_STARTED[entry_id] = false;
     boss_runtime::reset_all_for_entry(entry_id);
@@ -186,13 +196,11 @@ unsafe fn cleanup_hidden_host_post_match_transition(
     ganon::reset_match_state(entry_id);
 
     crate::boss_log!(
-        "[PB][TransitionCleanup] entry {}: restoring boss host after non-result match transition on stage=0x{:x} hidden_host={}",
+        "[PB][TransitionCleanup] entry {}: clearing boss runtime after non-result match transition on stage=0x{:x} hidden_host={}",
         entry_id,
         stage_id,
         hidden_host
     );
-
-    boss_helpers::restore_hidden_host_baseline(module_accessor);
 
     if !fighter_manager.is_null() {
         FighterManager::set_cursor_whole(fighter_manager, true);
@@ -202,6 +210,56 @@ unsafe fn cleanup_hidden_host_post_match_transition(
             false,
         );
     }
+
+    crate::boss_log!(
+        "[PB][TransitionCleanupState] entry {}: bookkeeping-only cleanup complete stage=0x{:x}",
+        entry_id,
+        stage_id
+    );
+}
+
+unsafe fn restore_plain_mario_after_hidden_host_cleanup(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() {
+        return;
+    }
+
+    let current_scale = ModelModule::scale(module_accessor);
+    if !boss_helpers::is_hidden_host(module_accessor)
+        && !boss_helpers::is_hidden_host_baseline(module_accessor)
+    {
+        return;
+    }
+
+    let boss_selected = selection::selected_css_boss_selector_id(module_accessor).is_some();
+    if boss_selected {
+        return;
+    }
+
+    if selection::is_boss_selection_suppressed(module_accessor) && any_boss_active() {
+        return;
+    }
+
+    let fighter_status = StatusModule::status_kind(module_accessor);
+    let spawn_state =
+        fighter_status == *FIGHTER_STATUS_KIND_ENTRY
+        || fighter_status == *FIGHTER_STATUS_KIND_REBIRTH
+        || fighter_status == *FIGHTER_STATUS_KIND_WAIT
+        || fighter_status == *FIGHTER_STATUS_KIND_STANDBY
+        || fighter_status == *FIGHTER_STATUS_KIND_FALL;
+    if !spawn_state {
+        return;
+    }
+
+    boss_helpers::restore_plain_mario_visuals(module_accessor);
+    crate::boss_log!(
+        "[PB][HiddenHost][PlainRestore] entry={} stage=0x{:x} fighter_status={} scale={:.4} -> 1.0000",
+        boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1),
+        smash::app::stage::get_stage_id(),
+        fighter_status,
+        current_scale
+    );
 }
 
 extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
@@ -218,9 +276,10 @@ extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
         rathalos::frame(fighter);
         galleom::frame(fighter);
         ganon::frame(fighter);
-        log_hidden_host_transition_snapshot(module_accessor);
         suppress_hidden_host_result_audio(module_accessor);
         cleanup_hidden_host_post_match_transition(module_accessor);
+        restore_plain_mario_after_hidden_host_cleanup(module_accessor);
+        log_hidden_host_transition_snapshot(module_accessor);
     }
 }
 
