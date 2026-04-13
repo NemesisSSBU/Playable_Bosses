@@ -2,7 +2,7 @@ use smash::lib::{L2CValue, lua_const::*};
 use smash::app::lua_bind::*;
 use smash::lua2cpp::{L2CAgentBase, L2CFighterCommon};
 use smash::app::BattleObjectModuleAccessor;
-use smash::phx::Vector3f;
+use smash::phx::{Vector3f, Vector4f};
 use smash::app::ItemKind;
 use smash::app::sv_battle_object;
 use std::u32;
@@ -25,6 +25,20 @@ static mut PUNCH : bool = false;
 static mut SHOCK : bool = false;
 static mut LASER : bool = false;
 static mut SCRATCH_BLOW : bool = false;
+static mut FINDER : bool = false;
+static mut MASTER_FINDER_ACTIVE: bool = false;
+static mut CRAZY_FINDER_ACTIVE: bool = false;
+static mut FINDER_SYNC_FRAMES: i32 = 0;
+static mut FINDER_CAMERA_APPLIED: bool = false;
+static mut FINDER_DEAD_RANGE_APPLIED: bool = false;
+static mut FINDER_MASTER_ENTRY: usize = 8;
+static mut FINDER_CRAZY_ENTRY: usize = 8;
+static mut FINDER_BASE_RANGE: Vector4f = Vector4f {
+    x: 0.0,
+    y: 0.0,
+    z: 0.0,
+    w: 0.0,
+};
 static mut CONTROL_SPEED_MUL: f32 = 2.0;
 static mut CONTROL_SPEED_MUL_2: f32 = 0.05;
 
@@ -95,6 +109,21 @@ extern "C" {
 }
 
 extern "C" {
+    #[link_name = "\u{1}_ZN3app9crazyhand16set_camera_rangeERKN3phx8Vector4fE"]
+    pub fn crazyhand_set_camera_range(range: *const Vector4f);
+}
+
+extern "C" {
+    #[link_name = "\u{1}_ZN3app9crazyhand14set_dead_rangeERKN3phx8Vector4fE"]
+    pub fn crazyhand_set_dead_range(range: *const Vector4f);
+}
+
+extern "C" {
+    #[link_name = "\u{1}_ZN3app9crazyhand13revert_cameraEv"]
+    pub fn crazyhand_revert_camera();
+}
+
+extern "C" {
     #[link_name = "\u{1}_ZN3app10item_other6actionEPNS_26BattleObjectModuleAccessorEif"]
     pub fn action(module_accessor: *mut BattleObjectModuleAccessor, action: i32, unk: f32);
 }
@@ -135,6 +164,15 @@ const CRAZY_NOTAUTSU_GROUND_CLEARANCE: f32 = 0.1;
 const MASTER_IRON_BALL_OFFSTAGE_LIMIT: i32 = 30;
 const MASTER_IRON_BALL_END_TAIL_FRAMES: f32 = 40.0;
 const CRAZY_KUMO_END_TAIL_FRAMES: f32 = 45.0;
+const FINDER_HAND_SPACING: f32 = 24.0;
+const FINDER_HAND_HEIGHT: f32 = 10.0;
+const FINDER_MASTER_HEIGHT_OFFSET: f32 = 70.0;
+const FINDER_CAMERA_START_FRAME: f32 = 85.0;
+const FINDER_DEAD_RANGE_START_FRAME: f32 = 95.0;
+const FINDER_CAMERA_X_SHRINK_RATIO: f32 = 0.28;
+const FINDER_CAMERA_Y_SHRINK_RATIO: f32 = 0.40;
+const FINDER_DEAD_X_SHRINK_RATIO: f32 = 0.50;
+const FINDER_DEAD_Y_SHRINK_RATIO: f32 = 0.70;
 
 #[inline(always)]
 unsafe fn boss_floor_y(
@@ -343,6 +381,659 @@ unsafe fn maybe_recover_crazy_cpu_idle(
 }
 
 #[inline(always)]
+unsafe fn current_master_boma() -> *mut BattleObjectModuleAccessor {
+    if ENTRY_ID < 8 && BOSS_ID[ENTRY_ID] != 0 {
+        sv_battle_object::module_accessor(BOSS_ID[ENTRY_ID])
+    } else {
+        core::ptr::null_mut()
+    }
+}
+
+unsafe fn finder_master_entry_boma() -> (usize, *mut BattleObjectModuleAccessor) {
+    if FINDER_MASTER_ENTRY < 8 {
+        let boss_id = BOSS_ID[FINDER_MASTER_ENTRY];
+        if boss_id != 0 && sv_battle_object::is_active(boss_id) {
+            let boss_boma = sv_battle_object::module_accessor(boss_id);
+            if !boss_boma.is_null()
+                && smash::app::utility::get_kind(&mut *boss_boma) == *ITEM_KIND_MASTERHAND
+            {
+                return (FINDER_MASTER_ENTRY, boss_boma);
+            }
+        }
+    }
+    let mut fallback_entry = usize::MAX;
+    let mut fallback_boma: *mut BattleObjectModuleAccessor = core::ptr::null_mut();
+    for entry in 0..8 {
+        let boss_id = BOSS_ID[entry];
+        if boss_id == 0 || !sv_battle_object::is_active(boss_id) {
+            continue;
+        }
+        let boss_boma = sv_battle_object::module_accessor(boss_id);
+        if boss_boma.is_null() {
+            continue;
+        }
+        if smash::app::utility::get_kind(&mut *boss_boma) != *ITEM_KIND_MASTERHAND {
+            continue;
+        }
+        if fallback_boma.is_null() {
+            fallback_entry = entry;
+            fallback_boma = boss_boma;
+        }
+        if TeamModule::team_no(boss_boma) == CRAZY_TEAM {
+            return (entry, boss_boma);
+        }
+    }
+    (fallback_entry, fallback_boma)
+}
+
+#[inline(always)]
+unsafe fn finder_crazy_entry_boma() -> (usize, *mut BattleObjectModuleAccessor) {
+    if FINDER_CRAZY_ENTRY < 8 {
+        let boss_id = BOSS_ID_2[FINDER_CRAZY_ENTRY];
+        if boss_id != 0 && sv_battle_object::is_active(boss_id) {
+            let boss_boma = sv_battle_object::module_accessor(boss_id);
+            if !boss_boma.is_null()
+                && smash::app::utility::get_kind(&mut *boss_boma) == *ITEM_KIND_CRAZYHAND
+            {
+                return (FINDER_CRAZY_ENTRY, boss_boma);
+            }
+        }
+    }
+    if ENTRY_ID_2 < 8 && BOSS_ID_2[ENTRY_ID_2] != 0 {
+        return (ENTRY_ID_2, sv_battle_object::module_accessor(BOSS_ID_2[ENTRY_ID_2]));
+    }
+    (usize::MAX, core::ptr::null_mut())
+}
+
+#[inline(always)]
+unsafe fn finder_shrink_range(
+    base: Vector4f,
+    x_ratio: f32,
+    y_ratio: f32,
+) -> Vector4f {
+    let center_x = (base.x + base.y) * 0.5;
+    let center_y = (base.z + base.w) * 0.5;
+    let base_half_x = (base.y - base.x).abs() * 0.5;
+    let base_half_y = (base.z - base.w).abs() * 0.5;
+    let boss_x_extent = (MASTER_X_POS - center_x)
+        .abs()
+        .max((CRAZY_X_POS - center_x).abs())
+        + 70.0;
+    let boss_y_extent = (MASTER_Y_POS - center_y)
+        .abs()
+        .max((CRAZY_Y_POS - center_y).abs())
+        + 55.0;
+    let shrunk_half_x = (base_half_x * x_ratio).max(boss_x_extent);
+    let shrunk_half_y = (base_half_y * y_ratio).max(boss_y_extent);
+    Vector4f {
+        x: center_x - shrunk_half_x,
+        y: center_x + shrunk_half_x,
+        z: center_y + shrunk_half_y,
+        w: center_y - shrunk_half_y,
+    }
+}
+
+#[inline(always)]
+unsafe fn finder_ground_dist(boma: *mut BattleObjectModuleAccessor) -> f32 {
+    if boma.is_null() {
+        return -1.0;
+    }
+    let pos = Vector3f {
+        x: PostureModule::pos_x(boma),
+        y: PostureModule::pos_y(boma),
+        z: PostureModule::pos_z(boma),
+    };
+    GroundModule::get_distance_to_floor(boma, &pos, pos.y, true)
+}
+
+#[inline(always)]
+unsafe fn finder_debug_log_state(
+    tag: &str,
+    crazy_boma: *mut BattleObjectModuleAccessor,
+    master_boma: *mut BattleObjectModuleAccessor,
+) {
+    let (_, resolved_master_boma) = if master_boma.is_null() {
+        finder_master_entry_boma()
+    } else {
+        (usize::MAX, master_boma)
+    };
+    let reference_boma = if !crazy_boma.is_null() {
+        crazy_boma
+    } else {
+        resolved_master_boma
+    };
+    let base = core::ptr::addr_of!(FINDER_BASE_RANGE).read();
+    let camera_shrunk = finder_shrink_range(
+        base,
+        FINDER_CAMERA_X_SHRINK_RATIO,
+        FINDER_CAMERA_Y_SHRINK_RATIO,
+    );
+    let dead_shrunk = finder_shrink_range(
+        base,
+        FINDER_DEAD_X_SHRINK_RATIO,
+        FINDER_DEAD_Y_SHRINK_RATIO,
+    );
+    let anchor = finder_anchor_pos(reference_boma);
+    let (master_target, crazy_target) = finder_hand_targets(reference_boma);
+    let crazy_status = if crazy_boma.is_null() {
+        -1
+    } else {
+        StatusModule::status_kind(crazy_boma)
+    };
+    let master_status = if resolved_master_boma.is_null() {
+        -1
+    } else {
+        StatusModule::status_kind(resolved_master_boma)
+    };
+    let crazy_motion = if crazy_boma.is_null() {
+        0
+    } else {
+        MotionModule::motion_kind(crazy_boma)
+    };
+    let master_motion = if resolved_master_boma.is_null() {
+        0
+    } else {
+        MotionModule::motion_kind(resolved_master_boma)
+    };
+    let crazy_frame = if crazy_boma.is_null() {
+        -1.0
+    } else {
+        MotionModule::frame(crazy_boma)
+    };
+    let master_frame = if resolved_master_boma.is_null() {
+        -1.0
+    } else {
+        MotionModule::frame(resolved_master_boma)
+    };
+    let crazy_end_frame = if crazy_boma.is_null() {
+        -1.0
+    } else {
+        MotionModule::end_frame(crazy_boma)
+    };
+    let master_end_frame = if resolved_master_boma.is_null() {
+        -1.0
+    } else {
+        MotionModule::end_frame(resolved_master_boma)
+    };
+    let crazy_lr = if crazy_boma.is_null() {
+        0.0
+    } else {
+        lua_bind::PostureModule::lr(crazy_boma)
+    };
+    let master_lr = if resolved_master_boma.is_null() {
+        0.0
+    } else {
+        lua_bind::PostureModule::lr(resolved_master_boma)
+    };
+    crate::boss_log!(
+        "[PB][Finder][State] tag={} sync={} finder={} master_active={} crazy_active={} cam={} dead={} ctrl_master={} ctrl_crazy={} base=({:.1},{:.1},{:.1},{:.1}) cam_shrunk=({:.1},{:.1},{:.1},{:.1}) dead_shrunk=({:.1},{:.1},{:.1},{:.1}) anchor=({:.1},{:.1},{:.1}) crazy_target=({:.1},{:.1},{:.1}) master_target=({:.1},{:.1},{:.1}) crazy_status={} crazy_motion=0x{:x} crazy_frame={:.1}/{:.1} crazy_pos=({:.1},{:.1},{:.1}) crazy_lr={:.1} crazy_floor={:.1} master_status={} master_motion=0x{:x} master_frame={:.1}/{:.1} master_pos=({:.1},{:.1},{:.1}) master_lr={:.1} master_floor={:.1}",
+        tag,
+        core::ptr::addr_of!(FINDER_SYNC_FRAMES).read(),
+        core::ptr::addr_of!(FINDER).read(),
+        core::ptr::addr_of!(MASTER_FINDER_ACTIVE).read(),
+        core::ptr::addr_of!(CRAZY_FINDER_ACTIVE).read(),
+        core::ptr::addr_of!(FINDER_CAMERA_APPLIED).read(),
+        core::ptr::addr_of!(FINDER_DEAD_RANGE_APPLIED).read(),
+        core::ptr::addr_of!(CONTROLLABLE).read(),
+        core::ptr::addr_of!(CONTROLLABLE_2).read(),
+        base.x,
+        base.y,
+        base.z,
+        base.w,
+        camera_shrunk.x,
+        camera_shrunk.y,
+        camera_shrunk.z,
+        camera_shrunk.w,
+        dead_shrunk.x,
+        dead_shrunk.y,
+        dead_shrunk.z,
+        dead_shrunk.w,
+        anchor.x,
+        anchor.y,
+        anchor.z,
+        crazy_target.x,
+        crazy_target.y,
+        crazy_target.z,
+        master_target.x,
+        master_target.y,
+        master_target.z,
+        crazy_status,
+        crazy_motion,
+        crazy_frame,
+        crazy_end_frame,
+        core::ptr::addr_of!(CRAZY_X_POS).read(),
+        core::ptr::addr_of!(CRAZY_Y_POS).read(),
+        core::ptr::addr_of!(CRAZY_Z_POS).read(),
+        crazy_lr,
+        finder_ground_dist(crazy_boma),
+        master_status,
+        master_motion,
+        master_frame,
+        master_end_frame,
+        core::ptr::addr_of!(MASTER_X_POS).read(),
+        core::ptr::addr_of!(MASTER_Y_POS).read(),
+        core::ptr::addr_of!(MASTER_Z_POS).read(),
+        master_lr,
+        finder_ground_dist(resolved_master_boma),
+    );
+}
+
+#[inline(always)]
+unsafe fn apply_finder_camera(crazy_boma: *mut BattleObjectModuleAccessor) {
+    if crazy_boma.is_null() {
+        return;
+    }
+    let frame = MotionModule::frame(crazy_boma);
+    if frame < FINDER_CAMERA_START_FRAME {
+        return;
+    }
+    let base = core::ptr::addr_of!(FINDER_BASE_RANGE).read();
+    let shrunk = finder_shrink_range(
+        base,
+        FINDER_CAMERA_X_SHRINK_RATIO,
+        FINDER_CAMERA_Y_SHRINK_RATIO,
+    );
+    if !FINDER_CAMERA_APPLIED {
+        crate::boss_log!(
+            "[PB][Finder] apply_finder_camera frame={:.1} base=({:.1},{:.1},{:.1},{:.1}) shrunk=({:.1},{:.1},{:.1},{:.1})",
+            frame,
+            base.x, base.y, base.z, base.w,
+            shrunk.x, shrunk.y, shrunk.z, shrunk.w
+        );
+    }
+    WorkModule::on_flag(
+        crazy_boma,
+        *ITEM_CRAZYHAND_INSTANCE_WORK_FLAG_FINDER_SHIRINK_START,
+    );
+    crazyhand_set_camera_range(&shrunk);
+    FINDER_CAMERA_APPLIED = true;
+}
+
+#[inline(always)]
+unsafe fn apply_finder_dead_range(crazy_boma: *mut BattleObjectModuleAccessor) {
+    if crazy_boma.is_null() {
+        return;
+    }
+    let frame = MotionModule::frame(crazy_boma);
+    if frame < FINDER_DEAD_RANGE_START_FRAME {
+        return;
+    }
+    let shrunk = finder_shrink_range(
+        core::ptr::addr_of!(FINDER_BASE_RANGE).read(),
+        FINDER_DEAD_X_SHRINK_RATIO,
+        FINDER_DEAD_Y_SHRINK_RATIO,
+    );
+    if !FINDER_DEAD_RANGE_APPLIED {
+        crate::boss_log!(
+            "[PB][Finder] apply_finder_dead_range frame={:.1} shrunk=({:.1},{:.1},{:.1},{:.1})",
+            frame, shrunk.x, shrunk.y, shrunk.z, shrunk.w
+        );
+    }
+    crazyhand_set_dead_range(&shrunk);
+    FINDER_DEAD_RANGE_APPLIED = true;
+}
+
+#[inline(always)]
+unsafe fn clear_finder_runtime() {
+    crate::boss_log!(
+        "[PB][Finder] clear_finder_runtime camera_applied={} dead_range_applied={} sync_frames={}",
+        core::ptr::addr_of!(FINDER_CAMERA_APPLIED).read(),
+        core::ptr::addr_of!(FINDER_DEAD_RANGE_APPLIED).read(),
+        core::ptr::addr_of!(FINDER_SYNC_FRAMES).read()
+    );
+    let (_, crazy_boma) = finder_crazy_entry_boma();
+    if !crazy_boma.is_null() {
+        WorkModule::off_flag(
+            crazy_boma,
+            *ITEM_CRAZYHAND_INSTANCE_WORK_FLAG_FINDER_SHIRINK_START,
+        );
+        CameraModule::reset_camera_range(crazy_boma, 0);
+    }
+    let (master_entry, master_boma) = finder_master_entry_boma();
+    if !master_boma.is_null() {
+        CameraModule::reset_camera_range(master_boma, 0);
+        if master_entry < 8 && boss_helpers::is_operation_cpu_entry(boss_helpers::fighter_manager(), master_entry) {
+            StatusModule::change_status_request_from_script(
+                master_boma,
+                *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
+                true,
+            );
+            MotionModule::change_motion(
+                master_boma,
+                Hash40::new("wait"),
+                0.0,
+                1.0,
+                false,
+                0.0,
+                false,
+                false,
+            );
+        } else {
+            StatusModule::change_status_request_from_script(
+                master_boma,
+                *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT,
+                true,
+            );
+            MotionModule::change_motion(
+                master_boma,
+                Hash40::new("wait"),
+                0.0,
+                1.0,
+                false,
+                0.0,
+                false,
+                false,
+            );
+        }
+    }
+
+    if FINDER_CAMERA_APPLIED {
+        crazyhand_revert_camera();
+        crazyhand_set_dead_range(&raw const FINDER_BASE_RANGE);
+    }
+
+    FINDER = false;
+    MASTER_FINDER_ACTIVE = false;
+    CRAZY_FINDER_ACTIVE = false;
+    FINDER_SYNC_FRAMES = 0;
+    FINDER_CAMERA_APPLIED = false;
+    FINDER_DEAD_RANGE_APPLIED = false;
+    let finder_master_entry = FINDER_MASTER_ENTRY;
+    let finder_crazy_entry = FINDER_CRAZY_ENTRY;
+    FINDER_MASTER_ENTRY = 8;
+    FINDER_CRAZY_ENTRY = 8;
+    FINDER_BASE_RANGE = Vector4f {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        w: 0.0,
+    };
+
+    let fighter_manager = boss_helpers::fighter_manager();
+    if !fighter_manager.is_null() {
+        if finder_master_entry < 8 && !boss_helpers::is_operation_cpu_entry(fighter_manager, finder_master_entry) {
+            CONTROLLABLE = true;
+        }
+        if finder_crazy_entry < 8 && !boss_helpers::is_operation_cpu_entry(fighter_manager, finder_crazy_entry) {
+            CONTROLLABLE_2 = true;
+        }
+    }
+}
+
+#[inline(always)]
+unsafe fn clear_finder_runtime_with_reason(reason: &str) {
+    crate::boss_log!("[PB][Finder] clear_request reason={}", reason);
+    let (_, master_boma) = finder_master_entry_boma();
+    let (_, crazy_boma) = finder_crazy_entry_boma();
+    finder_debug_log_state("clear_request", crazy_boma, master_boma);
+    clear_finder_runtime();
+    let (_, master_boma) = finder_master_entry_boma();
+    let (_, crazy_boma) = finder_crazy_entry_boma();
+    finder_debug_log_state("clear_complete", crazy_boma, master_boma);
+}
+
+#[inline(always)]
+unsafe fn finder_anchor_pos(reference_boma: *mut BattleObjectModuleAccessor) -> Vector3f {
+    let base = core::ptr::addr_of!(FINDER_BASE_RANGE).read();
+    let center_x = (base.x + base.y) * 0.5;
+    let center_y = if reference_boma.is_null() {
+        (MASTER_Y_POS + CRAZY_Y_POS) * 0.5
+    } else {
+        let probe_y = MASTER_Y_POS.max(CRAZY_Y_POS) + 80.0;
+        let probe_pos = Vector3f {
+            x: center_x,
+            y: probe_y,
+            z: PostureModule::pos_z(reference_boma),
+        };
+        let probe_dist =
+            GroundModule::get_distance_to_floor(reference_boma, &probe_pos, probe_pos.y, true);
+        if probe_dist > 0.0 && probe_dist < 400.0 {
+            (probe_pos.y - probe_dist) + FINDER_HAND_HEIGHT
+        } else {
+            (MASTER_Y_POS + CRAZY_Y_POS) * 0.5
+        }
+    };
+    Vector3f {
+        x: center_x,
+        y: center_y,
+        z: if reference_boma.is_null() {
+            0.0
+        } else {
+            PostureModule::pos_z(reference_boma)
+        },
+    }
+}
+
+#[inline(always)]
+unsafe fn finder_hand_targets(reference_boma: *mut BattleObjectModuleAccessor) -> (Vector3f, Vector3f) {
+    let anchor = finder_anchor_pos(reference_boma);
+    let crazy_offset = if CRAZY_FACING_RIGHT {
+        -FINDER_HAND_SPACING
+    } else {
+        FINDER_HAND_SPACING
+    };
+    let crazy_target = Vector3f {
+        x: anchor.x + crazy_offset,
+        y: anchor.y,
+        z: anchor.z,
+    };
+    let master_target = Vector3f {
+        x: anchor.x - crazy_offset,
+        y: anchor.y + FINDER_MASTER_HEIGHT_OFFSET,
+        z: anchor.z,
+    };
+    (master_target, crazy_target)
+}
+
+#[inline(always)]
+unsafe fn start_finder_pair(
+    lua_state: u64,
+    crazy_boma: *mut BattleObjectModuleAccessor,
+) -> bool {
+    if FINDER {
+        return true;
+    }
+    if crazy_boma.is_null() {
+        return false;
+    }
+
+    BARK = false;
+    PUNCH = false;
+    SHOCK = false;
+    LASER = false;
+    SCRATCH_BLOW = false;
+    FINDER = true;
+    MASTER_FINDER_ACTIVE = false;
+    CRAZY_FINDER_ACTIVE = false;
+    FINDER_SYNC_FRAMES = 0;
+    FINDER_CAMERA_APPLIED = false;
+    FINDER_DEAD_RANGE_APPLIED = false;
+    FINDER_BASE_RANGE = dead_range(lua_state);
+    {
+        let base = core::ptr::addr_of!(FINDER_BASE_RANGE).read();
+        crate::boss_log!(
+            "[PB][Finder] start_finder_pair base_range=({:.1},{:.1},{:.1},{:.1}) crazy_pos=({:.1},{:.1},{:.1}) master_pos=({:.1},{:.1},{:.1})",
+            base.x, base.y, base.z, base.w,
+            core::ptr::addr_of!(CRAZY_X_POS).read(),
+            core::ptr::addr_of!(CRAZY_Y_POS).read(),
+            core::ptr::addr_of!(CRAZY_Z_POS).read(),
+            core::ptr::addr_of!(MASTER_X_POS).read(),
+            core::ptr::addr_of!(MASTER_Y_POS).read(),
+            core::ptr::addr_of!(MASTER_Z_POS).read()
+        );
+    }
+    let (master_entry, master_boma) = finder_master_entry_boma();
+    FINDER_MASTER_ENTRY = master_entry;
+    FINDER_CRAZY_ENTRY = boss_runtime::sanitize_entry_id(ENTRY_ID_2);
+    finder_debug_log_state("start_pair", crazy_boma, master_boma);
+
+    CONTROLLABLE = false;
+    CONTROLLABLE_2 = false;
+    CONTROLLER_X_MASTER = 0.0;
+    CONTROLLER_Y_MASTER = 0.0;
+    CONTROLLER_X_CRAZY = 0.0;
+    CONTROLLER_Y_CRAZY = 0.0;
+
+    StatusModule::change_status_request_from_script(
+        crazy_boma,
+        *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT,
+        true,
+    );
+    MotionModule::change_motion(
+        crazy_boma,
+        Hash40::new("finder"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    true
+}
+
+#[inline(always)]
+unsafe fn update_finder_runtime() {
+    if !FINDER {
+        return;
+    }
+
+    let (_, crazy_boma) = finder_crazy_entry_boma();
+    if crazy_boma.is_null()
+        || !MASTER_EXISTS
+        || DEAD
+        || DEAD_2
+        || RESULT_SPAWNED
+        || RESULT_SPAWNED_2
+        || STOP
+        || STOP_2
+    {
+        crate::boss_log!(
+            "[PB][Finder] runtime_abort crazy_null={} master_exists={} dead={} dead_2={} result_spawned={} result_spawned_2={} stop={} stop_2={}",
+            crazy_boma.is_null(),
+            core::ptr::addr_of!(MASTER_EXISTS).read(),
+            core::ptr::addr_of!(DEAD).read(),
+            core::ptr::addr_of!(DEAD_2).read(),
+            core::ptr::addr_of!(RESULT_SPAWNED).read(),
+            core::ptr::addr_of!(RESULT_SPAWNED_2).read(),
+            core::ptr::addr_of!(STOP).read(),
+            core::ptr::addr_of!(STOP_2).read()
+        );
+        let (_, master_boma) = finder_master_entry_boma();
+        finder_debug_log_state("runtime_abort", crazy_boma, master_boma);
+        clear_finder_runtime_with_reason("runtime_abort");
+        return;
+    }
+
+    let crazy_motion = MotionModule::motion_kind(crazy_boma);
+    let crazy_frame = MotionModule::frame(crazy_boma);
+    let (master_entry, master_boma) = finder_master_entry_boma();
+    if master_entry < 8 {
+        FINDER_MASTER_ENTRY = master_entry;
+    }
+    let crazy_was_active = CRAZY_FINDER_ACTIVE;
+
+    if core::ptr::addr_of!(FINDER_SYNC_FRAMES).read() % 30 == 0 {
+        crate::boss_log!(
+            "[PB][Finder] update sync={} crazy_active={} master_active={} crazy_motion=0x{:x} crazy_frame={:.1} cam={} dead={} crazy=({:.1},{:.1}) master=({:.1},{:.1})",
+            core::ptr::addr_of!(FINDER_SYNC_FRAMES).read(),
+            core::ptr::addr_of!(CRAZY_FINDER_ACTIVE).read(),
+            core::ptr::addr_of!(MASTER_FINDER_ACTIVE).read(),
+            crazy_motion, crazy_frame,
+            core::ptr::addr_of!(FINDER_CAMERA_APPLIED).read(),
+            core::ptr::addr_of!(FINDER_DEAD_RANGE_APPLIED).read(),
+            core::ptr::addr_of!(CRAZY_X_POS).read(),
+            core::ptr::addr_of!(CRAZY_Y_POS).read(),
+            core::ptr::addr_of!(MASTER_X_POS).read(),
+            core::ptr::addr_of!(MASTER_Y_POS).read()
+        );
+        finder_debug_log_state("runtime_tick", crazy_boma, master_boma);
+    }
+
+    if crazy_motion == hash40("finder") {
+        CRAZY_FINDER_ACTIVE = true;
+        CONTROLLABLE_2 = false;
+    }
+    if !crazy_was_active && CRAZY_FINDER_ACTIVE {
+        finder_debug_log_state("crazy_active", crazy_boma, master_boma);
+    }
+
+    if !CRAZY_FINDER_ACTIVE {
+        CONTROLLABLE_2 = false;
+        if CRAZY_USABLE {
+            StatusModule::change_status_request_from_script(
+                crazy_boma,
+                *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT,
+                true,
+            );
+            MotionModule::change_motion(
+                crazy_boma,
+                Hash40::new("finder"),
+                0.0,
+                1.0,
+                false,
+                0.0,
+                false,
+                false,
+            );
+            finder_debug_log_state("crazy_restart_motion", crazy_boma, master_boma);
+        }
+    }
+
+    if CRAZY_FINDER_ACTIVE {
+        apply_finder_camera(crazy_boma);
+        apply_finder_dead_range(crazy_boma);
+        MotionModule::set_rate(crazy_boma, 1.0);
+        smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(crazy_boma, 1.0);
+        CONTROLLABLE = false;
+        CONTROLLABLE_2 = false;
+        let (_, crazy_target) = finder_hand_targets(crazy_boma);
+        PostureModule::set_pos(crazy_boma, &crazy_target);
+        if !master_boma.is_null() && MASTER_USABLE {
+            MASTER_FINDER_ACTIVE = MotionModule::motion_kind(master_boma) == hash40("finder");
+        }
+        let master_done = !master_boma.is_null()
+            && MotionModule::motion_kind(master_boma) == hash40("finder")
+            && MotionModule::is_end(master_boma);
+        let crazy_done = MotionModule::is_end(crazy_boma);
+        if crazy_done || master_done {
+            crate::boss_log!(
+                "[PB][Finder] finish crazy_done={} master_done={} crazy_frame={:.1}/{:.1} master_frame={:.1}/{:.1}",
+                crazy_done,
+                master_done,
+                MotionModule::frame(crazy_boma),
+                MotionModule::end_frame(crazy_boma),
+                if master_boma.is_null() { -1.0 } else { MotionModule::frame(master_boma) },
+                if master_boma.is_null() { -1.0 } else { MotionModule::end_frame(master_boma) }
+            );
+            finder_debug_log_state("finish_before_clear", crazy_boma, master_boma);
+            if !boss_helpers::is_operation_cpu_entry(boss_helpers::fighter_manager(), ENTRY_ID_2) {
+                StatusModule::change_status_request_from_script(
+                    crazy_boma,
+                    *ITEM_CRAZYHAND_STATUS_KIND_WAIT_TELEPORT,
+                    true,
+                );
+            }
+            clear_finder_runtime_with_reason(if crazy_done && master_done {
+                "both_finished"
+            } else if crazy_done {
+                "crazy_finished"
+            } else {
+                "master_finished"
+            });
+            return;
+        }
+    }
+
+    FINDER_SYNC_FRAMES += 1;
+    if FINDER_SYNC_FRAMES > 180 && !CRAZY_FINDER_ACTIVE {
+        finder_debug_log_state("activation_timeout", crazy_boma, master_boma);
+        clear_finder_runtime_with_reason("activation_timeout");
+        return;
+    }
+}
+
+#[inline(always)]
 unsafe fn master_should_clamp_floor(boss_boma: *mut BattleObjectModuleAccessor) -> bool {
     if !CONTROLLABLE {
         return false;
@@ -410,6 +1101,18 @@ unsafe fn reset_mastercrazy_shared_runtime() {
     SHOCK = false;
     LASER = false;
     SCRATCH_BLOW = false;
+    FINDER = false;
+    MASTER_FINDER_ACTIVE = false;
+    CRAZY_FINDER_ACTIVE = false;
+    FINDER_SYNC_FRAMES = 0;
+    FINDER_CAMERA_APPLIED = false;
+    FINDER_DEAD_RANGE_APPLIED = false;
+    FINDER_BASE_RANGE = Vector4f {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        w: 0.0,
+    };
     CONTROL_SPEED_MUL = 2.0;
     CONTROL_SPEED_MUL_2 = 0.05;
 
@@ -457,6 +1160,9 @@ unsafe fn reset_crazy_runtime_for_spawn() {
 
 #[inline(always)]
 unsafe fn reset_mastercrazy_result_runtime() {
+    if FINDER {
+        clear_finder_runtime_with_reason("result_runtime_reset");
+    }
     reset_mastercrazy_shared_runtime();
 
     CONTROLLABLE = true;
@@ -529,6 +1235,9 @@ pub unsafe fn reset_match_state(entry_id: usize) {
         );
     }
 
+    if FINDER {
+        clear_finder_runtime_with_reason("match_state_reset");
+    }
     reset_mastercrazy_shared_runtime();
 
     CONTROLLABLE = true;
@@ -1894,6 +2603,76 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
+                        if FINDER && CRAZY_EXISTS && !DEAD && MASTER_USABLE {
+                            CONTROLLABLE = false;
+                            let (master_target, _) = finder_hand_targets(boss_boma);
+                            if FINDER_SYNC_FRAMES % 30 == 0 {
+                                crate::boss_log!(
+                                    "[PB][Finder][MasterRuntime] status={} motion=0x{:x} frame={:.1}/{:.1} current=({:.1},{:.1},{:.1}) target=({:.1},{:.1},{:.1}) ctrl_master={} ctrl_crazy={}",
+                                    StatusModule::status_kind(boss_boma),
+                                    MotionModule::motion_kind(boss_boma),
+                                    MotionModule::frame(boss_boma),
+                                    MotionModule::end_frame(boss_boma),
+                                    core::ptr::addr_of!(MASTER_X_POS).read(),
+                                    core::ptr::addr_of!(MASTER_Y_POS).read(),
+                                    core::ptr::addr_of!(MASTER_Z_POS).read(),
+                                    master_target.x,
+                                    master_target.y,
+                                    master_target.z,
+                                    core::ptr::addr_of!(CONTROLLABLE).read(),
+                                    core::ptr::addr_of!(CONTROLLABLE_2).read()
+                                );
+                            }
+                            if MotionModule::motion_kind(boss_boma) != hash40("finder") {
+                                StatusModule::change_status_request_from_script(
+                                    boss_boma,
+                                    *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT,
+                                    true,
+                                );
+                                MotionModule::change_motion(boss_boma,Hash40::new("finder"),0.0,1.0,false,0.0,false,false);
+                                crate::boss_log!(
+                                    "[PB][Finder][MasterRuntime] restart_motion status={} current_motion=0x{:x}",
+                                    StatusModule::status_kind(boss_boma),
+                                    MotionModule::motion_kind(boss_boma)
+                                );
+                            }
+                            MotionModule::set_rate(boss_boma, 1.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(boss_boma, 1.0);
+                            PostureModule::set_pos(boss_boma, &master_target);
+                        }
+                        else if !FINDER && MotionModule::motion_kind(boss_boma) == hash40("finder") {
+                            crate::boss_log!(
+                                "[PB][Finder][MasterRuntime] recover_after_clear status={} frame={:.1}/{:.1}",
+                                StatusModule::status_kind(boss_boma),
+                                MotionModule::frame(boss_boma),
+                                MotionModule::end_frame(boss_boma)
+                            );
+                            if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) {
+                                StatusModule::change_status_request_from_script(
+                                    boss_boma,
+                                    *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
+                                    true,
+                                );
+                            } else {
+                                StatusModule::change_status_request_from_script(
+                                    boss_boma,
+                                    *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT,
+                                    true,
+                                );
+                                CONTROLLABLE = true;
+                            }
+                            MotionModule::change_motion(
+                                boss_boma,
+                                Hash40::new("wait"),
+                                0.0,
+                                1.0,
+                                false,
+                                0.0,
+                                false,
+                                false,
+                            );
+                        }
+
                         if LASER && StatusModule::status_kind(boss_boma) != *ITEM_MASTERHAND_STATUS_KIND_WFINGER_BEAM_START
                         && CRAZY_EXISTS
                         && !DEAD
@@ -2697,7 +3476,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_COMPOUND_ATTACK_WAIT {
-                                CONTROLLABLE = true;
+                                CONTROLLABLE = !FINDER;
                             }
                             if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_WAIT_TIME {
                                 CONTROLLABLE = true;
@@ -3542,6 +4321,29 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     }
                                 }
                             }
+                            else if CONTROLLABLE_2 == false && smash::app::sv_math::rand(hash40("fighter"), 500) as f32 == smash::app::sv_math::rand(hash40("fighter"), 500) as f32
+                            || CONTROLLABLE_2 && smash::app::sv_math::rand(hash40("fighter"), 900) as f32 == smash::app::sv_math::rand(hash40("fighter"), 900) as f32 {
+                                let floor_dist = boss_floor_dist(module_accessor, boss_boma_2);
+                                if floor_dist > 0.0
+                                && floor_dist <= 50.0
+                                && MASTER_EXISTS
+                                && MASTER_USABLE
+                                && MASTER_TEAM == CRAZY_TEAM
+                                && StatusModule::status_kind(boss_boma_2) != *ITEM_CRAZYHAND_STATUS_KIND_TURN {
+                                    if lua_bind::PostureModule::lr(boss_boma_2) == 1.0 && MASTER_FACING_LEFT
+                                    || lua_bind::PostureModule::lr(boss_boma_2) == -1.0 && !MASTER_FACING_LEFT {
+                                        crate::boss_log!(
+                                            "[PB][Finder] cpu_trigger floor={:.1} crazy_status={} crazy_motion=0x{:x} master_status={} master_motion=0x{:x}",
+                                            floor_dist,
+                                            StatusModule::status_kind(boss_boma_2),
+                                            MotionModule::motion_kind(boss_boma_2),
+                                            if current_master_boma().is_null() { -1 } else { StatusModule::status_kind(current_master_boma()) },
+                                            if current_master_boma().is_null() { 0 } else { MotionModule::motion_kind(current_master_boma()) }
+                                        );
+                                        let _ = start_finder_pair(fighter.lua_state_agent, boss_boma_2);
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -3916,6 +4718,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID_2) == true {
                         maybe_recover_crazy_cpu_idle(boss_boma_2, ENTRY_ID_2);
                     }
+                    update_finder_runtime();
 
                     if BARK && !DEAD_2 && MASTER_EXISTS && MotionModule::motion_kind(boss_boma_2) != smash::hash40("bark") && CRAZY_USABLE {
                         MotionModule::set_rate(boss_boma_2, 1.0);
@@ -4821,7 +5624,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                             if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_COMPOUND_ATTACK_WAIT {
-                                CONTROLLABLE_2 = true;
+                                CONTROLLABLE_2 = !FINDER;
                             }
                             if StatusModule::status_kind(boss_boma_2) == *ITEM_CRAZYHAND_STATUS_KIND_WAIT_TIME {
                                 CONTROLLABLE_2 = true;
@@ -5238,7 +6041,8 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_JUMP) && MASTER_EXISTS && MASTER_USABLE && MASTER_TEAM == CRAZY_TEAM && StatusModule::status_kind(boss_boma_2) != *ITEM_CRAZYHAND_STATUS_KIND_TURN {
                                     if lua_bind::PostureModule::lr(boss_boma_2) == 1.0 && MASTER_FACING_LEFT // Crazy Hand Facing right but Master Hand facing left, next line is opposite
                                     || lua_bind::PostureModule::lr(boss_boma_2) == -1.0 && !MASTER_FACING_LEFT {
-                                        // if GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) <= 50.0 && GroundModule::get_distance_to_floor(module_accessor, &curr_pos, curr_pos.y, true) > 0.0 {
+                                        let floor_dist = boss_floor_dist(module_accessor, boss_boma_2);
+                                        if floor_dist > 0.0 && floor_dist <= 50.0 {
                                             CONTROLLABLE_2 = false;
                                             BARK = false;
                                             PUNCH = true;
@@ -5249,20 +6053,58 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                             CONTROLLER_Y_CRAZY = 0.0;
                                             StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
                                             MotionModule::change_motion(boss_boma_2,Hash40::new("taggoopaa"),0.0,1.0,false,0.0,false,false);
-                                        // }
-                                        // else {
-                                            // CONTROLLABLE_2 = false;
-                                            // StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT, true);
-                                            // set_camera_range(smash::phx::Vector4f{x: dead_range(fighter.lua_state_agent).x.abs() / 2.0, y: dead_range(fighter.lua_state_agent).y.abs() / 2.0, z: dead_range(fighter.lua_state_agent).z.abs() / 2.0, w: dead_range(fighter.lua_state_agent).w.abs()});
-                                            // MotionModule::change_motion(boss_boma_2,Hash40::new("finder"),0.0,1.0,false,0.0,false,false);
-                                        // }
+                                        }
                                     }
                                 }
-                                if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_SPECIAL) {
-                                    CONTROLLABLE_2 = false;
-                                    CONTROLLER_X_CRAZY = 0.0;
-                                    CONTROLLER_Y_CRAZY = 0.0;
-                                    StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK_START, true);
+                                let cat1 = ControlModule::get_command_flag_cat(fighter.module_accessor, 0);
+                                if cat1 & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_N != 0 {
+                                    let floor_dist = boss_floor_dist(module_accessor, boss_boma_2);
+                                    let same_team = MASTER_TEAM == CRAZY_TEAM;
+                                    let facing_ok =
+                                        (lua_bind::PostureModule::lr(boss_boma_2) == 1.0 && MASTER_FACING_LEFT)
+                                        || (lua_bind::PostureModule::lr(boss_boma_2) == -1.0 && !MASTER_FACING_LEFT);
+                                    let (_, master_boma) = finder_master_entry_boma();
+                                    crate::boss_log!(
+                                        "[PB][Finder] trigger special_n floor={:.1} master_exists={} master_usable={} same_team={} facing_ok={} crazy_status={} crazy_motion=0x{:x} crazy_frame={:.1} master_status={} master_motion=0x{:x} master_frame={:.1} ctrl_crazy={} finder={}",
+                                        floor_dist,
+                                        core::ptr::addr_of!(MASTER_EXISTS).read(),
+                                        core::ptr::addr_of!(MASTER_USABLE).read(),
+                                        same_team,
+                                        facing_ok,
+                                        StatusModule::status_kind(boss_boma_2),
+                                        MotionModule::motion_kind(boss_boma_2),
+                                        MotionModule::frame(boss_boma_2),
+                                        if master_boma.is_null() { -1 } else { StatusModule::status_kind(master_boma) },
+                                        if master_boma.is_null() { 0 } else { MotionModule::motion_kind(master_boma) },
+                                        if master_boma.is_null() { -1.0 } else { MotionModule::frame(master_boma) },
+                                        core::ptr::addr_of!(CONTROLLABLE_2).read(),
+                                        core::ptr::addr_of!(FINDER).read()
+                                    );
+                                    let finder_started =
+                                        floor_dist > 0.0
+                                        && floor_dist <= 50.0
+                                        && MASTER_EXISTS
+                                        && MASTER_USABLE
+                                        && same_team
+                                        && facing_ok
+                                        && start_finder_pair(fighter.lua_state_agent, boss_boma_2);
+
+                                    crate::boss_log!(
+                                        "[PB][Finder] trigger_result started={} fallback_bomb={} floor={:.1} crazy_status={} crazy_motion=0x{:x} master_status={} master_motion=0x{:x}",
+                                        finder_started,
+                                        !finder_started,
+                                        floor_dist,
+                                        StatusModule::status_kind(boss_boma_2),
+                                        MotionModule::motion_kind(boss_boma_2),
+                                        if master_boma.is_null() { -1 } else { StatusModule::status_kind(master_boma) },
+                                        if master_boma.is_null() { 0 } else { MotionModule::motion_kind(master_boma) }
+                                    );
+                                    if !finder_started {
+                                        CONTROLLABLE_2 = false;
+                                        CONTROLLER_X_CRAZY = 0.0;
+                                        CONTROLLER_Y_CRAZY = 0.0;
+                                        StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK_START, true);
+                                    }
                                 }
                                 if ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD) && MotionModule::motion_kind(boss_boma_2) != smash::hash40("teleport_start") && MotionModule::motion_kind(boss_boma_2) != smash::hash40("teleport_end") && StatusModule::status_kind(boss_boma_2) != *ITEM_CRAZYHAND_STATUS_KIND_TURN {
                                     CONTROLLABLE_2 = false;
@@ -5284,13 +6126,13 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         StatusModule::change_status_request(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_HIPPATAKU_HOLD, true);
                                     }
                                 }
-                                if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
+                                if cat1 & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_LW != 0 {
                                     CONTROLLABLE_2 = false;
                                     CONTROLLER_X_CRAZY = 0.0;
                                     CONTROLLER_Y_CRAZY = 0.0;
                                     StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_YUBI_BEAM, true);
                                 }
-                                if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 {
+                                if cat1 & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_HI != 0 {
                                     CONTROLLABLE_2 = false;
                                     CONTROLLER_X_CRAZY = 0.0;
                                     CONTROLLER_Y_CRAZY = 0.0;
@@ -5301,7 +6143,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         StatusModule::change_status_request_from_script(boss_boma_2, *ITEM_CRAZYHAND_STATUS_KIND_LOOK_START, true);
                                     }
                                 }
-                                if ControlModule::get_command_flag_cat(fighter.module_accessor, 0) & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 {
+                                if cat1 & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_S != 0 {
                                     CONTROLLABLE_2 = false;
                                     CONTROLLER_X_CRAZY = 0.0;
                                     CONTROLLER_Y_CRAZY = 0.0;
