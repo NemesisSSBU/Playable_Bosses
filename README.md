@@ -185,7 +185,7 @@ This document contains the **full player input mapping** for all playable bosses
 |------|------|
 | Jump | Combo attack *(requires Master Hand)* |
 | Attack | Dig (ground) / Slap (air) |
-| Special | Bomb Attack |
+| Special | Bomb Attack | Combo attack *(requires Master Hand)* |
 | Guard | Teleport |
 | Side + B | Grow Finger |
 | Up + B | Fire Chariot (ground) / Look (air) |
