@@ -27,24 +27,15 @@ mod boss_runtime;
 
 use crate::config::CONFIG;
 
-static mut ENTRY_ID : usize = 0;
 pub static mut FIGHTER_MANAGER: usize = 0;
 
-static mut ENTRY_ID_2 : usize = 0;
-pub static mut FIGHTER_MANAGER_2: usize = 0;
-
 const MAX_FIGHTERS: usize = 8;
-static mut PEACH_FINAL_GUARD_ACTIVE: [bool; 8] = [false; 8];
-static mut DAISY_FINAL_GUARD_ACTIVE: [bool; 8] = [false; 8];
 static mut BOSS_MATCH_STARTED: [bool; 8] = [false; 8];
 static mut TRANSITION_DEBUG_LAST_STAGE: [i32; 8] = [-1; 8];
 static mut TRANSITION_DEBUG_LAST_STATUS: [i32; 8] = [i32::MIN; 8];
 static mut TRANSITION_DEBUG_LAST_FLAGS: [u16; 8] = [u16::MAX; 8];
 static mut TRANSITION_DEBUG_LAST_HAVE_ITEM: [i32; 8] = [i32::MIN; 8];
 static mut TRANSITION_DEBUG_LAST_SCALE_BITS: [u32; 8] = [u32::MAX; 8];
-
-static mut ENTRY_ID_3 : usize = 0;
-pub static mut FIGHTER_MANAGER_3: usize = 0;
 
 unsafe fn any_boss_active() -> bool {
     mastercrazy::check_status()
@@ -280,117 +271,6 @@ extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
         cleanup_hidden_host_post_match_transition(module_accessor);
         restore_plain_mario_after_hidden_host_cleanup(module_accessor);
         log_hidden_host_transition_snapshot(module_accessor);
-    }
-}
-
-extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
-    unsafe {
-        let lua_state = fighter.lua_state_agent;
-        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-        let fighter_kind = smash::app::utility::get_kind(module_accessor);
-        ENTRY_ID = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-        let entry_id = ENTRY_ID;
-        LookupSymbol(
-            &raw mut FIGHTER_MANAGER,
-            "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
-            .as_bytes()
-            .as_ptr(),
-        );
-        let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
-        if fighter_kind == *FIGHTER_KIND_PEACH {
-            let boss_active = any_boss_active();
-            if boss_active {
-                if entry_id < MAX_FIGHTERS && !PEACH_FINAL_GUARD_ACTIVE[entry_id] {
-                    PEACH_FINAL_GUARD_ACTIVE[entry_id] = true;
-                    crate::boss_log!("[PB][Final] Peach entry {}: guard enabled (boss active)", entry_id);
-                }
-                WorkModule::enable_transition_term_forbid(fighter.module_accessor, *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
-                WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
-                if WorkModule::is_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL)
-                || WorkModule::is_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS)
-                || FighterManager::is_final(fighter_manager) {
-                    crate::boss_log!("[PB][Final] Peach entry {}: clearing active Final Smash state", entry_id);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
-                    FighterManager::set_visible_finalbg(fighter_manager, false);
-                }
-            } else {
-                WorkModule::unable_transition_term_forbid(fighter.module_accessor, *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
-                if entry_id < MAX_FIGHTERS && PEACH_FINAL_GUARD_ACTIVE[entry_id] {
-                    PEACH_FINAL_GUARD_ACTIVE[entry_id] = false;
-                    crate::boss_log!("[PB][Final] Peach entry {}: guard disabled (no boss active)", entry_id);
-                }
-            }
-        }
-    }
-}
-
-extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
-    unsafe {
-        let lua_state = fighter.lua_state_agent;
-        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-        let fighter_kind = smash::app::utility::get_kind(module_accessor);
-        ENTRY_ID_2 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-        let entry_id = ENTRY_ID_2;
-        LookupSymbol(
-            &raw mut FIGHTER_MANAGER_2,
-            "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
-            .as_bytes()
-            .as_ptr(),
-        );
-        let fighter_manager = *(FIGHTER_MANAGER_2 as *mut *mut smash::app::FighterManager);
-        if fighter_kind == *FIGHTER_KIND_DAISY {
-            let boss_active = any_boss_active();
-            if boss_active {
-                if entry_id < MAX_FIGHTERS && !DAISY_FINAL_GUARD_ACTIVE[entry_id] {
-                    DAISY_FINAL_GUARD_ACTIVE[entry_id] = true;
-                    crate::boss_log!("[PB][Final] Daisy entry {}: guard enabled (boss active)", entry_id);
-                }
-                WorkModule::enable_transition_term_forbid(fighter.module_accessor, *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
-                WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
-                if WorkModule::is_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL)
-                || WorkModule::is_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS)
-                || FighterManager::is_final(fighter_manager) {
-                    crate::boss_log!("[PB][Final] Daisy entry {}: clearing active Final Smash state", entry_id);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
-                    FighterManager::set_visible_finalbg(fighter_manager, false);
-                }
-            } else {
-                WorkModule::unable_transition_term_forbid(fighter.module_accessor, *FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
-                if entry_id < MAX_FIGHTERS && DAISY_FINAL_GUARD_ACTIVE[entry_id] {
-                    DAISY_FINAL_GUARD_ACTIVE[entry_id] = false;
-                    crate::boss_log!("[PB][Final] Daisy entry {}: guard disabled (no boss active)", entry_id);
-                }
-            }
-        }
-    }
-}
-
-extern "C" fn once_per_fighter_frame_3(fighter: &mut L2CFighterCommon) {
-    unsafe {
-        let lua_state = fighter.lua_state_agent;
-        let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
-        let fighter_kind = smash::app::utility::get_kind(module_accessor);
-        ENTRY_ID_3 = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-        LookupSymbol(
-            &raw mut FIGHTER_MANAGER_3,
-            "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
-            .as_bytes()
-            .as_ptr(),
-        );
-        let fighter_manager = *(FIGHTER_MANAGER_3 as *mut *mut smash::app::FighterManager);
-        if fighter_kind == *FIGHTER_KIND_SZEROSUIT {
-            if FighterManager::is_final(fighter_manager) {
-                if ganon::check_status() {
-                    WorkModule::enable_transition_term_forbid(fighter.module_accessor,*FIGHTER_STATUS_TRANSITION_TERM_ID_FINAL);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_STATUS);
-                    WorkModule::off_flag(fighter.module_accessor, *FIGHTER_INSTANCE_WORK_ID_FLAG_FINAL_AVAILABLE);
-                    FighterManager::set_visible_finalbg(fighter_manager, false);
-                }
-            }
-        }
     }
 }
 
@@ -1419,9 +1299,6 @@ pub fn main() {
     let galleom_stage = opts.galleom_stage.unwrap_or(true);
     let dracula_stage = opts.dracula_stage.unwrap_or(true);
 
-    Agent::new("peach").on_line(Main, once_per_fighter_frame).install();
-    Agent::new("daisy").on_line(Main, once_per_fighter_frame_2).install();
-    Agent::new("szerosuit").on_line(Main, once_per_fighter_frame_3).install();
     Agent::new("mario").on_line(Main, mario_boss_dispatch_frame).install();
     selection::install();
 
