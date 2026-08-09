@@ -1,8 +1,8 @@
+use once_cell::sync::Lazy;
 use serde::Deserialize;
+use skyline::error::show_error;
 use std::fs;
 use std::process::exit;
-use skyline::error::show_error;
-use once_cell::sync::Lazy;
 
 #[derive(Deserialize, Debug)]
 pub struct Options {
@@ -20,6 +20,10 @@ pub struct Options {
     pub boss_difficulty: Option<f32>,
     #[serde(rename = "DEBUG_BOSS_LOGS")]
     pub debug_boss_logs: Option<bool>,
+    #[serde(rename = "DEBUG_AMIIBO_NRO_TRACE")]
+    pub debug_amiibo_nro_trace: Option<bool>,
+    #[serde(rename = "DEBUG_AMIIBO_NRO_SYMBOLS")]
+    pub debug_amiibo_nro_symbols: Option<bool>,
     #[serde(rename = "DETECT_CHARACTER_NAME")]
     pub detect_character_name: Option<bool>,
 
@@ -175,10 +179,7 @@ pub fn load_config() -> Config {
             show_error(
                 0x02,
                 "Failed to parse config.toml",
-                &format!(
-                    "TOML parse error: {}\nCheck formatting at:\n{}",
-                    e, path
-                ),
+                &format!("TOML parse error: {}\nCheck formatting at:\n{}", e, path),
             );
             exit(0);
         }),
@@ -186,10 +187,7 @@ pub fn load_config() -> Config {
             show_error(
                 0x01,
                 "Unreadable config.toml for Competitive Playable Bosses",
-                &format!(
-                    "Error: {}\nTried to read:\n{}",
-                    e, path
-                ),
+                &format!("Error: {}\nTried to read:\n{}", e, path),
             );
             exit(0);
         }

@@ -1,13 +1,13 @@
+use skyline::nn::ro::LookupSymbol;
+use smash::app::lua_bind::*;
+use smash::app::sv_battle_object;
 use smash::app::BattleObjectModuleAccessor;
 use smash::app::FighterEntryID;
 use smash::app::FighterManager;
 use smash::app::ItemKind;
-use smash::app::sv_battle_object;
-use smash::app::lua_bind::*;
 use smash::lib::lua_const::*;
 use smash::phx::Hash40;
 use smash::phx::Vector3f;
-use skyline::nn::ro::LookupSymbol;
 
 static mut FIGHTER_MANAGER_ADDR: usize = 0;
 
@@ -61,9 +61,41 @@ pub unsafe fn fighter_information_entry(
 }
 
 #[inline(always)]
-pub unsafe fn is_operation_cpu_entry(fighter_manager: *mut FighterManager, entry_id: usize) -> bool {
+pub unsafe fn is_operation_cpu_entry(
+    fighter_manager: *mut FighterManager,
+    entry_id: usize,
+) -> bool {
+    // This is only the operation-CPU bit. It is not a Figure Player test; the
+    // pinned public bindings do not expose a separate NFP/FP discriminator.
     let info = fighter_information_entry(fighter_manager, entry_id);
     !info.is_null() && FighterInformation::is_operation_cpu(info)
+}
+
+/// The current public bindings expose the operation-CPU bit, but do not expose
+/// whether that CPU is an ordinary CPU or a Figure Player. Keep that ambiguity
+/// explicit instead of treating every CPU entry as an amiibo.
+#[derive(Copy, Clone)]
+pub struct FighterAiObservation {
+    pub operation_cpu: bool,
+    pub fighter_category: u64,
+    pub summon_boss_id: u64,
+}
+
+#[inline(always)]
+pub unsafe fn fighter_ai_observation(
+    fighter_manager: *mut FighterManager,
+    entry_id: usize,
+) -> Option<FighterAiObservation> {
+    let info = fighter_information_entry(fighter_manager, entry_id);
+    if info.is_null() {
+        return None;
+    }
+
+    Some(FighterAiObservation {
+        operation_cpu: FighterInformation::is_operation_cpu(info),
+        fighter_category: FighterInformation::fighter_category(info),
+        summon_boss_id: FighterInformation::summon_boss_id(info),
+    })
 }
 
 #[inline(always)]
@@ -106,7 +138,8 @@ pub unsafe fn acquire_boss_item(
                 if item_id != 0 && sv_battle_object::is_active(item_id) {
                     let item_boma = sv_battle_object::module_accessor(item_id);
                     if !item_boma.is_null() {
-                        slot_kinds_debug[slot as usize] = smash::app::utility::get_kind(&mut *item_boma);
+                        slot_kinds_debug[slot as usize] =
+                            smash::app::utility::get_kind(&mut *item_boma);
                     }
                 }
             }
@@ -196,11 +229,133 @@ pub unsafe fn held_item_by_kind(
             continue;
         }
         let item_kind = smash::app::utility::get_kind(&mut *item_boma);
-        if expected_kinds.iter().any(|&expected_kind| expected_kind == item_kind) {
+        if expected_kinds
+            .iter()
+            .any(|&expected_kind| expected_kind == item_kind)
+        {
             return Some((slot, item_id, item_boma));
         }
     }
     None
+}
+
+#[inline(always)]
+pub unsafe fn acquire_boss_item_any_slot(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    slot_ids: *mut [u32; 8],
+    item_kind: i32,
+    expected_kinds: &[i32],
+) -> *mut BattleObjectModuleAccessor {
+    if module_accessor.is_null() || slot_ids.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let entry = entry_id(module_accessor);
+    if let Some((_, held_id, held_boma)) = held_item_by_kind(module_accessor, expected_kinds) {
+        (*slot_ids)[entry] = held_id;
+        return held_boma;
+    }
+
+    ItemModule::have_item(module_accessor, ItemKind(item_kind), 0, 0, false, false);
+    SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
+    if let Some((_, held_id, held_boma)) = held_item_by_kind(module_accessor, expected_kinds) {
+        (*slot_ids)[entry] = held_id;
+        return held_boma;
+    }
+
+    std::ptr::null_mut()
+}
+
+extern "C" {
+    #[link_name = "\u{1}_ZN3app10item_other6removeEPNS_26BattleObjectModuleAccessorE"]
+    fn remove_owned_item(module_accessor: *mut BattleObjectModuleAccessor);
+}
+
+#[inline(always)]
+pub unsafe fn clear_owned_boss_item_slot(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    slot_ids: *mut [u32; 8],
+    expected_kinds: &[i32],
+    set_standby: bool,
+) -> bool {
+    if module_accessor.is_null() || slot_ids.is_null() {
+        return false;
+    }
+
+    let entry = entry_id(module_accessor);
+    let tracked_id = (*slot_ids)[entry];
+    if tracked_id == 0 {
+        return false;
+    }
+    if !sv_battle_object::is_active(tracked_id) {
+        (*slot_ids)[entry] = 0;
+        return false;
+    }
+
+    let tracked_boma = sv_battle_object::module_accessor(tracked_id);
+    if tracked_boma.is_null() {
+        (*slot_ids)[entry] = 0;
+        return false;
+    }
+
+    let tracked_kind = smash::app::utility::get_kind(&mut *tracked_boma);
+    if !expected_kinds.iter().any(|&kind| kind == tracked_kind) {
+        if crate::debug::enabled() {
+            crate::boss_log!(
+                "[PB][BossItem] owned_clear refused entry={} tracked_id=0x{:x} tracked_kind={} expected={:?}",
+                entry,
+                tracked_id,
+                tracked_kind,
+                expected_kinds
+            );
+        }
+        return false;
+    }
+
+    let mut held_slot = None;
+    for slot in 0..4 {
+        if ItemModule::is_have_item(module_accessor, slot)
+            && ItemModule::get_have_item_id(module_accessor, slot) as u32 == tracked_id
+        {
+            held_slot = Some(slot);
+            break;
+        }
+    }
+
+    HitModule::set_whole(
+        tracked_boma,
+        smash::app::HitStatus(*HIT_STATUS_OFF),
+        0,
+    );
+    if set_standby {
+        StatusModule::change_status_request_from_script(
+            tracked_boma,
+            *ITEM_STATUS_KIND_STANDBY,
+            true,
+        );
+    }
+
+    if let Some(slot) = held_slot {
+        ItemModule::remove_item(module_accessor, slot);
+    } else {
+        // The tracked object may already have left the owner's slot. Remove
+        // only that verified object instead of clearing unrelated held items.
+        remove_owned_item(tracked_boma);
+    }
+
+    (*slot_ids)[entry] = 0;
+    if crate::debug::enabled() {
+        crate::boss_log!(
+            "[PB][BossItem] owned_clear entry={} tracked_id=0x{:x} tracked_kind={} held_slot={:?} set_standby={} stage=0x{:x}",
+            entry,
+            tracked_id,
+            tracked_kind,
+            held_slot,
+            set_standby,
+            smash::app::stage::get_stage_id()
+        );
+    }
+    true
 }
 
 #[inline(always)]
@@ -244,7 +399,8 @@ pub unsafe fn clear_boss_item_slot(
 
 #[inline(always)]
 pub unsafe fn is_hidden_host(module_accessor: *mut BattleObjectModuleAccessor) -> bool {
-    !module_accessor.is_null() && ModelModule::scale(module_accessor) <= HIDDEN_HOST_ENTRY_STAGE2_SCALE
+    !module_accessor.is_null()
+        && ModelModule::scale(module_accessor) <= HIDDEN_HOST_ENTRY_STAGE2_SCALE
 }
 
 #[inline(always)]
@@ -317,7 +473,11 @@ pub unsafe fn stop_hidden_host_mario_result_sfx(module_accessor: *mut BattleObje
     SoundModule::stop_se(module_accessor, Hash40::new("se_common_swing_05"), 0);
     SoundModule::stop_se(module_accessor, Hash40::new("vc_mario_013"), 0);
     SoundModule::stop_se(module_accessor, Hash40::new("se_common_swing_09"), 0);
-    SoundModule::stop_se(module_accessor, Hash40::new("se_common_punch_kick_swing_l"), 0);
+    SoundModule::stop_se(
+        module_accessor,
+        Hash40::new("se_common_punch_kick_swing_l"),
+        0,
+    );
     SoundModule::stop_se(module_accessor, Hash40::new("vc_mario_win02"), 0);
     SoundModule::stop_se(module_accessor, Hash40::new("se_mario_win2"), 0);
     SoundModule::stop_se(module_accessor, Hash40::new("vc_mario_014"), 0);
@@ -335,16 +495,30 @@ pub unsafe fn stop_hidden_host_knockout_sfx(module_accessor: *mut BattleObjectMo
     SoundModule::stop_se(module_accessor, Hash40::new("death"), 0);
     SoundModule::stop_se(module_accessor, Hash40::new("dead"), 0);
     SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_damage_reaction"), 0);
-    SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_knockout_dead_frame"), 0);
-    SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_knockout_reaction"), 0);
-    SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_knockout_slow_frame"), 0);
-    SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_knockout_slow_mag"), 0);
+    SoundModule::stop_se(
+        module_accessor,
+        Hash40::new("hp_battle_knockout_dead_frame"),
+        0,
+    );
+    SoundModule::stop_se(
+        module_accessor,
+        Hash40::new("hp_battle_knockout_reaction"),
+        0,
+    );
+    SoundModule::stop_se(
+        module_accessor,
+        Hash40::new("hp_battle_knockout_slow_frame"),
+        0,
+    );
+    SoundModule::stop_se(
+        module_accessor,
+        Hash40::new("hp_battle_knockout_slow_mag"),
+        0,
+    );
 }
 
 #[inline(always)]
-pub unsafe fn restore_plain_mario_visuals(
-    module_accessor: *mut BattleObjectModuleAccessor,
-) {
+pub unsafe fn restore_plain_mario_visuals(module_accessor: *mut BattleObjectModuleAccessor) {
     if module_accessor.is_null() {
         return;
     }
@@ -352,7 +526,11 @@ pub unsafe fn restore_plain_mario_visuals(
     clear_hidden_host_effects(module_accessor);
     stop_hidden_host_mario_result_sfx(module_accessor);
     stop_hidden_host_knockout_sfx(module_accessor);
-    HitModule::set_whole(module_accessor, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
+    HitModule::set_whole(
+        module_accessor,
+        smash::app::HitStatus(*HIT_STATUS_NORMAL),
+        0,
+    );
     JostleModule::set_status(module_accessor, true);
     VisibilityModule::set_whole(module_accessor, true);
     ModelModule::set_scale(module_accessor, 1.0);
@@ -419,7 +597,8 @@ pub unsafe fn clamp_flying_boss_floor(
         y: boss_pos.y + 120.0,
         z: boss_pos.z,
     };
-    let probe_dist = GroundModule::get_distance_to_floor(module_accessor, &probe_pos, probe_pos.y, true);
+    let probe_dist =
+        GroundModule::get_distance_to_floor(module_accessor, &probe_pos, probe_pos.y, true);
     if probe_dist > 0.0 && probe_dist < 400.0 {
         let floor_y = probe_pos.y - probe_dist;
         let clamped_y = floor_y + clearance;
@@ -438,8 +617,7 @@ pub unsafe fn clamp_flying_boss_floor(
 #[inline(always)]
 pub fn is_boss_preview_stage(stage_id: i32) -> bool {
     // These scenes use the preview/interstitial boss presentation path.
-    stage_id == STAGE_ID_BOSS_PREVIEW
-        || stage_id == STAGE_ID_CLASSIC_STAFFROLL
+    stage_id == STAGE_ID_BOSS_PREVIEW || stage_id == STAGE_ID_CLASSIC_STAFFROLL
 }
 
 #[inline(always)]

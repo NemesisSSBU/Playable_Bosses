@@ -118,7 +118,11 @@ pub unsafe fn any_exists_public(slots: *const [BossCommonRuntime; MAX_BOSS_ENTRI
 #[inline(always)]
 pub unsafe fn reset_all_for_entry(entry_id: usize) {
     let entry = sanitize_entry_id(entry_id);
-    log_runtime_reset("playable_masterhand", entry, &PLAYABLE_MASTERHAND_RUNTIME[entry]);
+    log_runtime_reset(
+        "playable_masterhand",
+        entry,
+        &PLAYABLE_MASTERHAND_RUNTIME[entry],
+    );
     log_runtime_reset("master_hand", entry, &MASTER_HAND_RUNTIME[entry]);
     log_runtime_reset("crazy_hand", entry, &CRAZY_HAND_RUNTIME[entry]);
     log_runtime_reset("galeem", entry, &GALEEM_RUNTIME[entry]);

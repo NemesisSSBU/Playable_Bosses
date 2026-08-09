@@ -2,11 +2,11 @@ use crate::config::CONFIG;
 use once_cell::sync::Lazy;
 use skyline::nn::oe::{DisplayVersion, GetDisplayVersion, Initialize};
 use skyline::nn::ro::LookupSymbol;
-use smash::app::sv_battle_object;
-use smash::app::{BattleObjectModuleAccessor, FighterEntryID, FighterInformation, FighterManager};
 use smash::app::lua_bind::*;
-use smash::lib::lua_const::*;
+use smash::app::sv_battle_object;
 use smash::app::sv_information;
+use smash::app::{BattleObjectModuleAccessor, FighterEntryID, FighterInformation, FighterManager};
+use smash::lib::lua_const::*;
 
 const MAX_FIGHTERS: usize = 8;
 const DETECT_CHARACTER_NAME_ENTRY_STRIDE: u64 = 0x260;
@@ -23,6 +23,8 @@ static mut CACHED_BOSS_UI_HASH_GLOBAL: u64 = 0;
 static mut CACHED_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
 static mut LAST_LOGGED_GLOBAL_CAPTURE_HASH: u64 = 0;
 static mut LAST_LOGGED_SELECTION_INFO_HASH: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
+static mut LAST_LOGGED_CSS_SELECTION_RAW: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
+static mut LAST_LOGGED_CSS_SELECTION_HASH: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut LAST_LOGGED_NAME_SELECTOR_HASH: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut LAST_LOGGED_NAME_SELECTOR_RESULT: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut SUPPRESS_BOSS_SELECTION_BY_ENTRY: [bool; MAX_FIGHTERS] = [false; MAX_FIGHTERS];
@@ -66,6 +68,7 @@ const UI_CHARA_DRACULA_HASH: u64 = 0x1020DDD1F9;
 const UI_CHARA_GALLEOM_HASH: u64 = 0x100A39D32E;
 const UI_CHARA_LIOLEUS_HASH: u64 = 0x10E9EFB8D1;
 const UI_CHARA_MEWTWO_MASTERHAND_HASH: u64 = 0x1AA4AF9031;
+const UI_CHARA_MARIO_HASH: u64 = 0x0EDAF3C863;
 const HASH40_MASK: u64 = 0xFFFF_FFFFFF;
 
 // Known hook points for CSS selection capture across current supported builds.
@@ -194,7 +197,8 @@ unsafe fn entry_idx_for_detected_character_name(
     }
 
     for _ in 0..8 {
-        let owner_id = WorkModule::get_int(module_accessor, *WEAPON_INSTANCE_WORK_ID_INT_LINK_OWNER);
+        let owner_id =
+            WorkModule::get_int(module_accessor, *WEAPON_INSTANCE_WORK_ID_INT_LINK_OWNER);
         if owner_id < 0 {
             return None;
         }
@@ -226,8 +230,9 @@ unsafe fn selected_boss_selector_id_from_character_name(
 
     let entry_idx = entry_idx_for_detected_character_name(module_accessor)?;
     let name_base = detect_character_name_text_base();
-    let addr =
-        name_base + DETECT_CHARACTER_NAME_ENTRY_STRIDE * entry_idx as u64 + DETECT_CHARACTER_NAME_TEXT_OFFSET;
+    let addr = name_base
+        + DETECT_CHARACTER_NAME_ENTRY_STRIDE * entry_idx as u64
+        + DETECT_CHARACTER_NAME_TEXT_OFFSET;
     let detected_name = read_detected_character_name(addr)?;
     let resolved = detected_character_name_to_ui_hash(&detected_name);
 
@@ -384,6 +389,27 @@ unsafe fn cache_boss_hash_from_selection_info(player_id: u32, new_selection_info
     let mut entry_idx: Option<usize> = None;
     // Prefer the explicit CSS entry encoded in the callback payload when present.
     let possible_css_entry = std::ptr::read_unaligned(new_selection_info as *const u32);
+    if possible_css_entry == u32::MAX {
+        // Empty CSS slots use the sentinel value before their selection-info
+        // payload is initialized. Do not read the later fields from that
+        // payload or retain a boss hash from the previous fighter in the slot.
+        if (player_id as usize) < MAX_FIGHTERS {
+            let idx = player_id as usize;
+            SUPPRESS_BOSS_SELECTION_BY_ENTRY[idx] = false;
+            SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[idx] = i32::MIN;
+            CACHED_BOSS_UI_HASH_BY_ENTRY[idx] = 0;
+            if crate::debug::enabled() && LAST_LOGGED_SELECTION_INFO_HASH[idx] != 0 {
+                LAST_LOGGED_SELECTION_INFO_HASH[idx] = 0;
+                crate::boss_log!(
+                    "[PB][SelectionCapture] ignored_uninitialized_entry player={} info=0x{:x}",
+                    player_id,
+                    new_selection_info
+                );
+            }
+        }
+        CACHED_BOSS_UI_HASH_GLOBAL = 0;
+        return;
+    }
     if (1..=MAX_FIGHTERS as u32).contains(&possible_css_entry) {
         entry_idx = Some((possible_css_entry - 1) as usize);
     } else if (player_id as usize) < MAX_FIGHTERS {
@@ -408,6 +434,8 @@ unsafe fn cache_boss_hash_from_selection_info(player_id: u32, new_selection_info
     // Keep this read narrow and deterministic to avoid faulting on unknown layouts.
     let ui_chara_hash_combined = (new_selection_info + 0x18) as *const u64;
     let raw_field_value = std::ptr::read_unaligned(ui_chara_hash_combined);
+    let css_debug_hash = normalize_css_debug_hash(raw_field_value);
+    log_css_selection_transition(player_id, entry_idx, raw_field_value, css_debug_hash);
     let Some(ui_chara_hash) = normalize_ui_hash_candidate(raw_field_value) else {
         CACHED_BOSS_UI_HASH_GLOBAL = 0;
         if let Some(idx) = entry_idx {
@@ -448,14 +476,22 @@ unsafe fn cache_boss_hash_from_selection_info(player_id: u32, new_selection_info
 }
 
 #[skyline::hook(offset = SELECTION_UPDATE_SELECTED_FIGHTER_13_0_1)]
-unsafe fn update_selected_fighter_capture_3310760(unk: u64, player_id: u32, new_selection_info: u64) {
+unsafe fn update_selected_fighter_capture_3310760(
+    unk: u64,
+    player_id: u32,
+    new_selection_info: u64,
+) {
     cache_boss_hash_from_selection_info(player_id, new_selection_info);
     original!()(unk, player_id, new_selection_info)
 }
 
 // Some plugin stacks/game revisions route this callback at a nearby offset.
 #[skyline::hook(offset = SELECTION_UPDATE_SELECTED_FIGHTER_13_0_2_PLUS)]
-unsafe fn update_selected_fighter_capture_3311190(unk: u64, player_id: u32, new_selection_info: *const u8) {
+unsafe fn update_selected_fighter_capture_3311190(
+    unk: u64,
+    player_id: u32,
+    new_selection_info: *const u8,
+) {
     cache_boss_hash_from_selection_info(player_id, new_selection_info as u64);
     original!()(unk, player_id, new_selection_info)
 }
@@ -572,6 +608,75 @@ fn is_boss_css_hash(value: u64) -> bool {
     )
 }
 
+fn css_identity_label(value: u64) -> &'static str {
+    match value {
+        UI_CHARA_MARIO_HASH => "mario",
+        UI_CHARA_KOOPAG_HASH => "giga_bowser",
+        UI_CHARA_MASTERHAND_HASH => "master_hand",
+        UI_CHARA_CRAZYHAND_HASH => "crazy_hand",
+        UI_CHARA_DARZ_HASH => "dharkon",
+        UI_CHARA_KIILA_HASH => "galeem",
+        UI_CHARA_MARX_HASH => "marx",
+        UI_CHARA_GANONBOSS_HASH => "ganon_boss",
+        UI_CHARA_DRACULA_HASH => "dracula",
+        UI_CHARA_GALLEOM_HASH => "galleom",
+        UI_CHARA_LIOLEUS_HASH => "rathalos",
+        UI_CHARA_MEWTWO_MASTERHAND_HASH => "wol_master_hand",
+        _ => "unknown",
+    }
+}
+
+fn normalize_css_debug_hash(raw: u64) -> u64 {
+    let masked = raw & HASH40_MASK;
+    if is_boss_css_hash(masked) || masked == UI_CHARA_MARIO_HASH {
+        return masked;
+    }
+
+    let swapped = raw.swap_bytes() & HASH40_MASK;
+    if is_boss_css_hash(swapped) || swapped == UI_CHARA_MARIO_HASH {
+        return swapped;
+    }
+
+    masked
+}
+
+unsafe fn log_css_selection_transition(
+    player_id: u32,
+    entry_idx: Option<usize>,
+    raw_field_value: u64,
+    selected_hash: u64,
+) {
+    if !crate::debug::enabled() {
+        return;
+    }
+
+    let idx = entry_idx.unwrap_or((player_id as usize).min(MAX_FIGHTERS - 1));
+    if LAST_LOGGED_CSS_SELECTION_RAW[idx] == raw_field_value
+        && LAST_LOGGED_CSS_SELECTION_HASH[idx] == selected_hash
+    {
+        return;
+    }
+
+    LAST_LOGGED_CSS_SELECTION_RAW[idx] = raw_field_value;
+    LAST_LOGGED_CSS_SELECTION_HASH[idx] = selected_hash;
+    let identity = css_identity_label(selected_hash);
+    let boss_mapping = if is_boss_css_hash(selected_hash) {
+        identity
+    } else {
+        "none"
+    };
+    crate::boss_log!(
+        "[PB][CSS] slot_index={} ui_chara_id=0x{:010x} selected_hash=0x{:010x} fighter_kind=unknown boss_mapping={} mario_selected={} custom_css={} detect_character_name={}",
+        idx,
+        raw_field_value & HASH40_MASK,
+        selected_hash,
+        boss_mapping,
+        selected_hash == UI_CHARA_MARIO_HASH,
+        CONFIG.options.custom_css.unwrap_or(false),
+        CONFIG.options.detect_character_name.unwrap_or(false)
+    );
+}
+
 fn resolve_selector_value_to_ui_hash(value: u64) -> u64 {
     if let Some(hash) = normalize_ui_hash_candidate(value) {
         return hash;
@@ -617,10 +722,7 @@ fn is_known_boss_selector_value(value: u64) -> bool {
     false
 }
 
-unsafe fn log_int_css_selector_id(
-    info: *mut FighterInformation,
-    entry_idx: usize,
-) -> Option<u64> {
+unsafe fn log_int_css_selector_id(info: *mut FighterInformation, entry_idx: usize) -> Option<u64> {
     let known_key = LOG_INT_SELECTOR_KEY[entry_idx];
     if let Some((a, b, c)) = known_key {
         let value = smash::cpp::root::app::lua_bind::FighterInformation::get_log_int(info, a, b, c);
@@ -664,7 +766,9 @@ unsafe fn fighter_manager() -> *mut FighterManager {
     *(FIGHTER_MANAGER_ADDR as *mut *mut FighterManager)
 }
 
-unsafe fn fighter_information(module_accessor: *mut BattleObjectModuleAccessor) -> *mut FighterInformation {
+unsafe fn fighter_information(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) -> *mut FighterInformation {
     if module_accessor.is_null() {
         return std::ptr::null_mut();
     }
@@ -681,7 +785,9 @@ unsafe fn fighter_information(module_accessor: *mut BattleObjectModuleAccessor) 
 
 // Returns the raw CSS-selected boss selector value (from ui_chara_* row data),
 // not the currently held/spawned item.
-pub unsafe fn selected_css_boss_selector_id(module_accessor: *mut BattleObjectModuleAccessor) -> Option<u64> {
+pub unsafe fn selected_css_boss_selector_id(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) -> Option<u64> {
     if let Some(selected) = selected_boss_selector_id_from_runtime_sources(module_accessor) {
         return Some(selected);
     }
@@ -725,7 +831,9 @@ unsafe fn expected_css_hash_for_selector(expected_selector_id: i32) -> Option<u6
         Some(UI_CHARA_DRACULA_HASH)
     } else if expected_selector_id == *ITEM_KIND_GALLEOM {
         Some(UI_CHARA_GALLEOM_HASH)
-    } else if expected_selector_id == *ITEM_KIND_LIOLEUSBOSS || expected_selector_id == *ITEM_KIND_LIOLEUS {
+    } else if expected_selector_id == *ITEM_KIND_LIOLEUSBOSS
+        || expected_selector_id == *ITEM_KIND_LIOLEUS
+    {
         Some(UI_CHARA_LIOLEUS_HASH)
     } else if expected_selector_id == *ITEM_KIND_PLAYABLE_MASTERHAND {
         Some(UI_CHARA_MEWTWO_MASTERHAND_HASH)
@@ -734,9 +842,13 @@ unsafe fn expected_css_hash_for_selector(expected_selector_id: i32) -> Option<u6
     }
 }
 
-pub unsafe fn is_selected_css_boss(module_accessor: *mut BattleObjectModuleAccessor, expected_selector_id: i32) -> bool {
+pub unsafe fn is_selected_css_boss(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    expected_selector_id: i32,
+) -> bool {
     if !module_accessor.is_null() {
-        let entry_idx = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        let entry_idx =
+            WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
         if expected_selector_id == *ITEM_KIND_PLAYABLE_MASTERHAND
             && entry_idx < MAX_FIGHTERS
             && SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx]
@@ -783,24 +895,29 @@ pub unsafe fn suppress_boss_selection_until_ready_go(entry_idx: usize) {
     }
 }
 
-pub unsafe fn is_boss_selection_suppressed(module_accessor: *mut BattleObjectModuleAccessor) -> bool {
+pub unsafe fn is_boss_selection_suppressed(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) -> bool {
     if module_accessor.is_null() {
         return false;
     }
-    let entry_idx = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+    let entry_idx =
+        WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
     entry_idx < MAX_FIGHTERS && SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx]
 }
 
-pub unsafe fn clear_boss_selection_suppression_if_ready_go(module_accessor: *mut BattleObjectModuleAccessor) {
+pub unsafe fn clear_boss_selection_suppression_if_ready_go(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) {
     if module_accessor.is_null() {
         return;
     }
-    let entry_idx = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+    let entry_idx =
+        WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
     let ready_go = sv_information::is_ready_go();
     let current_stage = smash::app::stage::get_stage_id();
     let fighter_status = StatusModule::status_kind(module_accessor);
-    let new_round_entry =
-        fighter_status == *FIGHTER_STATUS_KIND_ENTRY
+    let new_round_entry = fighter_status == *FIGHTER_STATUS_KIND_ENTRY
         || fighter_status == *FIGHTER_STATUS_KIND_REBIRTH;
     let preview_stage = crate::boss_helpers::is_boss_preview_stage(current_stage);
 
