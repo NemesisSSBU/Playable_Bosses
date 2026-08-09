@@ -1,0 +1,61 @@
+# Generated from tools/ryujinx/boss_amiibo_catalog.json.
+# These are emulator-only custom virtual amiibo IDs, not Nintendo IDs.
+# Physical donor/remap configuration remains supported separately.
+# For a physical donor, replace one ID intentionally with its complete
+# figure ID and use remap_existing=true only for an exact existing row.
+# Restart Smash after changing this file.
+
+[bosses.master_hand]
+amiibo_id = "0x5042000100000001"
+default_color = 0
+remap_existing = false
+
+# [bosses.crazy_hand]
+# amiibo_id = "0x5042000100000002"
+# default_color = 0
+# remap_existing = false
+
+# [bosses.wol_master_hand]
+# amiibo_id = "0x5042000100000003"
+# default_color = 0
+# remap_existing = false
+
+# [bosses.galeem]
+# amiibo_id = "0x5042000100000004"
+# default_color = 0
+# remap_existing = false
+
+# [bosses.dharkon]
+# amiibo_id = "0x5042000100000005"
+# default_color = 0
+# remap_existing = false
+
+# [bosses.dracula]
+# amiibo_id = "0x5042000100000006"
+# default_color = 0
+# remap_existing = false
+
+# [bosses.ganon_boss]
+# amiibo_id = "0x5042000100000007"
+# default_color = 0
+# remap_existing = false
+
+# [bosses.galleom]
+# amiibo_id = "0x5042000100000008"
+# default_color = 0
+# remap_existing = false
+
+# [bosses.rathalos]
+# amiibo_id = "0x5042000100000009"
+# default_color = 0
+# remap_existing = false
+
+# [bosses.marx]
+# amiibo_id = "0x504200010000000a"
+# default_color = 0
+# remap_existing = false
+
+# [bosses.giga_bowser]
+# amiibo_id = "0x504200010000000b"
+# default_color = 0
+# remap_existing = false
