@@ -6,56 +6,56 @@
 # Restart Smash after changing this file.
 
 [bosses.master_hand]
-amiibo_id = "0x5042000100000001"
+amiibo_id = "0x5042000100010001"
 default_color = 0
 remap_existing = false
 
 [bosses.crazy_hand]
-amiibo_id = "0x5042000100000002"
+amiibo_id = "0x5042000100020002"
 default_color = 0
 remap_existing = false
 
 [bosses.wol_master_hand]
-amiibo_id = "0x5042000100000003"
+amiibo_id = "0x5042000100030003"
 default_color = 0
 remap_existing = false
 
 [bosses.galeem]
-amiibo_id = "0x5042000100000004"
+amiibo_id = "0x5042000100040004"
 default_color = 0
 remap_existing = false
 
 [bosses.dharkon]
-amiibo_id = "0x5042000100000005"
+amiibo_id = "0x5042000100050005"
 default_color = 0
 remap_existing = false
 
 [bosses.dracula]
-amiibo_id = "0x5042000100000006"
+amiibo_id = "0x5042000100060006"
 default_color = 0
 remap_existing = false
 
 [bosses.ganon_boss]
-amiibo_id = "0x5042000100000007"
+amiibo_id = "0x5042000100070007"
 default_color = 0
 remap_existing = false
 
 [bosses.galleom]
-amiibo_id = "0x5042000100000008"
+amiibo_id = "0x5042000100080008"
 default_color = 0
 remap_existing = false
 
 [bosses.rathalos]
-amiibo_id = "0x5042000100000009"
+amiibo_id = "0x5042000100090009"
 default_color = 0
 remap_existing = false
 
 [bosses.marx]
-amiibo_id = "0x504200010000000a"
+amiibo_id = "0x50420001000a000a"
 default_color = 0
 remap_existing = false
 
 [bosses.giga_bowser]
-amiibo_id = "0x504200010000000b"
+amiibo_id = "0x50420001000b000b"
 default_color = 0
 remap_existing = false
