@@ -80,8 +80,40 @@ pub unsafe fn reset_match_state(entry_id: usize) {
 }
 
 #[inline(always)]
+unsafe fn preview_item_slot_snapshot(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) -> ([u32; 4], [i32; 4]) {
+    let mut item_ids = [0; 4];
+    let mut item_kinds = [-1; 4];
+    if module_accessor.is_null() {
+        return (item_ids, item_kinds);
+    }
+
+    for slot in 0..4 {
+        if !ItemModule::is_have_item(module_accessor, slot) {
+            continue;
+        }
+        let item_id = ItemModule::get_have_item_id(module_accessor, slot) as u32;
+        item_ids[slot as usize] = item_id;
+        if item_id == 0 || !sv_battle_object::is_active(item_id) {
+            continue;
+        }
+        let item_boma = sv_battle_object::module_accessor(item_id);
+        if !item_boma.is_null() {
+            item_kinds[slot as usize] = smash::app::utility::get_kind(&mut *item_boma);
+        }
+    }
+
+    (item_ids, item_kinds)
+}
+
+#[inline(always)]
 unsafe fn restore_rathalos_after_item_wipe(module_accessor: *mut BattleObjectModuleAccessor) {
     if module_accessor.is_null() || !sv_information::is_ready_go() || DEAD {
+        return;
+    }
+    let fighter_manager = boss_helpers::fighter_manager();
+    if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
         return;
     }
 
@@ -183,15 +215,53 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 selection::is_selected_css_boss(module_accessor, *ITEM_KIND_LIOLEUSBOSS);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
+                let stage_id = smash::app::stage::get_stage_id();
+                if boss_helpers::is_boss_preview_stage(stage_id) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor =
                         smash::app::sv_system::battle_object_module_accessor(lua_state);
                     if ModelModule::scale(module_accessor) != 0.0001
                         || !ItemModule::is_have_item(module_accessor, 0)
                     {
+                        let wol_preview_trace = crate::debug::enabled()
+                            && stage_id == boss_helpers::STAGE_ID_BOSS_PREVIEW;
+                        let preview_entry = ENTRY_ID;
+                        let host_scale_before = ModelModule::scale(module_accessor);
+                        let host_status_before = StatusModule::status_kind(module_accessor);
+                        let host_motion_before = MotionModule::motion_kind(module_accessor);
+                        let (slot_ids_before, slot_kinds_before) = if wol_preview_trace {
+                            preview_item_slot_snapshot(module_accessor)
+                        } else {
+                            ([0; 4], [-1; 4])
+                        };
                         ItemModule::remove_all(module_accessor);
+                        let (slot_ids_cleared, slot_kinds_cleared) = if wol_preview_trace {
+                            preview_item_slot_snapshot(module_accessor)
+                        } else {
+                            ([0; 4], [-1; 4])
+                        };
                         ModelModule::set_scale(module_accessor, 0.0001);
+                        if wol_preview_trace {
+                            let host_object_id = (*module_accessor).battle_object_id;
+                            let host_kind = smash::app::utility::get_kind(&mut *module_accessor);
+                            let host_scale_at_have_item = ModelModule::scale(module_accessor);
+                            crate::boss_log!(
+                                "[PB][RathalosWolAcquire] phase=before_have_item stage=0x{:x} entry={} host_object_id=0x{:x} host_kind={} host_status={} host_scale_before={:.4} host_scale_at_have_item={:.4} host_motion=0x{:x} slot_ids_before={:?} slot_kinds_before={:?} slot_ids_after_clear={:?} slot_kinds_after_clear={:?} requested_kind={} item_have_called=true",
+                                stage_id,
+                                preview_entry,
+                                host_object_id,
+                                host_kind,
+                                host_status_before,
+                                host_scale_before,
+                                host_scale_at_have_item,
+                                host_motion_before,
+                                slot_ids_before,
+                                slot_kinds_before,
+                                slot_ids_cleared,
+                                slot_kinds_cleared,
+                                *ITEM_KIND_LIOLEUSBOSS,
+                            );
+                        }
                         let boss_boma = boss_helpers::acquire_boss_item(
                             module_accessor,
                             &raw mut BOSS_ID,
@@ -208,6 +278,40 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             false,
                             false,
                         );
+                        if wol_preview_trace {
+                            let (slot_ids_after, slot_kinds_after) =
+                                preview_item_slot_snapshot(module_accessor);
+                            let acquired_id = BOSS_ID[preview_entry.min(7)];
+                            let acquired_active =
+                                acquired_id != 0 && sv_battle_object::is_active(acquired_id);
+                            let acquired_kind = if acquired_active {
+                                let acquired_boma = sv_battle_object::module_accessor(acquired_id);
+                                if acquired_boma.is_null() {
+                                    -1
+                                } else {
+                                    smash::app::utility::get_kind(&mut *acquired_boma)
+                                }
+                            } else {
+                                -1
+                            };
+                            let host_object_id = (*module_accessor).battle_object_id;
+                            let host_scale_after = ModelModule::scale(module_accessor);
+                            crate::boss_log!(
+                                "[PB][RathalosWolAcquire] phase=after_have_item stage=0x{:x} entry={} host_object_id=0x{:x} requested_kind={} slot_ids_immediately_after={:?} slot_kinds_immediately_after={:?} acquired_id=0x{:x} acquired_kind={} acquired_active={} host_scale_after={:.4} boss_status={} boss_motion=0x{:x}",
+                                stage_id,
+                                preview_entry,
+                                host_object_id,
+                                *ITEM_KIND_LIOLEUSBOSS,
+                                slot_ids_after,
+                                slot_kinds_after,
+                                acquired_id,
+                                acquired_kind,
+                                acquired_active,
+                                host_scale_after,
+                                StatusModule::status_kind(boss_boma),
+                                MotionModule::motion_kind(boss_boma),
+                            );
+                        }
                     }
                     if ModelModule::scale(module_accessor) == 0.0001 {
                         MotionModule::change_motion(
@@ -234,8 +338,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             ModelModule::rotation_order(module_accessor),
                         );
                     }
-                } else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id())
-                {
+                } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_rathalos_after_item_wipe(module_accessor);
                     if sv_information::is_ready_go() == false {
                         let entry = boss_helpers::entry_id(module_accessor);
@@ -1183,40 +1286,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     let fighter_manager = boss_helpers::fighter_manager();
-                    if FighterManager::is_result_mode(fighter_manager) == true {
-                        if RESULT_SPAWNED == false {
-                            let result_entry = ENTRY_ID.min(7);
-                            ItemModule::remove_all(module_accessor);
-                            let result_boma = boss_helpers::acquire_boss_item(
-                                module_accessor,
-                                &raw mut BOSS_ID,
-                                *ITEM_KIND_LIOLEUSBOSS,
-                            );
-                            RESULT_SPAWNED = true;
-                            EXISTS_PUBLIC = !result_boma.is_null();
-                            if result_boma.is_null() {
-                                crate::boss_log!(
-                                    "[PB][Result][Rathalos] entry {}: native result item acquisition failed",
-                                    result_entry
-                                );
-                            } else {
-                                StatusModule::change_status_request_from_script(
-                                    result_boma,
-                                    *ITEM_STATUS_KIND_FOR_BOSS_START,
-                                    true,
-                                );
-                                crate::boss_log!(
-                                    "[PB][Result][Rathalos] entry {}: spawned result item id=0x{:x} status={}",
-                                    result_entry,
-                                    BOSS_ID[result_entry],
-                                    StatusModule::status_kind(result_boma)
-                                );
-                            }
-                        }
-                        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
-                        return;
-                    }
-
                     // FIXES SPAWN
 
                     if DEAD == false {
@@ -2241,8 +2310,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     }
 }
 
-pub fn install() {}
-
 pub unsafe fn frame(fighter: &mut L2CFighterCommon) {
+    if crate::should_quarantine_boss_frame(fighter.module_accessor) {
+        return;
+    }
     once_per_fighter_frame(fighter);
 }

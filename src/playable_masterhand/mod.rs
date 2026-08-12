@@ -29,6 +29,9 @@ static mut DEBUG_LAST_FLAGS: [u16; 8] = [u16::MAX; 8];
 static mut DEBUG_LAST_TRACKED_ID: [u32; 8] = [u32::MAX; 8];
 static mut DEBUG_LAST_HAVE_ITEM_ID: [u32; 8] = [u32::MAX; 8];
 static mut DEBUG_LAST_SCALE_BITS: [u32; 8] = [u32::MAX; 8];
+// Preview-only diagnostic state. Changes in the held item or its attachment
+// produce one WOL snapshot for comparison with the stage-0x135 A/B probe.
+static mut WOL_PREVIEW_ATTACHMENT_SIGNATURE: [u64; 8] = [0; 8];
 static mut CONTROLLER_X: f32 = 0.0;
 static mut CONTROLLER_Y: f32 = 0.0;
 static mut CONTROL_SPEED_MUL: f32 = 2.0;
@@ -125,10 +128,86 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     STOP = false;
     ENTRY_ID = entry;
     BOSS_ID[entry] = 0;
+    *(core::ptr::addr_of_mut!(WOL_PREVIEW_ATTACHMENT_SIGNATURE) as *mut u64).add(entry) = 0;
     DEAD = false;
     RESULT_SPAWNED = false;
     EXISTS_PUBLIC = false;
     reset_playable_masterhand_controls();
+}
+
+#[inline(always)]
+unsafe fn log_wol_preview_attachment_once(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    stage_id: i32,
+    entry: usize,
+) {
+    if !crate::debug::enabled()
+        || stage_id != boss_helpers::STAGE_ID_BOSS_PREVIEW
+        || module_accessor.is_null()
+        || entry >= 8
+    {
+        return;
+    }
+
+    let slot0_held = ItemModule::is_have_item(module_accessor, 0);
+    let presentation_id = if slot0_held {
+        ItemModule::get_have_item_id(module_accessor, 0) as u32
+    } else {
+        0
+    };
+    let signature = ((presentation_id as u64) << 1) | if slot0_held { 1 } else { 0 };
+    let signatures = core::ptr::addr_of_mut!(WOL_PREVIEW_ATTACHMENT_SIGNATURE) as *mut u64;
+    if *signatures.add(entry) == signature {
+        return;
+    }
+    *signatures.add(entry) = signature;
+
+    let object_active = presentation_id != 0 && sv_battle_object::is_active(presentation_id);
+    let presentation_boma = if object_active {
+        sv_battle_object::module_accessor(presentation_id)
+    } else {
+        core::ptr::null_mut()
+    };
+    let (kind, position, rotation, lr, status) = if presentation_boma.is_null() {
+        (-1, [0.0; 3], [0.0; 3], 0.0, -1)
+    } else {
+        (
+            smash::app::utility::get_kind(&mut *presentation_boma),
+            [
+                PostureModule::pos_x(presentation_boma),
+                PostureModule::pos_y(presentation_boma),
+                PostureModule::pos_z(presentation_boma),
+            ],
+            [
+                PostureModule::rot_x(presentation_boma, 0),
+                PostureModule::rot_y(presentation_boma, 0),
+                PostureModule::rot_z(presentation_boma, 0),
+            ],
+            PostureModule::lr(presentation_boma),
+            StatusModule::status_kind(presentation_boma),
+        )
+    };
+    crate::boss_log!(
+        "[PB][MasterHandWolAttachment] stage=0x{:x} entry={} slot0_held={} presentation_object_id=0x{:x} object_active={} kind={} boss_position=({:.3},{:.3},{:.3}) boss_rotation=({:.1},{:.1},{:.1}) boss_lr={:.3} boss_status={} host_position=({:.3},{:.3},{:.3}) host_root_recipe=(-270.0,180.0,-90.0) host_scale={:.4} forced_boss_position_write=false",
+        stage_id,
+        entry,
+        slot0_held,
+        presentation_id,
+        object_active,
+        kind,
+        position[0],
+        position[1],
+        position[2],
+        rotation[0],
+        rotation[1],
+        rotation[2],
+        lr,
+        status,
+        PostureModule::pos_x(module_accessor),
+        PostureModule::pos_y(module_accessor),
+        PostureModule::pos_z(module_accessor),
+        ModelModule::scale(module_accessor),
+    );
 }
 
 #[inline(always)]
@@ -188,7 +267,7 @@ unsafe fn log_playable_masterhand_transition_snapshot(
     fighter_manager: *mut smash::app::FighterManager,
     selected_via_slot: bool,
 ) {
-    if module_accessor.is_null() {
+    if module_accessor.is_null() || !crate::debug::enabled() {
         return;
     }
 
@@ -370,6 +449,9 @@ unsafe fn restore_world_masterhand_after_item_wipe(
     fighter_manager: *mut smash::app::FighterManager,
 ) {
     if module_accessor.is_null() || !sv_information::is_ready_go() || DEAD {
+        return;
+    }
+    if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
         return;
     }
 
@@ -607,9 +689,6 @@ unsafe fn update_smoothed_control_axis(current: *mut f32, stick: f32) {
         if *current > 0.0 && *current < 0.06 {
             *current = 0.0;
         }
-        if *current < 0.0 && *current > 0.06 {
-            *current = 0.0;
-        }
     }
     if *current > 0.0 && stick < 0.0 {
         *current += (stick * CONTROL_SPEED_MUL) * CONTROL_SPEED_MUL_2;
@@ -674,10 +753,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 return;
             }
             if selected_via_slot {
-                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
+                let stage_id = smash::app::stage::get_stage_id();
+                if boss_helpers::is_boss_preview_stage(stage_id) {
                     ensure_preview_masterhand(module_accessor);
-                } else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id())
-                {
+                    log_wol_preview_attachment_once(module_accessor, stage_id, ENTRY_ID);
+                } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_world_masterhand_after_item_wipe(module_accessor, fighter_manager);
                     if boss_helpers::needs_hidden_host_entry_init(
                         module_accessor,
@@ -847,54 +927,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         CONTROLLABLE = false;
                         FRESH_CONTROL = false;
-                    }
-
-                    if FighterManager::is_result_mode(fighter_manager) == true {
-                        if RESULT_SPAWNED == false {
-                            let result_entry = ENTRY_ID.min(7);
-                            let result_cpu =
-                                boss_helpers::is_operation_cpu_entry(fighter_manager, result_entry);
-                            ItemModule::remove_all(module_accessor);
-                            let result_boma = if result_cpu {
-                                acquire_cpu_world_masterhand(
-                                    module_accessor,
-                                    CONFIG.options.boss_difficulty.unwrap_or(10.0),
-                                )
-                            } else {
-                                acquire_player_world_masterhand(module_accessor)
-                            };
-                            CONTROLLABLE = false;
-                            RESULT_SPAWNED = true;
-                            EXISTS_PUBLIC = !result_boma.is_null();
-                            if result_boma.is_null() {
-                                crate::boss_log!(
-                                    "[PB][Result][WOL_MH] entry {}: native result item acquisition failed cpu={}",
-                                    result_entry,
-                                    result_cpu
-                                );
-                            } else {
-                                let result_status = if result_cpu {
-                                    *ITEM_STATUS_KIND_FOR_BOSS_START
-                                } else {
-                                    *ITEM_STATUS_KIND_WAIT
-                                };
-                                StatusModule::change_status_request_from_script(
-                                    result_boma,
-                                    result_status,
-                                    true,
-                                );
-                                crate::boss_log!(
-                                    "[PB][Result][WOL_MH] entry {}: spawned result item id=0x{:x} cpu={} kind={} status={}",
-                                    result_entry,
-                                    BOSS_ID[result_entry],
-                                    result_cpu,
-                                    smash::app::utility::get_kind(&mut *result_boma),
-                                    StatusModule::status_kind(result_boma)
-                                );
-                            }
-                        }
-                        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
-                        return;
                     }
 
                     // Flags and new damage stuff
@@ -1929,8 +1961,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     }
 }
 
-pub fn install() {}
-
 pub unsafe fn frame(fighter: &mut L2CFighterCommon) {
+    if crate::should_quarantine_boss_frame(fighter.module_accessor) {
+        return;
+    }
     once_per_fighter_frame(fighter);
 }

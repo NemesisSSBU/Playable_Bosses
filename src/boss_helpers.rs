@@ -10,6 +10,7 @@ use smash::phx::Hash40;
 use smash::phx::Vector3f;
 
 static mut FIGHTER_MANAGER_ADDR: usize = 0;
+static mut LAST_TRANSITION_BLOCK_SIGNATURE: [u64; 8] = [u64::MAX; 8];
 
 pub const HIDDEN_HOST_SCALE: f32 = 0.0001;
 pub const HIDDEN_HOST_ENTRY_PREP_SCALE: f32 = 0.001;
@@ -21,6 +22,35 @@ const HIDDEN_HOST_BASELINE_EPSILON: f32 = 0.0005;
 pub const STAGE_ID_BOSS_PREVIEW: i32 = 0x139;
 pub const STAGE_ID_CLASSIC_BONUS_GAME: i32 = 0x13A;
 pub const STAGE_ID_CLASSIC_STAFFROLL: i32 = 0x13C;
+pub const STAGE_ID_AMIIBO_PREVIEW: i32 = 0x135;
+pub const STAGE_ID_RESULT: i32 = 0x136;
+
+#[inline(always)]
+unsafe fn transition_block_log_once(
+    operation: u64,
+    entry: usize,
+    value_a: u32,
+    value_b: u32,
+) -> bool {
+    if !crate::debug::enabled() {
+        return false;
+    }
+    let entry = entry.min(7);
+    let signature = operation
+        ^ ((entry as u64) << 8)
+        ^ ((value_a as u64) << 24)
+        ^ ((value_b as u64).rotate_left(17));
+    if LAST_TRANSITION_BLOCK_SIGNATURE[entry] == signature {
+        return false;
+    }
+    LAST_TRANSITION_BLOCK_SIGNATURE[entry] = signature;
+    true
+}
+
+#[inline(always)]
+unsafe fn reset_transition_block_log(entry: usize) {
+    LAST_TRANSITION_BLOCK_SIGNATURE[entry.min(7)] = u64::MAX;
+}
 
 #[inline(always)]
 pub unsafe fn entry_id(module_accessor: *mut BattleObjectModuleAccessor) -> usize {
@@ -116,12 +146,30 @@ pub unsafe fn acquire_boss_item(
     if module_accessor.is_null() || slot_ids.is_null() {
         return std::ptr::null_mut();
     }
+    let entry = entry_id(module_accessor);
+    if crate::should_quarantine_boss_frame(module_accessor) {
+        if crate::debug::enabled() && transition_block_log_once(1, entry, item_kind as u32, 0) {
+            crate::boss_log!(
+                "[PB][BossItem] acquire_blocked reason=transition_quarantine entry={} requested_kind={} stage=0x{:x}",
+                entry,
+                item_kind,
+                smash::app::stage::get_stage_id()
+            );
+        }
+        return std::ptr::null_mut();
+    }
+    if crate::debug::enabled() {
+        reset_transition_block_log(entry);
+    }
     ItemModule::have_item(module_accessor, ItemKind(item_kind), 0, 0, false, false);
     SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
-    let entry = entry_id(module_accessor);
     let boss_id = ItemModule::get_have_item_id(module_accessor, 0) as u32;
-    (*slot_ids)[entry] = boss_id;
-    let boss_boma = sv_battle_object::module_accessor(boss_id);
+    let boss_boma = if boss_id != 0 && sv_battle_object::is_active(boss_id) {
+        sv_battle_object::module_accessor(boss_id)
+    } else {
+        std::ptr::null_mut()
+    };
+    (*slot_ids)[entry] = if boss_boma.is_null() { 0 } else { boss_id };
     if crate::debug::enabled() {
         let fighter_status = StatusModule::status_kind(module_accessor);
         let boss_kind = if boss_boma.is_null() {
@@ -169,9 +217,26 @@ pub unsafe fn acquire_boss_item_excluding(
     if module_accessor.is_null() || slot_ids.is_null() {
         return std::ptr::null_mut();
     }
+    let entry = entry_id(module_accessor);
+    if crate::should_quarantine_boss_frame(module_accessor) {
+        if crate::debug::enabled()
+            && transition_block_log_once(2, entry, item_kind as u32, excluded_item_id)
+        {
+            crate::boss_log!(
+                "[PB][BossItem] acquire_excluding_blocked reason=transition_quarantine entry={} requested_kind={} excluded_id=0x{:x} stage=0x{:x}",
+                entry,
+                item_kind,
+                excluded_item_id,
+                smash::app::stage::get_stage_id()
+            );
+        }
+        return std::ptr::null_mut();
+    }
+    if crate::debug::enabled() {
+        reset_transition_block_log(entry);
+    }
     ItemModule::have_item(module_accessor, ItemKind(item_kind), 0, 0, false, false);
     SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
-    let entry = entry_id(module_accessor);
     let mut boss_id = 0;
     for slot in 0..4 {
         if ItemModule::is_have_item(module_accessor, slot) {
@@ -185,8 +250,12 @@ pub unsafe fn acquire_boss_item_excluding(
     if boss_id == 0 {
         boss_id = ItemModule::get_have_item_id(module_accessor, 0) as u32;
     }
-    (*slot_ids)[entry] = boss_id;
-    let boss_boma = sv_battle_object::module_accessor(boss_id);
+    let boss_boma = if boss_id != 0 && sv_battle_object::is_active(boss_id) {
+        sv_battle_object::module_accessor(boss_id)
+    } else {
+        std::ptr::null_mut()
+    };
+    (*slot_ids)[entry] = if boss_boma.is_null() { 0 } else { boss_id };
     if crate::debug::enabled() {
         let boss_kind = if boss_boma.is_null() {
             -1
@@ -239,33 +308,6 @@ pub unsafe fn held_item_by_kind(
     None
 }
 
-#[inline(always)]
-pub unsafe fn acquire_boss_item_any_slot(
-    module_accessor: *mut BattleObjectModuleAccessor,
-    slot_ids: *mut [u32; 8],
-    item_kind: i32,
-    expected_kinds: &[i32],
-) -> *mut BattleObjectModuleAccessor {
-    if module_accessor.is_null() || slot_ids.is_null() {
-        return std::ptr::null_mut();
-    }
-
-    let entry = entry_id(module_accessor);
-    if let Some((_, held_id, held_boma)) = held_item_by_kind(module_accessor, expected_kinds) {
-        (*slot_ids)[entry] = held_id;
-        return held_boma;
-    }
-
-    ItemModule::have_item(module_accessor, ItemKind(item_kind), 0, 0, false, false);
-    SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
-    if let Some((_, held_id, held_boma)) = held_item_by_kind(module_accessor, expected_kinds) {
-        (*slot_ids)[entry] = held_id;
-        return held_boma;
-    }
-
-    std::ptr::null_mut()
-}
-
 extern "C" {
     #[link_name = "\u{1}_ZN3app10item_other6removeEPNS_26BattleObjectModuleAccessorE"]
     fn remove_owned_item(module_accessor: *mut BattleObjectModuleAccessor);
@@ -287,6 +329,26 @@ pub unsafe fn clear_owned_boss_item_slot(
     if tracked_id == 0 {
         return false;
     }
+
+    // During native battle teardown the object and owner slot can disappear
+    // between callbacks. Drop only plugin bookkeeping here; the game owns
+    // destruction and must not be touched through a stale accessor.
+    if crate::should_quarantine_boss_frame(module_accessor) {
+        (*slot_ids)[entry] = 0;
+        if crate::debug::enabled() && transition_block_log_once(4, entry, tracked_id, 0) {
+            crate::boss_log!(
+                "[PB][BossItem] owned_clear_blocked reason=transition_quarantine entry={} tracked_id=0x{:x} stage=0x{:x}",
+                entry,
+                tracked_id,
+                smash::app::stage::get_stage_id()
+            );
+        }
+        return false;
+    }
+    if crate::debug::enabled() {
+        reset_transition_block_log(entry);
+    }
+
     if !sv_battle_object::is_active(tracked_id) {
         (*slot_ids)[entry] = 0;
         return false;
@@ -322,11 +384,7 @@ pub unsafe fn clear_owned_boss_item_slot(
         }
     }
 
-    HitModule::set_whole(
-        tracked_boma,
-        smash::app::HitStatus(*HIT_STATUS_OFF),
-        0,
-    );
+    HitModule::set_whole(tracked_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
     if set_standby {
         StatusModule::change_status_request_from_script(
             tracked_boma,
@@ -356,45 +414,6 @@ pub unsafe fn clear_owned_boss_item_slot(
         );
     }
     true
-}
-
-#[inline(always)]
-pub unsafe fn clear_boss_item_slot(
-    module_accessor: *mut BattleObjectModuleAccessor,
-    slot_ids: *mut [u32; 8],
-    set_standby: bool,
-) {
-    if module_accessor.is_null() || slot_ids.is_null() {
-        return;
-    }
-    let entry = entry_id(module_accessor);
-    let boss_id = (*slot_ids)[entry];
-    if boss_id != 0 && sv_battle_object::is_active(boss_id) {
-        let boss_boma = sv_battle_object::module_accessor(boss_id);
-        if !boss_boma.is_null() {
-            HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
-            if set_standby {
-                StatusModule::change_status_request_from_script(
-                    boss_boma,
-                    *ITEM_STATUS_KIND_STANDBY,
-                    true,
-                );
-            }
-        }
-    }
-    ItemModule::remove_all(module_accessor);
-    if crate::debug::enabled() {
-        crate::boss_log!(
-            "[PB][BossItem] clear entry={} tracked_id=0x{:x} set_standby={} stage=0x{:x} fighter_status={} scale={:.4}",
-            entry,
-            boss_id,
-            set_standby,
-            smash::app::stage::get_stage_id(),
-            StatusModule::status_kind(module_accessor),
-            ModelModule::scale(module_accessor)
-        );
-    }
-    (*slot_ids)[entry] = 0;
 }
 
 #[inline(always)]
@@ -565,7 +584,20 @@ pub unsafe fn request_hidden_host_stock_drain(
     entry_id: usize,
     stop: *mut bool,
 ) {
-    if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
+    if module_accessor.is_null() || stop.is_null() {
+        return;
+    }
+
+    let status = StatusModule::status_kind(module_accessor);
+    // Request the native death transition once.  Reasserting DEAD while the
+    // engine has already advanced the hidden host into REBIRTH or STANDBY can
+    // prevent FighterManager from completing its normal stock/elimination
+    // bookkeeping, which is especially harmful to Galeem/Dharkon in Regular
+    // Smash.  Native status processing owns the remainder of the lifecycle.
+    if status != *FIGHTER_STATUS_KIND_DEAD
+        && status != *FIGHTER_STATUS_KIND_REBIRTH
+        && status != *FIGHTER_STATUS_KIND_STANDBY
+    {
         StatusModule::change_status_request_from_script(
             module_accessor,
             *FIGHTER_STATUS_KIND_DEAD,
@@ -617,7 +649,17 @@ pub unsafe fn clamp_flying_boss_floor(
 #[inline(always)]
 pub fn is_boss_preview_stage(stage_id: i32) -> bool {
     // These scenes use the preview/interstitial boss presentation path.
-    stage_id == STAGE_ID_BOSS_PREVIEW || stage_id == STAGE_ID_CLASSIC_STAFFROLL
+    stage_id == STAGE_ID_BOSS_PREVIEW
+        || stage_id == STAGE_ID_CLASSIC_STAFFROLL
+        || stage_id == STAGE_ID_AMIIBO_PREVIEW
+}
+
+/// World of Light constructs its preview host after the UI selection callbacks.
+/// Keep this distinct from the other preview scenes so boss modules can defer
+/// runtime setup until that host is actually valid.
+#[inline(always)]
+pub fn is_world_of_light_boss_preview_stage(stage_id: i32) -> bool {
+    stage_id == STAGE_ID_BOSS_PREVIEW
 }
 
 #[inline(always)]

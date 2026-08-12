@@ -1,6 +1,5 @@
 use crate::boss_helpers;
 use crate::config::CONFIG;
-use skyline::nn::ro::LookupSymbol;
 use smash::app::lua_bind::*;
 use smash::app::sv_information;
 use smash::app::FighterUtil;
@@ -12,27 +11,64 @@ use smashline::{Agent, Main};
 static mut DEAD: bool = false;
 static mut STOP: bool = false;
 static mut ENTRY_ID: usize = 0;
-pub static mut FIGHTER_MANAGER: usize = 0;
 static mut DECREASING: bool = false;
 static mut INITIAL_STOCK_COUNT: u64 = 0;
+
+/// Clear only the dedicated Giga Bowser lifecycle state. Unlike the
+/// item-backed bosses, Giga Bowser is not reset by the shared runtime table.
+/// This is bookkeeping-only; native fighter teardown remains engine-owned.
+pub unsafe fn reset_match_state(entry_id: usize) {
+    let dead = DEAD;
+    let stop = STOP;
+    let decreasing = DECREASING;
+    let initial_stock_count = INITIAL_STOCK_COUNT;
+    if crate::debug::enabled() && (dead || stop || decreasing || initial_stock_count != 0) {
+        crate::boss_log!(
+            "[PB][GigaBowser][Reset] entry={} dead={} stop={} decreasing={} initial_stock_count={}",
+            entry_id.min(7),
+            dead,
+            stop,
+            decreasing,
+            initial_stock_count
+        );
+    }
+    ENTRY_ID = entry_id.min(7);
+    DEAD = false;
+    STOP = false;
+    DECREASING = false;
+    INITIAL_STOCK_COUNT = 0;
+}
 
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
+
+        // Giga Bowser is the native-fighter Result camera control. Keep this
+        // observation read-only and run it before the shared quarantine exits
+        // the fighter callback in Result mode.
+        if fighter_kind == *FIGHTER_KIND_KOOPAG {
+            crate::result_camera::observe_native_fighter_result_reference(module_accessor);
+        }
+
+        // Giga Bowser uses its own fighter agent instead of the Mario-host
+        // dispatcher. Apply the same post-match/result quarantine before any
+        // damage, stock, or rebirth logic can touch a native result object.
+        if crate::should_quarantine_boss_frame(module_accessor) {
+            crate::finish_boss_transition_cleanup(module_accessor);
+            return;
+        }
+
         crate::ai_diagnostics::log_native_fighter(module_accessor);
         ENTRY_ID =
             WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-        LookupSymbol(
-            &raw mut FIGHTER_MANAGER,
-            "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
-                .as_bytes()
-                .as_ptr(),
-        );
         if fighter_kind == *FIGHTER_KIND_KOOPAG {
             if !boss_helpers::is_boss_nonbattle_stage(smash::app::stage::get_stage_id()) {
-                let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
+                let fighter_manager = boss_helpers::fighter_manager();
+                if fighter_manager.is_null() {
+                    return;
+                }
                 FighterManager::set_cursor_whole(fighter_manager, false);
                 if sv_information::is_ready_go() == false {
                     DEAD = false;

@@ -1,6 +1,6 @@
 [package]
 name = "comp_boss"
-version = "3.0.3"
+version = "3.1.0"
 authors = ["GamerSubzero <GamerSubzero@gmail.com>, NemesisSSBU <PepeIsNoice@gmail.com>, ClaudeRiegan <supermariomasterbro@gmail.com>, jam1garner <jam1.mcleod@hotmail.com>"]
 edition = "2021"
 
@@ -23,6 +23,12 @@ smash_script = { git = "https://github.com/blu-dev/smash-script.git" }
 arcropolis-api = { git = "https://github.com/Raytwo/arcropolis_api" }
 prc-rs = { git = "https://github.com/ultimate-research/prc-rs", features = ["indexmap-std"] }
 rand = { git = "https://github.com/skyline-rs/rand" }
+
+# HDR Smashline's pinned acmd-engine still names the deleted blu-dev fork.
+# Use the maintained fork already used by this project without changing the
+# Smashline API surface or introducing a second skyline_smash package.
+[patch."https://github.com/blu-dev/skyline-smash"]
+skyline_smash = { git = "https://github.com/ultimate-research/skyline-smash.git", rev = "f22c96bea33663cc45ff7ddaa6a140d5727a7931" }
 
 [profile.dev]
 panic = "abort"

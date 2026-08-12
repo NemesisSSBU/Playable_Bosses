@@ -32,8 +32,14 @@ static mut CONTROLLER_Y: f32 = 0.0;
 static mut CONTROL_SPEED_MUL: f32 = 1.25;
 static mut CONTROL_SPEED_MUL_2: f32 = 0.05;
 static mut HIDDEN_CPU: [u32; 8] = [0; 8];
+static mut SPAWN_BISECT_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
+static mut WOL_PREVIEW_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
 
 const GALEEM_FLOOR_CLEARANCE: f32 = 0.1;
+
+/// Visual-only WOL and Amiibo presentations must stay on Galeem's native idle
+/// rather than entering any combat, movement, or summon status.
+pub(crate) const PRESENTATION_IDLE_MOTION: &str = "wait";
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -118,6 +124,9 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     IS_ANGRY = false;
     ENTRY_ID = entry;
     RANDOM_ATTACK = 0;
+    if BOSS_ID[entry] != 0 || HIDDEN_CPU[entry] != 0 || DEAD || EXISTS_PUBLIC {
+        crate::boss_summon::log_boss_scene_exit("galeem", entry, BOSS_ID[entry], "match_reset");
+    }
     BOSS_ID[entry] = 0;
     DEAD = false;
     JUMP_START = false;
@@ -129,6 +138,43 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     CONTROL_SPEED_MUL = 1.25;
     CONTROL_SPEED_MUL_2 = 0.05;
     HIDDEN_CPU[entry] = 0;
+    SPAWN_BISECT_LAST_SIGNATURE[entry] = u64::MAX;
+    crate::boss_summon::reset("galeem", entry, "match_reset");
+}
+
+/// Feed the shared, read-only match-end audit without exposing Galeem's item
+/// ownership to the transition code.  The audit deliberately accepts a phase
+/// from the caller so the post-match boundary can be recorded after Ready-Go
+/// ends without touching stale item accessors.
+pub unsafe fn audit_transition(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    phase: &'static str,
+    allow_object_reads: bool,
+) {
+    if module_accessor.is_null() {
+        return;
+    }
+    let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
+    if BOSS_ID[entry] == 0 && HIDDEN_CPU[entry] == 0 && !DEAD && !EXISTS_PUBLIC {
+        return;
+    }
+    crate::boss_summon::log_result_roster_helper(
+        phase,
+        "galeem_hidden_cpu_item",
+        HIDDEN_CPU[entry],
+        allow_object_reads,
+    );
+    crate::boss_summon::audit_match_end(
+        "galeem",
+        entry,
+        module_accessor,
+        BOSS_ID[entry],
+        HIDDEN_CPU[entry],
+        DEAD,
+        EXISTS_PUBLIC,
+        phase,
+        allow_object_reads,
+    );
 }
 
 #[inline(always)]
@@ -192,6 +238,44 @@ unsafe fn log_galeem_entry_phase(
     );
 }
 
+/// Bounded breadcrumbs for the first native item spawn.  This deliberately
+/// reads only the already-valid host accessor and the acquired pointer's null
+/// state; it does not walk arbitrary battle objects while isolating a crash.
+#[inline(always)]
+unsafe fn log_galeem_spawn_bisect(
+    entry: usize,
+    step: u8,
+    edge: &'static str,
+    name: &'static str,
+    module_accessor: *mut BattleObjectModuleAccessor,
+    boss_boma: *mut BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() || !crate::debug::enabled() {
+        return;
+    }
+    let entry = entry.min(7);
+    let edge_code = if edge == "begin" { 1u64 } else { 2u64 };
+    let signature = (step as u64)
+        ^ edge_code.rotate_left(8)
+        ^ (BOSS_ID[entry] as u64).rotate_left(16)
+        ^ (HIDDEN_CPU[entry] as u64).rotate_left(32);
+    if SPAWN_BISECT_LAST_SIGNATURE[entry] == signature {
+        return;
+    }
+    SPAWN_BISECT_LAST_SIGNATURE[entry] = signature;
+    crate::boss_log!(
+        "[PB][GaleemSpawnBisect] step={:02} edge={} name={} entry={} host_status={} tracked_id=0x{:x} hidden_cpu=0x{:x} boss_boma_present={}",
+        step,
+        edge,
+        name,
+        entry,
+        StatusModule::status_kind(module_accessor),
+        BOSS_ID[entry],
+        HIDDEN_CPU[entry],
+        !boss_boma.is_null()
+    );
+}
+
 #[inline(always)]
 unsafe fn log_galeem_spawn_state(
     tag: &str,
@@ -245,8 +329,160 @@ unsafe fn log_galeem_spawn_state(
 }
 
 #[inline(always)]
+unsafe fn log_galeem_wol_preview(
+    entry: usize,
+    phase: u8,
+    action: &'static str,
+    module_accessor: *mut BattleObjectModuleAccessor,
+    boss_boma: *mut BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() || !crate::debug::enabled() {
+        return;
+    }
+    let entry = entry.min(7);
+    let boss_id = BOSS_ID[entry];
+    let signature = (phase as u64)
+        ^ (boss_id as u64).rotate_left(12)
+        ^ (ModelModule::scale(module_accessor).to_bits() as u64).rotate_left(29)
+        ^ ((!boss_boma.is_null() as u64) << 61);
+    if WOL_PREVIEW_LAST_SIGNATURE[entry] == signature {
+        return;
+    }
+    WOL_PREVIEW_LAST_SIGNATURE[entry] = signature;
+    crate::boss_log!(
+        "[PB][Galeem][WolPreview] phase={} action={} entry={} host_valid=true selected={} host_scale={:.4} boss_id=0x{:x} boss_present={}",
+        phase,
+        action,
+        entry,
+        selection::is_selected_css_boss(module_accessor, *ITEM_KIND_KIILA),
+        ModelModule::scale(module_accessor),
+        boss_id,
+        !boss_boma.is_null()
+    );
+}
+
+/// WOL preview setup is visual-only. Defer it until a real Mario host exists,
+/// then avoid the Regular Smash summon, recovery, and result lifecycle paths.
+#[inline(always)]
+unsafe fn ensure_wol_galeem_preview(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    entry: usize,
+) {
+    if module_accessor.is_null() {
+        return;
+    }
+
+    let entry = entry.min(7);
+    if !selection::is_selected_css_boss(module_accessor, *ITEM_KIND_KIILA) {
+        log_galeem_wol_preview(
+            entry,
+            1,
+            "not_selected",
+            module_accessor,
+            std::ptr::null_mut(),
+        );
+        return;
+    }
+
+    boss_helpers::clear_hidden_host_effects(module_accessor);
+    let needs_item = ModelModule::scale(module_accessor) != boss_helpers::HIDDEN_HOST_SCALE
+        || !ItemModule::is_have_item(module_accessor, 0);
+    if needs_item {
+        log_galeem_wol_preview(
+            entry,
+            2,
+            "create_begin",
+            module_accessor,
+            std::ptr::null_mut(),
+        );
+        ItemModule::remove_all(module_accessor);
+        ModelModule::set_scale(module_accessor, boss_helpers::HIDDEN_HOST_SCALE);
+        let boss_boma = boss_helpers::acquire_boss_item(
+            module_accessor,
+            &raw mut BOSS_ID,
+            *ITEM_KIND_KIILACORE,
+        );
+        if boss_boma.is_null() {
+            log_galeem_wol_preview(entry, 3, "create_failed", module_accessor, boss_boma);
+            return;
+        }
+        ModelModule::set_scale(boss_boma, 0.05);
+        MotionModule::change_motion(
+            boss_boma,
+            smash::phx::Hash40::new(PRESENTATION_IDLE_MOTION),
+            0.0,
+            1.0,
+            false,
+            0.0,
+            false,
+            false,
+        );
+        log_galeem_wol_preview(entry, 4, "create_complete", module_accessor, boss_boma);
+    }
+
+    if ModelModule::scale(module_accessor) == boss_helpers::HIDDEN_HOST_SCALE {
+        MotionModule::change_motion(
+            module_accessor,
+            smash::phx::Hash40::new("none"),
+            0.0,
+            1.0,
+            false,
+            0.0,
+            false,
+            false,
+        );
+        PostureModule::set_rot(
+            module_accessor,
+            &Vector3f {
+                x: -180.0,
+                y: 90.0,
+                z: 0.0,
+            },
+            0,
+        );
+        ModelModule::set_joint_rotate(
+            module_accessor,
+            smash::phx::Hash40::new("root"),
+            &mut Vector3f {
+                x: 90.0,
+                y: 50.0,
+                z: 0.0,
+            },
+            smash::app::MotionNodeRotateCompose {
+                _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
+            },
+            ModelModule::rotation_order(module_accessor),
+        );
+        PostureModule::set_pos(
+            module_accessor,
+            &Vector3f {
+                x: PostureModule::pos_x(module_accessor),
+                y: 7.25,
+                z: PostureModule::pos_z(module_accessor) + 3.0,
+            },
+        );
+    }
+
+    let tracked_id = BOSS_ID[entry];
+    let tracked_boma = if tracked_id != 0 && sv_battle_object::is_active(tracked_id) {
+        sv_battle_object::module_accessor(tracked_id)
+    } else {
+        std::ptr::null_mut()
+    };
+    log_galeem_wol_preview(entry, 5, "ready", module_accessor, tracked_boma);
+}
+
+#[inline(always)]
 unsafe fn restore_galeem_after_item_wipe(module_accessor: *mut BattleObjectModuleAccessor) {
-    if module_accessor.is_null() || !sv_information::is_ready_go() || DEAD {
+    if module_accessor.is_null()
+        || !sv_information::is_ready_go()
+        || DEAD
+        || crate::any_post_match_pre_result()
+    {
+        return;
+    }
+    let fighter_manager = boss_helpers::fighter_manager();
+    if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
         return;
     }
 
@@ -423,69 +659,6 @@ unsafe fn teardown_galeem_post_match_transition(
     true
 }
 
-#[inline(always)]
-unsafe fn cleanup_galeem_result_state(module_accessor: *mut BattleObjectModuleAccessor) {
-    if module_accessor.is_null() {
-        return;
-    }
-
-    let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
-    if RESULT_SPAWNED {
-        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
-        return;
-    }
-
-    // This callback runs for every hidden Mario host during result mode. Do
-    // not treat an unrelated boss result as Galeem state: the old broad
-    // cleanup erased other bosses' result items from the same host.
-    let owns_galeem_state = BOSS_ID[entry] != 0
-        || HIDDEN_CPU[entry] != 0
-        || EXISTS_PUBLIC
-        || DEAD
-        || STOP;
-    if !owns_galeem_state {
-        return;
-    }
-
-    EXISTS_PUBLIC = false;
-    RESULT_SPAWNED = true;
-    DEAD = false;
-    STOP = false;
-    IS_ANGRY = false;
-    CONTROLLABLE = true;
-    JUMP_START = false;
-    CONTROLLER_X = 0.0;
-    CONTROLLER_Y = 0.0;
-
-    let hidden_cpu_id = HIDDEN_CPU[entry];
-    if hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id) {
-        let hidden_cpu_boma = sv_battle_object::module_accessor(hidden_cpu_id);
-        if !hidden_cpu_boma.is_null() {
-            HitModule::set_whole(hidden_cpu_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
-            SlowModule::clear_whole(hidden_cpu_boma);
-            if StatusModule::status_kind(hidden_cpu_boma) != *ITEM_STATUS_KIND_NONE {
-                StatusModule::change_status_request_from_script(
-                    hidden_cpu_boma,
-                    *ITEM_STATUS_KIND_NONE,
-                    true,
-                );
-            }
-        }
-    }
-    HIDDEN_CPU[entry] = 0;
-    boss_helpers::clear_owned_boss_item_slot(
-        module_accessor,
-        &raw mut BOSS_ID,
-        &[*ITEM_KIND_KIILA, *ITEM_KIND_KIILACORE],
-        true,
-    );
-    boss_helpers::restore_plain_mario_visuals(module_accessor);
-    crate::boss_log!(
-        "[PB][Galeem][ResultCleanup] entry {}: cleared Galeem result state",
-        entry
-    );
-}
-
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
@@ -493,15 +666,57 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
         if fighter_kind == *FIGHTER_KIND_MARIO {
             ENTRY_ID = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
+            let stage_id = smash::app::stage::get_stage_id();
+            if boss_helpers::is_world_of_light_boss_preview_stage(stage_id) {
+                ensure_wol_galeem_preview(module_accessor, ENTRY_ID);
+                return;
+            }
             let _runtime_guard = CommonRuntimeSyncGuard::new(
                 boss_runtime::slot_ptr(&raw mut boss_runtime::GALEEM_RUNTIME, ENTRY_ID),
                 load_galeem_runtime,
                 store_galeem_runtime,
             );
             let fighter_manager = boss_helpers::fighter_manager();
-            if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
-                cleanup_galeem_result_state(module_accessor);
+            let result_mode =
+                !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager);
+            if result_mode {
+                audit_transition(module_accessor, "result_ready", false);
+            } else if sv_information::is_ready_go() {
+                audit_transition(module_accessor, "battle", true);
+            }
+            if result_mode {
+                // Galeem remains gated out of custom result presentation until
+                // its Regular Smash death lifecycle is stable. The native scene
+                // owns its battle objects here.
                 return;
+            }
+
+            // The central transition guard owns the post-match/pre-result
+            // boundary.  Once Ready-Go has ended, do not observe, recover, or
+            // reacquire Galeem's summon/item state while native teardown is
+            // still moving the hidden host toward Results.
+            if crate::any_post_match_pre_result() {
+                return;
+            }
+
+            let summon_id = BOSS_ID[ENTRY_ID];
+            let summon_boma = if summon_id != 0 && sv_battle_object::is_active(summon_id) {
+                sv_battle_object::module_accessor(summon_id)
+            } else {
+                std::ptr::null_mut()
+            };
+            // No summon can exist during the hidden-host entry sequence.  Do
+            // not traverse FighterManager/child topology before Ready-Go;
+            // that diagnostic path is intentionally battle-only.
+            if sv_information::is_ready_go() {
+                crate::boss_summon::observe_native(
+                    "galeem",
+                    ENTRY_ID,
+                    summon_id,
+                    summon_boma,
+                    *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER,
+                    *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER_WAIT,
+                );
             }
 
             let selected_via_slot =
@@ -515,7 +730,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             }
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
+                if boss_helpers::is_boss_preview_stage(stage_id) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor =
                         smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -583,8 +798,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             },
                         );
                     }
-                } else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id())
-                {
+                } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_galeem_after_item_wipe(module_accessor);
                     if sv_information::is_ready_go() == false {
                         let lua_state = fighter.lua_state_agent;
@@ -697,6 +911,15 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     false,
                                     true,
                                 );
+                                let spawn_entry = boss_helpers::entry_id(module_accessor).min(7);
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    1,
+                                    "begin",
+                                    "reset_spawn_state",
+                                    module_accessor,
+                                    std::ptr::null_mut(),
+                                );
                                 DEAD = false;
                                 CONTROLLABLE = true;
                                 JUMP_START = false;
@@ -704,9 +927,41 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 RESULT_SPAWNED = false;
                                 CONTROLLER_X = 0.0;
                                 CONTROLLER_Y = 0.0;
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    1,
+                                    "after",
+                                    "reset_spawn_state",
+                                    module_accessor,
+                                    std::ptr::null_mut(),
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    2,
+                                    "begin",
+                                    "DamageModule::heal",
+                                    module_accessor,
+                                    std::ptr::null_mut(),
+                                );
                                 DamageModule::heal(module_accessor, -999.0, 0);
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    2,
+                                    "after",
+                                    "DamageModule::heal",
+                                    module_accessor,
+                                    std::ptr::null_mut(),
+                                );
                                 EXISTS_PUBLIC = true;
                                 RESULT_SPAWNED = false;
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    3,
+                                    "begin",
+                                    "ItemModule::throw_item",
+                                    module_accessor,
+                                    std::ptr::null_mut(),
+                                );
                                 ItemModule::throw_item(
                                     fighter.module_accessor,
                                     0.0,
@@ -716,30 +971,127 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     true,
                                     0.0,
                                 );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    3,
+                                    "after",
+                                    "ItemModule::throw_item",
+                                    module_accessor,
+                                    std::ptr::null_mut(),
+                                );
                                 let hidden_cpu_id =
                                     HIDDEN_CPU[boss_helpers::entry_id(module_accessor)];
-                                let boss_boma = boss_helpers::acquire_boss_item_excluding(
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    4,
+                                    "begin",
+                                    "acquire_boss_item_excluding",
+                                    module_accessor,
+                                    std::ptr::null_mut(),
+                                );
+                                let acquired_boss_boma = boss_helpers::acquire_boss_item_excluding(
                                     module_accessor,
                                     &raw mut BOSS_ID,
                                     *ITEM_KIND_KIILA,
                                     hidden_cpu_id,
                                 );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    4,
+                                    "after",
+                                    "acquire_boss_item_excluding",
+                                    module_accessor,
+                                    acquired_boss_boma,
+                                );
+                                let boss_id = BOSS_ID[spawn_entry];
+                                let boss_boma =
+                                    if boss_id != 0 && sv_battle_object::is_active(boss_id) {
+                                        sv_battle_object::module_accessor(boss_id)
+                                    } else {
+                                        std::ptr::null_mut()
+                                    };
+                                if boss_boma.is_null() {
+                                    EXISTS_PUBLIC = false;
+                                    BOSS_ID[spawn_entry] = 0;
+                                    crate::boss_log!(
+                                        "[PB][GaleemSpawnBisect] abort reason=invalid_acquired_boss entry={} acquired_id=0x{:x}",
+                                        spawn_entry,
+                                        boss_id
+                                    );
+                                    return;
+                                }
 
                                 let get_boss_intensity =
                                     CONFIG.options.boss_difficulty.unwrap_or(10.0);
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    5,
+                                    "begin",
+                                    "WorkModule::set_float(level)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
                                 WorkModule::set_float(
                                     boss_boma,
                                     get_boss_intensity,
                                     *ITEM_INSTANCE_WORK_FLOAT_LEVEL,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    5,
+                                    "after",
+                                    "WorkModule::set_float(level)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    6,
+                                    "begin",
+                                    "WorkModule::set_float(strength)",
+                                    module_accessor,
+                                    boss_boma,
                                 );
                                 WorkModule::set_float(
                                     boss_boma,
                                     1.0,
                                     *ITEM_INSTANCE_WORK_FLOAT_STRENGTH,
                                 );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    6,
+                                    "after",
+                                    "WorkModule::set_float(strength)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    7,
+                                    "begin",
+                                    "ModelModule::set_scale(host)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
                                 ModelModule::set_scale(
                                     module_accessor,
                                     boss_helpers::HIDDEN_HOST_SCALE,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    7,
+                                    "after",
+                                    "ModelModule::set_scale(host)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    8,
+                                    "begin",
+                                    "StatusModule::request(FOR_BOSS_START)",
+                                    module_accessor,
+                                    boss_boma,
                                 );
                                 if dharkon::check_status() {
                                     // MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("entry2"),0.0,1.0,false,0.0,false,false);
@@ -755,20 +1107,84 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         true,
                                     );
                                 }
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    8,
+                                    "after",
+                                    "StatusModule::request(FOR_BOSS_START)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    9,
+                                    "begin",
+                                    "WorkModule::set_float(hp_max)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
                                 WorkModule::set_float(
                                     boss_boma,
                                     999.0,
                                     *ITEM_INSTANCE_WORK_FLOAT_HP_MAX,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    9,
+                                    "after",
+                                    "WorkModule::set_float(hp_max)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    10,
+                                    "begin",
+                                    "WorkModule::set_float(hp)",
+                                    module_accessor,
+                                    boss_boma,
                                 );
                                 WorkModule::set_float(
                                     boss_boma,
                                     999.0,
                                     *ITEM_INSTANCE_WORK_FLOAT_HP,
                                 );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    10,
+                                    "after",
+                                    "WorkModule::set_float(hp)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    11,
+                                    "begin",
+                                    "WorkModule::set_int(variation)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
                                 WorkModule::set_int(
                                     boss_boma,
                                     *ITEM_VARIATION_KIILA_DARZ,
                                     *ITEM_INSTANCE_WORK_INT_VARIATION,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    11,
+                                    "after",
+                                    "WorkModule::set_int(variation)",
+                                    module_accessor,
+                                    boss_boma,
+                                );
+                                log_galeem_spawn_bisect(
+                                    spawn_entry,
+                                    12,
+                                    "after",
+                                    "initial_spawn_complete",
+                                    module_accessor,
+                                    boss_boma,
                                 );
                                 println!(
                                     "[PB][Galeem][Spawn] initial hidden_cpu=0x{:x} boss_id=0x{:x} status={}",
@@ -1308,6 +1724,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         if DEAD == false {
                                             CONTROLLABLE = false;
                                             DEAD = true;
+                                            audit_transition(module_accessor, "battle", true);
+                                            crate::boss_summon::cancel_for_entry(
+                                                "galeem",
+                                                ENTRY_ID,
+                                                "boss_eliminated",
+                                            );
                                             StatusModule::change_status_request_from_script(
                                                 boss_boma,
                                                 *ITEM_STATUS_KIND_DEAD,
@@ -1905,6 +2327,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if DEAD == false {
                                         CONTROLLABLE = false;
                                         DEAD = true;
+                                        audit_transition(module_accessor, "battle", true);
+                                        crate::boss_summon::cancel_for_entry(
+                                            "galeem",
+                                            ENTRY_ID,
+                                            "boss_eliminated",
+                                        );
                                         if !boss_boma.is_null() {
                                             StatusModule::change_status_request_from_script(
                                                 boss_boma,
@@ -1940,7 +2368,27 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         );
                                     }
                                 }
-                                ItemModule::remove_all(module_accessor);
+                                // The native DEAD request above owns summon
+                                // cleanup. The shared state machine gives it
+                                // exactly three callbacks, then permits the
+                                // legacy fallback once if the parent remains
+                                // active in the expected DEAD status.
+                                let cleanup_action = crate::boss_summon::parent_death_cleanup_step(
+                                    "galeem",
+                                    ENTRY_ID,
+                                    death_boss_id,
+                                );
+                                match cleanup_action {
+                                    crate::boss_summon::ParentDeathCleanupAction::RunFallback => {
+                                        ItemModule::remove_all(module_accessor);
+                                    }
+                                    crate::boss_summon::ParentDeathCleanupAction::Complete => {
+                                        BOSS_ID[boss_helpers::entry_id(module_accessor)] = 0;
+                                        EXISTS_PUBLIC = false;
+                                    }
+                                    crate::boss_summon::ParentDeathCleanupAction::Defer
+                                    | crate::boss_summon::ParentDeathCleanupAction::Abort => {}
+                                }
                                 if STOP == false
                                     && smash::app::smashball::is_training_mode() == false
                                 {
@@ -1967,26 +2415,33 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
-                        if DEAD == true && !boss_boma.is_null() {
-                            if sv_information::is_ready_go() == true {
-                                if StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_DEAD
-                                    || MotionModule::motion_kind(boss_boma) == smash::hash40("dead")
-                                {
-                                    if StatusModule::status_kind(boss_boma)
-                                        == *ITEM_STATUS_KIND_STANDBY
-                                    {
-                                        if MotionModule::frame(boss_boma)
-                                            >= MotionModule::end_frame(boss_boma)
-                                        {
-                                            EXISTS_PUBLIC = false;
-                                            StatusModule::change_status_request_from_script(
-                                                boss_boma,
-                                                *ITEM_STATUS_KIND_STANDBY,
-                                                true,
-                                            );
-                                        }
-                                    }
-                                }
+                        // ItemModule::remove_all above can destroy the native
+                        // boss object. Never reuse the pre-removal pointer;
+                        // reacquire only after an active-object check.
+                        let post_death_boss_id = BOSS_ID[boss_helpers::entry_id(module_accessor)];
+                        if DEAD == true
+                            && sv_information::is_ready_go() == true
+                            && post_death_boss_id != 0
+                            && sv_battle_object::is_active(post_death_boss_id)
+                        {
+                            let post_death_boma =
+                                sv_battle_object::module_accessor(post_death_boss_id);
+                            if !post_death_boma.is_null()
+                                && (StatusModule::status_kind(post_death_boma)
+                                    == *ITEM_STATUS_KIND_DEAD
+                                    || MotionModule::motion_kind(post_death_boma)
+                                        == smash::hash40("dead"))
+                                && StatusModule::status_kind(post_death_boma)
+                                    == *ITEM_STATUS_KIND_STANDBY
+                                && MotionModule::frame(post_death_boma)
+                                    >= MotionModule::end_frame(post_death_boma)
+                            {
+                                EXISTS_PUBLIC = false;
+                                StatusModule::change_status_request_from_script(
+                                    post_death_boma,
+                                    *ITEM_STATUS_KIND_STANDBY,
+                                    true,
+                                );
                             }
                         }
 
@@ -2151,9 +2606,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X > 0.0 && CONTROLLER_X < 0.06 {
                                         CONTROLLER_X = 0.0;
                                     }
-                                    if CONTROLLER_X < 0.0 && CONTROLLER_X > 0.06 {
-                                        CONTROLLER_X = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -2205,9 +2657,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.06 {
-                                        CONTROLLER_Y = 0.0;
-                                    }
-                                    if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.06 {
                                         CONTROLLER_Y = 0.0;
                                     }
                                 }
@@ -2355,6 +2804,14 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             }
                                             if RANDOM_ATTACK == 9 {
                                                 CONTROLLABLE = false;
+                                                crate::boss_summon::request_native(
+                                                    "galeem",
+                                                    ENTRY_ID,
+                                                    BOSS_ID[ENTRY_ID],
+                                                    boss_boma,
+                                                    *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER,
+                                                    "cpu_random",
+                                                );
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
                                                     *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER,
@@ -2414,9 +2871,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X > 0.0 && CONTROLLER_X < 0.06 {
                                         CONTROLLER_X = 0.0;
                                     }
-                                    if CONTROLLER_X < 0.0 && CONTROLLER_X > 0.06 {
-                                        CONTROLLER_X = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -2468,9 +2922,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.06 {
-                                        CONTROLLER_Y = 0.0;
-                                    }
-                                    if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.06 {
                                         CONTROLLER_Y = 0.0;
                                     }
                                 }
@@ -2557,9 +3008,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X > 0.0 && CONTROLLER_X < 0.06 {
                                         CONTROLLER_X = 0.0;
                                     }
-                                    if CONTROLLER_X < 0.0 && CONTROLLER_X > 0.06 {
-                                        CONTROLLER_X = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -2611,9 +3059,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.06 {
-                                        CONTROLLER_Y = 0.0;
-                                    }
-                                    if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.06 {
                                         CONTROLLER_Y = 0.0;
                                     }
                                 }
@@ -2764,6 +3209,14 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     CONTROLLABLE = false;
                                     CONTROLLER_X = 0.0;
                                     CONTROLLER_Y = 0.0;
+                                    crate::boss_summon::request_native(
+                                        "galeem",
+                                        ENTRY_ID,
+                                        BOSS_ID[ENTRY_ID],
+                                        boss_boma,
+                                        *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER,
+                                        "human_input",
+                                    );
                                     StatusModule::change_status_request_from_script(
                                         boss_boma,
                                         *ITEM_KIILA_STATUS_KIND_SUMMON_FIGHTER,
@@ -2792,8 +3245,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     }
 }
 
-pub fn install() {}
-
 pub unsafe fn frame(fighter: &mut L2CFighterCommon) {
+    if !boss_helpers::is_world_of_light_boss_preview_stage(smash::app::stage::get_stage_id())
+        && crate::should_quarantine_boss_frame(fighter.module_accessor)
+    {
+        return;
+    }
     once_per_fighter_frame(fighter);
 }

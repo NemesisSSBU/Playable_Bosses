@@ -26,6 +26,10 @@ static mut STOP: bool = false;
 static mut FRESH_CONTROL: bool = false;
 static mut EXISTS_PUBLIC: bool = false;
 static mut INITIAL_Y_POS: f32 = 0.0;
+// Preview-only diagnostic state. A changed held-item ID or an attachment loss
+// emits one snapshot so stage 0x139 can be compared with the stage-0x135
+// Galleom attachment probe without per-frame logging.
+static mut WOL_PREVIEW_ATTACHMENT_SIGNATURE: [u64; 8] = [0; 8];
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -80,11 +84,90 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     FRESH_CONTROL = false;
     EXISTS_PUBLIC = false;
     INITIAL_Y_POS = 0.0;
+    *(core::ptr::addr_of_mut!(WOL_PREVIEW_ATTACHMENT_SIGNATURE) as *mut u64).add(entry) = 0;
+}
+
+#[inline(always)]
+unsafe fn log_wol_preview_attachment_once(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    stage_id: i32,
+    entry: usize,
+) {
+    if !crate::debug::enabled() || module_accessor.is_null() || entry >= 8 {
+        return;
+    }
+
+    let slot0_held = ItemModule::is_have_item(module_accessor, 0);
+    let presentation_id = if slot0_held {
+        ItemModule::get_have_item_id(module_accessor, 0) as u32
+    } else {
+        0
+    };
+    let signature = ((presentation_id as u64) << 1) | if slot0_held { 1 } else { 0 };
+    let signatures = core::ptr::addr_of_mut!(WOL_PREVIEW_ATTACHMENT_SIGNATURE) as *mut u64;
+    if *signatures.add(entry) == signature {
+        return;
+    }
+    *signatures.add(entry) = signature;
+
+    let object_active = presentation_id != 0 && sv_battle_object::is_active(presentation_id);
+    let presentation_boma = if object_active {
+        sv_battle_object::module_accessor(presentation_id)
+    } else {
+        core::ptr::null_mut()
+    };
+    let (kind, position, rotation, lr, status) = if presentation_boma.is_null() {
+        (-1, [0.0; 3], [0.0; 3], 0.0, -1)
+    } else {
+        (
+            smash::app::utility::get_kind(&mut *presentation_boma),
+            [
+                PostureModule::pos_x(presentation_boma),
+                PostureModule::pos_y(presentation_boma),
+                PostureModule::pos_z(presentation_boma),
+            ],
+            [
+                PostureModule::rot_x(presentation_boma, 0),
+                PostureModule::rot_y(presentation_boma, 0),
+                PostureModule::rot_z(presentation_boma, 0),
+            ],
+            PostureModule::lr(presentation_boma),
+            StatusModule::status_kind(presentation_boma),
+        )
+    };
+    crate::boss_log!(
+        "[PB][GalleomWolAttachment] stage=0x{:x} entry={} slot0_held={} presentation_object_id=0x{:x} object_active={} kind={} boss_position=({:.3},{:.3},{:.3}) boss_rotation=({:.1},{:.1},{:.1}) boss_lr={:.3} boss_status={} host_position=({:.3},{:.3},{:.3}) host_posture_rotation=({:.1},{:.1},{:.1}) host_root_recipe=(-270.0,180.0,-90.0) host_scale={:.4} forced_boss_position_write=false",
+        stage_id,
+        entry,
+        slot0_held,
+        presentation_id,
+        object_active,
+        kind,
+        position[0],
+        position[1],
+        position[2],
+        rotation[0],
+        rotation[1],
+        rotation[2],
+        lr,
+        status,
+        PostureModule::pos_x(module_accessor),
+        PostureModule::pos_y(module_accessor),
+        PostureModule::pos_z(module_accessor),
+        PostureModule::rot_x(module_accessor, 0),
+        PostureModule::rot_y(module_accessor, 0),
+        PostureModule::rot_z(module_accessor, 0),
+        ModelModule::scale(module_accessor),
+    );
 }
 
 #[inline(always)]
 unsafe fn restore_galleom_after_item_wipe(module_accessor: *mut BattleObjectModuleAccessor) {
     if module_accessor.is_null() || !sv_information::is_ready_go() || DEAD {
+        return;
+    }
+    let fighter_manager = boss_helpers::fighter_manager();
+    if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
         return;
     }
 
@@ -163,7 +246,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 selection::is_selected_css_boss(module_accessor, *ITEM_KIND_GALLEOM);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
+                let stage_id = smash::app::stage::get_stage_id();
+                if boss_helpers::is_boss_preview_stage(stage_id) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor =
                         smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -214,8 +298,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             ModelModule::rotation_order(module_accessor),
                         );
                     }
-                } else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id())
-                {
+                    log_wol_preview_attachment_once(module_accessor, stage_id, ENTRY_ID);
+                } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_galleom_after_item_wipe(module_accessor);
                     if sv_information::is_ready_go() == false {
                         let entry = boss_helpers::entry_id(module_accessor);
@@ -1237,41 +1321,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     let fighter_manager = boss_helpers::fighter_manager();
-                    if FighterManager::is_result_mode(fighter_manager) == true {
-                        if RESULT_SPAWNED == false {
-                            let result_entry = ENTRY_ID.min(7);
-                            ItemModule::remove_all(module_accessor);
-                            let result_boma = boss_helpers::acquire_boss_item(
-                                module_accessor,
-                                &raw mut BOSS_ID,
-                                *ITEM_KIND_GALLEOM,
-                            );
-                            RESULT_SPAWNED = true;
-                            MOVING = false;
-                            EXISTS_PUBLIC = !result_boma.is_null();
-                            if result_boma.is_null() {
-                                crate::boss_log!(
-                                    "[PB][Result][Galleom] entry {}: native result item acquisition failed",
-                                    result_entry
-                                );
-                            } else {
-                                StatusModule::change_status_request_from_script(
-                                    result_boma,
-                                    *ITEM_STATUS_KIND_FOR_BOSS_START,
-                                    true,
-                                );
-                                crate::boss_log!(
-                                    "[PB][Result][Galleom] entry {}: spawned result item id=0x{:x} status={}",
-                                    result_entry,
-                                    BOSS_ID[result_entry],
-                                    StatusModule::status_kind(result_boma)
-                                );
-                            }
-                        }
-                        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
-                        return;
-                    }
-
                     // FIXES SPAWN
 
                     if DEAD == false {
@@ -1767,8 +1816,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     }
 }
 
-pub fn install() {}
-
 pub unsafe fn frame(fighter: &mut L2CFighterCommon) {
+    if crate::should_quarantine_boss_frame(fighter.module_accessor) {
+        return;
+    }
     once_per_fighter_frame(fighter);
 }

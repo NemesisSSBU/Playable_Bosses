@@ -121,9 +121,7 @@ fn selected_boss_name(ui_hash: u64) -> &'static str {
 }
 
 #[inline(always)]
-unsafe fn known_boss_context(
-    module_accessor: *mut BattleObjectModuleAccessor,
-) -> (u32, i32) {
+unsafe fn known_boss_context(module_accessor: *mut BattleObjectModuleAccessor) -> (u32, i32) {
     if module_accessor.is_null() {
         return (0, -1);
     }
@@ -353,8 +351,9 @@ unsafe fn log_fp_transition(
         None => "unknown",
     };
     let host_cpu_state = match operation_cpu {
-        Some(value) => value.to_string(),
-        None => "unknown".to_string(),
+        Some(true) => "true",
+        Some(false) => "false",
+        None => "unknown",
     };
 
     crate::boss_log!(
@@ -551,9 +550,7 @@ pub unsafe fn log_item_host(module_accessor: *mut BattleObjectModuleAccessor) {
 /// Samples ordinary fighter entries as a comparison control for the hardware
 /// trace. This intentionally reports only observable state; it does not infer
 /// Figure Player status from `is_operation_cpu`.
-pub unsafe fn log_fighter_control_state(
-    module_accessor: *mut BattleObjectModuleAccessor,
-) {
+pub unsafe fn log_fighter_control_state(module_accessor: *mut BattleObjectModuleAccessor) {
     if module_accessor.is_null() || !crate::debug::enabled() {
         return;
     }

@@ -65,6 +65,10 @@ unsafe fn restore_dracula_after_item_wipe(module_accessor: *mut BattleObjectModu
     if module_accessor.is_null() || !sv_information::is_ready_go() || DEAD {
         return;
     }
+    let fighter_manager = boss_helpers::fighter_manager();
+    if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
+        return;
+    }
 
     let entry = boss_helpers::entry_id(module_accessor).min(7);
     ENTRY_ID = entry;
@@ -237,7 +241,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 selection::is_selected_css_boss(module_accessor, *ITEM_KIND_DRACULA);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
+                let stage_id = smash::app::stage::get_stage_id();
+                if boss_helpers::is_boss_preview_stage(stage_id) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor =
                         smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -288,8 +293,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             ModelModule::rotation_order(module_accessor),
                         );
                     }
-                } else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id())
-                {
+                } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_dracula_after_item_wipe(module_accessor);
                     if sv_information::is_ready_go() == false {
                         let entry = boss_helpers::entry_id(module_accessor).min(7);
@@ -1661,48 +1665,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     let fighter_manager = boss_helpers::fighter_manager();
-                    if FighterManager::is_result_mode(fighter_manager) == true {
-                        if RESULT_SPAWNED == false {
-                            let result_entry = ENTRY_ID.min(7);
-                            let result_kind = if TRANSFORMED_MODE {
-                                *ITEM_KIND_DRACULA2
-                            } else {
-                                *ITEM_KIND_DRACULA
-                            };
-                            ItemModule::remove_all(module_accessor);
-                            let result_boma = boss_helpers::acquire_boss_item(
-                                module_accessor,
-                                &raw mut BOSS_ID,
-                                result_kind,
-                            );
-                            RESULT_SPAWNED = true;
-                            EXISTS_PUBLIC = !result_boma.is_null();
-                            if result_boma.is_null() {
-                                crate::boss_log!(
-                                    "[PB][Result][Dracula] entry {}: native result item acquisition failed phase2={}",
-                                    result_entry,
-                                    TRANSFORMED_MODE
-                                );
-                            } else {
-                                StatusModule::change_status_request_from_script(
-                                    result_boma,
-                                    *ITEM_STATUS_KIND_FOR_BOSS_START,
-                                    true,
-                                );
-                                crate::boss_log!(
-                                    "[PB][Result][Dracula] entry {}: spawned result item id=0x{:x} kind={} phase2={} status={}",
-                                    result_entry,
-                                    BOSS_ID[result_entry],
-                                    result_kind,
-                                    TRANSFORMED_MODE,
-                                    StatusModule::status_kind(result_boma)
-                                );
-                            }
-                        }
-                        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
-                        return;
-                    }
-
                     // FIXES SPAWN
 
                     if DEAD == false {
@@ -2438,8 +2400,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     }
 }
 
-pub fn install() {}
-
 pub unsafe fn frame(fighter: &mut L2CFighterCommon) {
+    if crate::should_quarantine_boss_frame(fighter.module_accessor) {
+        return;
+    }
     once_per_fighter_frame(fighter);
 }

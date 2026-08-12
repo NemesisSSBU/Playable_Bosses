@@ -17,6 +17,21 @@ const FIELD_NFP_NUMBERING_ID: Hash40 = Hash40(0x109c_47bcd7);
 const FIELD_DEFAULT_COLOR: Hash40 = Hash40(0x0d8f_701ce7);
 const FIELD_ENABLE_UNKNOWN_NUMBERING_ID: Hash40 = Hash40(0x1bc5_7e4ce5);
 
+// Nintendo's NFP layout stores the character identifier in the first two head
+// bytes, the character variant in the third, and the model/numbering value in
+// the first two tail bytes. ui_amiibo_db uses the latter three values to choose
+// a character row; ui_amiibo_id is a UI identifier, not a replacement for that
+// NFP match key.
+const PRIVATE_VIRTUAL_BOSS_HEAD: u32 = 0x5042_0001;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct NfpMatchKey {
+    pub character_id_upper: u16,
+    pub character_id_lower: u8,
+    pub numbering_id: u16,
+    pub enable_unknown_numbering_id: bool,
+}
+
 #[derive(Clone, Copy)]
 enum AmiiboFieldType {
     Bool,
@@ -212,27 +227,24 @@ fn patch_u8_field(record: &mut ParamStruct, hash: Hash40, value: u8) -> bool {
 
 /// Build one appended database row from a schema-validated row.
 ///
-/// The NFP identity fields that are not represented by the configured full
-/// figure ID are intentionally copied from the template. The current database
-/// schema uses those fields for its normal/unknown-numbering variants; this
-/// function does not invent values for them.
+/// Physical donor/remap mappings preserve the template's NFP subfields. The
+/// private virtual catalog has a verified NFP match key, so its append rows
+/// replace the character variant and model-number fields explicitly.
 pub(crate) fn prepare_append_record(
     template: &ParamStruct,
     ui_amiibo_id: u64,
     ui_chara_id: Hash40,
     nfp_character_id_upper: u16,
     default_color: u8,
+    nfp_match_key: Option<NfpMatchKey>,
 ) -> Option<ParamStruct> {
     if !is_verified_amiibo_record(template) {
         return None;
     }
 
     let mut record = template.clone();
-    let patched = patch_hash40_field(
-        &mut record,
-        FIELD_UI_AMIIBO_ID,
-        Hash40(ui_amiibo_id),
-    ) && patch_hash40_field(&mut record, FIELD_UI_CHARA_ID, ui_chara_id)
+    let mut patched = patch_hash40_field(&mut record, FIELD_UI_AMIIBO_ID, Hash40(ui_amiibo_id))
+        && patch_hash40_field(&mut record, FIELD_UI_CHARA_ID, ui_chara_id)
         && patch_bool_field(&mut record, FIELD_IS_VALID, true)
         && patch_u16_field(
             &mut record,
@@ -240,6 +252,22 @@ pub(crate) fn prepare_append_record(
             nfp_character_id_upper,
         )
         && patch_u8_field(&mut record, FIELD_DEFAULT_COLOR, default_color);
+
+    if let Some(key) = nfp_match_key {
+        patched = patched
+            && key.character_id_upper == nfp_character_id_upper
+            && patch_u8_field(
+                &mut record,
+                FIELD_NFP_CHARACTER_ID_LOWER,
+                key.character_id_lower,
+            )
+            && patch_u16_field(&mut record, FIELD_NFP_NUMBERING_ID, key.numbering_id)
+            && patch_bool_field(
+                &mut record,
+                FIELD_ENABLE_UNKNOWN_NUMBERING_ID,
+                key.enable_unknown_numbering_id,
+            );
+    }
 
     patched.then_some(record)
 }
@@ -262,6 +290,7 @@ pub struct ConfiguredBossAmiibo {
     pub tag_id: u64,
     pub ui_amiibo_id: u64,
     pub nfp_character_id_upper: u16,
+    pub nfp_match_key: Option<NfpMatchKey>,
     pub default_color: u8,
     pub remap_existing: bool,
 }
@@ -435,8 +464,9 @@ fn parse_tag_id(value: &str) -> Result<(u64, u64, u16), String> {
 
     let tag_id = u64::from_str_radix(digits, 16)
         .map_err(|_| "tag ID is outside the 64-bit range".to_string())?;
-    // ui_amiibo_id is serialized as the tag's low 40 bits. The byte at
-    // bits 40..47 is not represented by this PRC schema and must be zero.
+    // ui_amiibo_id is serialized as the tag's low 40 bits. The character
+    // variant byte at bits 40..47 has its own NFP field; the supported config
+    // format keeps it zero so physical/remap behavior remains unchanged.
     if tag_id & 0x0000_FF00_0000_0000 != 0 {
         return Err("tag bits 40..47 must be zero for ui_amiibo_db.prc".to_string());
     }
@@ -448,6 +478,45 @@ fn parse_tag_id(value: &str) -> Result<(u64, u64, u16), String> {
     }
 
     Ok((tag_id, lower, upper))
+}
+
+#[inline(always)]
+fn is_private_virtual_boss_id(tag_id: u64) -> bool {
+    (tag_id >> 32) as u32 == PRIVATE_VIRTUAL_BOSS_HEAD
+}
+
+#[inline(always)]
+fn nfp_character_id_lower_from_tag_id(tag_id: u64) -> u8 {
+    ((tag_id >> 40) & 0xff) as u8
+}
+
+#[inline(always)]
+fn nfp_numbering_id_from_tag_id(tag_id: u64) -> u16 {
+    ((tag_id >> 16) & 0xffff) as u16
+}
+
+#[inline(always)]
+fn private_virtual_nfp_match_key(tag_id: u64) -> Option<NfpMatchKey> {
+    if !is_private_virtual_boss_id(tag_id) {
+        return None;
+    }
+    let numbering_id = nfp_numbering_id_from_tag_id(tag_id);
+    (numbering_id != 0).then_some(NfpMatchKey {
+        character_id_upper: (tag_id >> 48) as u16,
+        character_id_lower: nfp_character_id_lower_from_tag_id(tag_id),
+        numbering_id,
+        enable_unknown_numbering_id: false,
+    })
+}
+
+#[inline(always)]
+fn private_virtual_layout_error(tag_id: u64) -> Option<&'static str> {
+    if is_private_virtual_boss_id(tag_id) && nfp_numbering_id_from_tag_id(tag_id) == 0 {
+        return Some(
+            "private virtual Boss Amiibo IDs require a non-zero model-number field (bits 16..31); the legacy 0x504200010000000N layout makes every boss share the same native NFP match key",
+        );
+    }
+    None
 }
 
 fn parsed_configured_mappings() -> Vec<ConfiguredBossAmiibo> {
@@ -467,11 +536,15 @@ fn parsed_configured_mappings() -> Vec<ConfiguredBossAmiibo> {
         let Ok((tag_id, ui_amiibo_id, nfp_character_id_upper)) = parse_tag_id(raw_id) else {
             continue;
         };
+        if private_virtual_layout_error(tag_id).is_some() {
+            continue;
+        }
         mappings.push(ConfiguredBossAmiibo {
             identity,
             tag_id,
             ui_amiibo_id,
             nfp_character_id_upper,
+            nfp_match_key: private_virtual_nfp_match_key(tag_id),
             default_color: entry.default_color.unwrap_or(identity.default_color),
             remap_existing: entry.remap_existing,
         });
@@ -489,7 +562,11 @@ pub fn configured_mappings() -> Vec<ConfiguredBossAmiibo> {
             let duplicate = mappings.iter().enumerate().any(|(other_index, other)| {
                 index != other_index
                     && (mapping.tag_id == other.tag_id
-                        || mapping.ui_amiibo_id == other.ui_amiibo_id)
+                        || mapping.ui_amiibo_id == other.ui_amiibo_id
+                        || (!mapping.remap_existing
+                            && !other.remap_existing
+                            && mapping.nfp_match_key.is_some()
+                            && mapping.nfp_match_key == other.nfp_match_key))
             });
             (!duplicate).then_some(*mapping)
         })
@@ -523,8 +600,13 @@ pub fn validation_errors() -> Vec<String> {
         if raw_id.trim().is_empty() {
             continue;
         }
-        if let Err(error) = parse_tag_id(raw_id) {
-            errors.push(format!("{} ({}): {}", identity.name, identity.key, error));
+        match parse_tag_id(raw_id) {
+            Err(error) => errors.push(format!("{} ({}): {}", identity.name, identity.key, error)),
+            Ok((tag_id, _, _)) => {
+                if let Some(error) = private_virtual_layout_error(tag_id) {
+                    errors.push(format!("{} ({}): {}", identity.name, identity.key, error));
+                }
+            }
         }
     }
 
@@ -541,6 +623,21 @@ pub fn validation_errors() -> Vec<String> {
                 errors.push(format!(
                     "{} and {} reuse full amiibo ID 0x{:016x}; each boss needs a unique donor ID",
                     mapping.identity.name, other.identity.name, mapping.tag_id
+                ));
+            }
+            if !mapping.remap_existing
+                && !other.remap_existing
+                && mapping.nfp_match_key.is_some()
+                && mapping.nfp_match_key == other.nfp_match_key
+            {
+                let key = mapping.nfp_match_key.expect("checked above");
+                errors.push(format!(
+                    "{} and {} reuse native NFP key upper=0x{:04x} lower=0x{:02x} numbering=0x{:04x}; private virtual IDs must use unique model numbers",
+                    mapping.identity.name,
+                    other.identity.name,
+                    key.character_id_upper,
+                    key.character_id_lower,
+                    key.numbering_id
                 ));
             }
         }
@@ -574,10 +671,19 @@ mod tests {
     }
 
     #[test]
-    fn accepts_private_virtual_boss_ids() {
+    fn accepts_private_virtual_boss_ids_with_a_unique_model_number() {
         assert_eq!(
-            parse_tag_id("0x5042000100000001"),
-            Ok((0x5042000100000001, 0x0100000001, 0x5042))
+            parse_tag_id("0x5042000100010001"),
+            Ok((0x5042000100010001, 0x0100010001, 0x5042))
+        );
+        assert_eq!(
+            private_virtual_nfp_match_key(0x5042_0001_0001_0001),
+            Some(NfpMatchKey {
+                character_id_upper: 0x5042,
+                character_id_lower: 0,
+                numbering_id: 1,
+                enable_unknown_numbering_id: false,
+            })
         );
     }
 
@@ -622,8 +728,14 @@ mod tests {
         assert_eq!(FIELD_UI_AMIIBO_ID, Hash40::new("ui_amiibo_id"));
         assert_eq!(FIELD_UI_CHARA_ID, Hash40::new("ui_chara_id"));
         assert_eq!(FIELD_IS_VALID, Hash40::new("is_valid"));
-        assert_eq!(FIELD_NFP_CHARACTER_ID_UPPER, Hash40::new("nfp_character_id_upper"));
-        assert_eq!(FIELD_NFP_CHARACTER_ID_LOWER, Hash40::new("nfp_character_id_lower"));
+        assert_eq!(
+            FIELD_NFP_CHARACTER_ID_UPPER,
+            Hash40::new("nfp_character_id_upper")
+        );
+        assert_eq!(
+            FIELD_NFP_CHARACTER_ID_LOWER,
+            Hash40::new("nfp_character_id_lower")
+        );
         assert_eq!(FIELD_NFP_NUMBERING_ID, Hash40::new("nfp_numbering_id"));
         assert_eq!(FIELD_DEFAULT_COLOR, Hash40::new("default_color"));
         assert_eq!(
@@ -683,6 +795,7 @@ mod tests {
             Hash40::new("ui_chara_masterhand"),
             0,
             0,
+            None,
         )
         .expect("zero-upper Mario row should be constructible");
 
@@ -738,7 +851,7 @@ mod tests {
     }
 
     #[test]
-    fn virtual_master_hand_append_patches_the_actual_nfp_fields() {
+    fn virtual_master_hand_append_patches_the_complete_native_nfp_key() {
         let mut reader = std::io::Cursor::new(include_bytes!("../ui_amiibo_db.prc"));
         let root = prc::read_stream(&mut reader).expect("fixture PRC should parse");
         let records = root
@@ -751,10 +864,16 @@ mod tests {
 
         let appended = prepare_append_record(
             &template,
-            0x0100_0000_01,
+            0x0100_0100_01,
             Hash40::new("ui_chara_masterhand"),
             0x5042,
             3,
+            Some(NfpMatchKey {
+                character_id_upper: 0x5042,
+                character_id_lower: 0,
+                numbering_id: 1,
+                enable_unknown_numbering_id: false,
+            }),
         )
         .expect("virtual Master Hand row should be constructible");
 
@@ -774,7 +893,7 @@ mod tests {
             field(&appended, FIELD_NFP_NUMBERING_ID)
                 .and_then(|value| value.try_into_ref::<u16>().ok())
                 .copied(),
-            Some(0)
+            Some(1)
         );
         assert_eq!(
             field(&appended, FIELD_NFP_CHARACTER_ID_LOWER)
@@ -782,5 +901,40 @@ mod tests {
                 .copied(),
             Some(0)
         );
+        assert_eq!(
+            field(&appended, FIELD_ENABLE_UNKNOWN_NUMBERING_ID)
+                .and_then(|value| value.try_into_ref::<bool>().ok())
+                .copied(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn private_virtual_ids_use_the_model_number_as_the_native_discriminator() {
+        let master = 0x5042_0001_0001_0001;
+        let crazy = 0x5042_0001_0002_0002;
+        assert_eq!(nfp_numbering_id_from_tag_id(master), 1);
+        assert_eq!(nfp_numbering_id_from_tag_id(crazy), 2);
+        assert_ne!(
+            private_virtual_nfp_match_key(master),
+            private_virtual_nfp_match_key(crazy)
+        );
+        assert!(private_virtual_layout_error(0x5042_0001_0000_0001).is_some());
+    }
+
+    #[test]
+    fn all_eleven_virtual_catalog_ids_have_distinct_explicit_nfp_keys() {
+        let mut keys = Vec::new();
+        for ordinal in 1u64..=11 {
+            let tag_id = 0x5042_0001_0000_0000 | (ordinal << 16) | ordinal;
+            let key = private_virtual_nfp_match_key(tag_id).expect("valid private virtual key");
+            assert_eq!(key.character_id_upper, 0x5042);
+            assert_eq!(key.character_id_lower, 0);
+            assert_eq!(key.numbering_id, ordinal as u16);
+            assert!(!key.enable_unknown_numbering_id);
+            assert!(private_virtual_layout_error(tag_id).is_none());
+            assert!(!keys.contains(&key));
+            keys.push(key);
+        }
     }
 }

@@ -82,6 +82,7 @@ static mut MASTER_KENZAN_SPAWNED: bool = false;
 static mut MASTER_CPU_IDLE_STALL_FRAMES: [i32; 8] = [0; 8];
 static mut MASTER_CPU_LAST_X: [f32; 8] = [0.0; 8];
 static mut MASTER_CPU_LAST_Y: [f32; 8] = [0.0; 8];
+static mut MASTER_CPU_RECOVERY_LOG_COOLDOWN: [i32; 8] = [0; 8];
 
 // Crazy Hand
 static mut CONTROLLABLE_2: bool = true;
@@ -102,8 +103,128 @@ static mut CRAZY_KUMO_ENDING: bool = false;
 static mut CRAZY_CPU_IDLE_STALL_FRAMES: [i32; 8] = [0; 8];
 static mut CRAZY_CPU_LAST_X: [f32; 8] = [0.0; 8];
 static mut CRAZY_CPU_LAST_Y: [f32; 8] = [0.0; 8];
+static mut CRAZY_CPU_RECOVERY_LOG_COOLDOWN: [i32; 8] = [0; 8];
 static mut CRAZY_FIRE_CHARIOT_PINKY_LATCH: [bool; 8] = [false; 8];
 static mut CRAZY_FIRE_CHARIOT_THUMB_LATCH: [bool; 8] = [false; 8];
+
+// A paired hand move is a short-lived ownership window.  It prevents the
+// normal CPU recovery/status correction code from changing one hand while the
+// other hand is in the synchronized native move, then restores each item's
+// prior owner flag when the window closes.
+static mut HAND_TEAM_AUTHORITY_ACTIVE: bool = false;
+static mut HAND_TEAM_ACTION: i32 = 0;
+static mut HAND_TEAM_INITIATOR_ENTRY: usize = usize::MAX;
+static mut HAND_TEAM_MASTER_ENTRY: usize = usize::MAX;
+static mut HAND_TEAM_CRAZY_ENTRY: usize = usize::MAX;
+static mut HAND_TEAM_MASTER_ID: u32 = 0;
+static mut HAND_TEAM_CRAZY_ID: u32 = 0;
+static mut HAND_TEAM_MASTER_PLAYER_WAS_SET: bool = false;
+static mut HAND_TEAM_CRAZY_PLAYER_WAS_SET: bool = false;
+static mut HAND_TEAM_REQUESTED_MASTER_STATUS: i32 = -1;
+static mut HAND_TEAM_REQUESTED_CRAZY_STATUS: i32 = -1;
+static mut HAND_TEAM_LAST_STATUS_SIGNATURE: u64 = u64::MAX;
+
+// Entrance is separate from the normal paired-attack authority. The native
+// entry2 animation is a short pre-Ready-Go window, so it needs its own
+// ownership barrier when one hand is an operation CPU.
+static mut HAND_ENTRANCE_AUTHORITY_ACTIVE: bool = false;
+static mut HAND_ENTRANCE_MASTER_ENTRY: usize = usize::MAX;
+static mut HAND_ENTRANCE_CRAZY_ENTRY: usize = usize::MAX;
+static mut HAND_ENTRANCE_MASTER_ID: u32 = 0;
+static mut HAND_ENTRANCE_CRAZY_ID: u32 = 0;
+static mut HAND_ENTRANCE_MASTER_PLAYER_WAS_SET: bool = false;
+static mut HAND_ENTRANCE_CRAZY_PLAYER_WAS_SET: bool = false;
+static mut HAND_ENTRANCE_MASTER_SEEN: bool = false;
+static mut HAND_ENTRANCE_CRAZY_SEEN: bool = false;
+static mut HAND_ENTRANCE_MASTER_STATUS_ACCEPTED: bool = false;
+static mut HAND_ENTRANCE_CRAZY_STATUS_ACCEPTED: bool = false;
+static mut HAND_ENTRANCE_TICKS: i32 = 0;
+static mut HAND_ENTRANCE_LAST_SIGNATURE: u64 = u64::MAX;
+static mut HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED: bool = false;
+static mut HAND_ENTRANCE_LAST_ANCHOR_LOG_TICK: i32 = -1;
+// Entry2 is requested from both hidden-host callbacks.  Keep one stable
+// stage-local anchor instead of allowing the second callback to move the pair
+// toward a different host or the dead-area midpoint.
+static mut HAND_ENTRANCE_ANCHOR_VALID: bool = false;
+static mut HAND_ENTRANCE_ANCHOR_X: f32 = 0.0;
+static mut HAND_ENTRANCE_ANCHOR_Y: f32 = 0.0;
+static mut HAND_ENTRANCE_ANCHOR_Z: f32 = 0.0;
+// A completed or failed entrance is terminal for the current pre-Ready-Go
+// lifecycle. Without this latch, a hand that remains in the native wait state
+// can satisfy the discovery predicate again and re-request Entry2 every frame.
+static mut HAND_ENTRANCE_DONE: bool = false;
+// Keep the authority claim separate from live-object validation. Spawn
+// bookkeeping can observe a transient native state while the item objects are
+// still valid; only the entrance coordinator may release this claim.
+const HAND_ENTRANCE_PHASE_IDLE: u8 = 0;
+const HAND_ENTRANCE_PHASE_REQUESTED: u8 = 1;
+const HAND_ENTRANCE_PHASE_ACTIVE: u8 = 2;
+static mut HAND_ENTRANCE_PHASE: u8 = HAND_ENTRANCE_PHASE_IDLE;
+const HAND_ENTRANCE_TIMEOUT: i32 = 180;
+const HAND_ENTRANCE_ANCHOR_FRAMES: i32 = 60;
+static mut FINDER_LAST_STATUS_SIGNATURE: u64 = u64::MAX;
+static mut FINDER_TRIGGER_LATCH: [bool; 8] = [false; 8];
+static mut FINDER_LAST_REQUEST_SIGNATURE: u64 = u64::MAX;
+
+// Logging snapshots copy mutable static state before formatting. Apart from
+// avoiding mutable-static references in the formatter, this makes one log
+// line describe a single coherent authority state.
+#[derive(Copy, Clone)]
+struct HandTeamLogSnapshot {
+    action: i32,
+    initiator_entry: usize,
+    master_entry: usize,
+    crazy_entry: usize,
+    master_id: u32,
+    crazy_id: u32,
+    requested_master_status: i32,
+    requested_crazy_status: i32,
+}
+
+#[inline(always)]
+unsafe fn hand_team_log_snapshot() -> HandTeamLogSnapshot {
+    HandTeamLogSnapshot {
+        action: HAND_TEAM_ACTION,
+        initiator_entry: HAND_TEAM_INITIATOR_ENTRY,
+        master_entry: HAND_TEAM_MASTER_ENTRY,
+        crazy_entry: HAND_TEAM_CRAZY_ENTRY,
+        master_id: HAND_TEAM_MASTER_ID,
+        crazy_id: HAND_TEAM_CRAZY_ID,
+        requested_master_status: HAND_TEAM_REQUESTED_MASTER_STATUS,
+        requested_crazy_status: HAND_TEAM_REQUESTED_CRAZY_STATUS,
+    }
+}
+
+#[derive(Copy, Clone)]
+struct HandEntranceLogSnapshot {
+    master_entry: usize,
+    crazy_entry: usize,
+    master_id: u32,
+    crazy_id: u32,
+    phase: u8,
+    master_seen: bool,
+    crazy_seen: bool,
+}
+
+#[inline(always)]
+unsafe fn hand_entrance_log_snapshot() -> HandEntranceLogSnapshot {
+    HandEntranceLogSnapshot {
+        master_entry: HAND_ENTRANCE_MASTER_ENTRY,
+        crazy_entry: HAND_ENTRANCE_CRAZY_ENTRY,
+        master_id: HAND_ENTRANCE_MASTER_ID,
+        crazy_id: HAND_ENTRANCE_CRAZY_ID,
+        phase: HAND_ENTRANCE_PHASE,
+        master_seen: HAND_ENTRANCE_MASTER_SEEN,
+        crazy_seen: HAND_ENTRANCE_CRAZY_SEEN,
+    }
+}
+
+const HAND_TEAM_ACTION_BARK: i32 = 1;
+const HAND_TEAM_ACTION_PUNCH: i32 = 2;
+const HAND_TEAM_ACTION_SHOCK: i32 = 3;
+const HAND_TEAM_ACTION_LASER: i32 = 4;
+const HAND_TEAM_ACTION_SCRATCH: i32 = 5;
+const HAND_TEAM_ACTION_FINDER: i32 = 6;
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -215,6 +336,7 @@ unsafe fn reset_master_cpu_idle_recovery(entry_id: usize) {
         MASTER_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
         MASTER_CPU_LAST_X[entry_id] = 0.0;
         MASTER_CPU_LAST_Y[entry_id] = 0.0;
+        MASTER_CPU_RECOVERY_LOG_COOLDOWN[entry_id] = 0;
     }
 }
 
@@ -224,6 +346,7 @@ unsafe fn reset_crazy_cpu_idle_recovery(entry_id: usize) {
         CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
         CRAZY_CPU_LAST_X[entry_id] = 0.0;
         CRAZY_CPU_LAST_Y[entry_id] = 0.0;
+        CRAZY_CPU_RECOVERY_LOG_COOLDOWN[entry_id] = 0;
     }
 }
 
@@ -269,10 +392,20 @@ unsafe fn maybe_recover_master_cpu_idle(
     if boss_boma.is_null() || entry_id >= 8 {
         return;
     }
+    // Pair actions temporarily own both item objects. Recovery is a safety
+    // net for an idle CPU hand, not an authority that may rewrite a native
+    // synchronized status while the partner is acting.
+    if hand_team_authority_active_for_boma(boss_boma) {
+        reset_master_cpu_idle_recovery(entry_id);
+        return;
+    }
     let status = StatusModule::status_kind(boss_boma);
     if !master_cpu_wait_family_status(status) {
         reset_master_cpu_idle_recovery(entry_id);
         return;
+    }
+    if MASTER_CPU_RECOVERY_LOG_COOLDOWN[entry_id] > 0 {
+        MASTER_CPU_RECOVERY_LOG_COOLDOWN[entry_id] -= 1;
     }
 
     let current_x = PostureModule::pos_x(boss_boma);
@@ -291,6 +424,8 @@ unsafe fn maybe_recover_master_cpu_idle(
 
     if MASTER_CPU_IDLE_STALL_FRAMES[entry_id] >= 90 {
         MASTER_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
+        let should_log = MASTER_CPU_RECOVERY_LOG_COOLDOWN[entry_id] == 0;
+        MASTER_CPU_RECOVERY_LOG_COOLDOWN[entry_id] = 300;
         MotionModule::change_motion(
             boss_boma,
             Hash40::new("wait"),
@@ -306,14 +441,16 @@ unsafe fn maybe_recover_master_cpu_idle(
             *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
             true,
         );
-        println!(
-            "[PB][MasterHand][CPURecovery] entry={} status={} pos=({:.2},{:.2},{:.2})",
-            entry_id,
-            status,
-            current_x,
-            current_y,
-            PostureModule::pos_z(boss_boma),
-        );
+        if should_log {
+            crate::boss_log!(
+                "[PB][MasterHand][CPURecovery] entry={} status={} pos=({:.2},{:.2},{:.2}) cooldown=300",
+                entry_id,
+                status,
+                current_x,
+                current_y,
+                PostureModule::pos_z(boss_boma),
+            );
+        }
     }
 }
 
@@ -325,10 +462,17 @@ unsafe fn maybe_recover_crazy_cpu_idle(
     if boss_boma.is_null() || entry_id >= 8 {
         return;
     }
+    if hand_team_authority_active_for_boma(boss_boma) {
+        reset_crazy_cpu_idle_recovery(entry_id);
+        return;
+    }
     let status = StatusModule::status_kind(boss_boma);
     if !crazy_cpu_wait_family_status(status) {
         reset_crazy_cpu_idle_recovery(entry_id);
         return;
+    }
+    if CRAZY_CPU_RECOVERY_LOG_COOLDOWN[entry_id] > 0 {
+        CRAZY_CPU_RECOVERY_LOG_COOLDOWN[entry_id] -= 1;
     }
 
     let current_x = PostureModule::pos_x(boss_boma);
@@ -347,6 +491,8 @@ unsafe fn maybe_recover_crazy_cpu_idle(
 
     if CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] >= 90 {
         CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
+        let should_log = CRAZY_CPU_RECOVERY_LOG_COOLDOWN[entry_id] == 0;
+        CRAZY_CPU_RECOVERY_LOG_COOLDOWN[entry_id] = 300;
         MotionModule::change_motion(
             boss_boma,
             Hash40::new("wait"),
@@ -362,14 +508,16 @@ unsafe fn maybe_recover_crazy_cpu_idle(
             *ITEM_CRAZYHAND_STATUS_KIND_WAIT_CHASE,
             true,
         );
-        println!(
-            "[PB][CrazyHand][CPURecovery] entry={} status={} pos=({:.2},{:.2},{:.2})",
-            entry_id,
-            status,
-            current_x,
-            current_y,
-            PostureModule::pos_z(boss_boma),
-        );
+        if should_log {
+            crate::boss_log!(
+                "[PB][CrazyHand][CPURecovery] entry={} status={} pos=({:.2},{:.2},{:.2}) cooldown=300",
+                entry_id,
+                status,
+                current_x,
+                current_y,
+                PostureModule::pos_z(boss_boma),
+            );
+        }
     }
 }
 
@@ -501,10 +649,8 @@ unsafe fn finder_native_status(boma: *mut BattleObjectModuleAccessor, master: bo
     let status = StatusModule::status_kind(boma);
     if master {
         status == *ITEM_MASTERHAND_STATUS_KIND_FINDER
-            || status == *ITEM_MASTERHAND_STATUS_KIND_COMPOUND_ATTACK_WAIT
     } else {
         status == *ITEM_CRAZYHAND_STATUS_KIND_FINDER
-            || status == *ITEM_CRAZYHAND_STATUS_KIND_COMPOUND_ATTACK_WAIT
     }
 }
 
@@ -639,6 +785,8 @@ unsafe fn clear_finder_runtime(reason: &str) {
             *ITEM_CRAZYHAND_INSTANCE_WORK_FLAG_FINDER_SHIRINK_START,
         );
 
+    release_hand_team_authority(reason);
+
     FINDER = false;
     MASTER_FINDER_ACTIVE = false;
     CRAZY_FINDER_ACTIVE = false;
@@ -647,6 +795,8 @@ unsafe fn clear_finder_runtime(reason: &str) {
     FINDER_DEAD_RANGE_APPLIED = false;
     FINDER_BASE_RANGE_CAPTURED = false;
     FINDER_NATIVE_ACTIVE_SEEN = false;
+    FINDER_LAST_STATUS_SIGNATURE = u64::MAX;
+    FINDER_LAST_REQUEST_SIGNATURE = u64::MAX;
     FINDER_MASTER_ENTRY = 8;
     FINDER_CRAZY_ENTRY = 8;
     if reason == "normal_complete" {
@@ -831,18 +981,29 @@ unsafe fn start_finder_pair(lua_state: u64, crazy_boma: *mut BattleObjectModuleA
         && !SCRATCH_BLOW
         && cooldown_ready;
 
-    crate::boss_log!(
-        "[PB][Finder] request master_entry={} crazy_entry={} team_valid={} facing_valid={} floor={:.1} cooldown={} master_status={} crazy_status={} ready={}",
-        master_entry,
-        crazy_entry,
-        same_team,
-        facing_ok,
-        floor_dist,
-        cooldown_frames,
-        master_status,
-        crazy_status,
-        pair_ready
-    );
+    let request_signature = (master_entry as u64)
+        ^ (crazy_entry as u64).rotate_left(7)
+        ^ (master_status as u32 as u64).rotate_left(13)
+        ^ (crazy_status as u32 as u64).rotate_left(29)
+        ^ ((same_team as u64) << 45)
+        ^ ((facing_ok as u64) << 46)
+        ^ ((pair_ready as u64) << 47)
+        ^ ((cooldown_ready as u64) << 48);
+    if request_signature != FINDER_LAST_REQUEST_SIGNATURE {
+        FINDER_LAST_REQUEST_SIGNATURE = request_signature;
+        crate::boss_log!(
+            "[PB][Finder] request master_entry={} crazy_entry={} team_valid={} facing_valid={} floor={:.1} cooldown={} master_status={} crazy_status={} ready={}",
+            master_entry,
+            crazy_entry,
+            same_team,
+            facing_ok,
+            floor_dist,
+            cooldown_frames,
+            master_status,
+            crazy_status,
+            pair_ready
+        );
+    }
     if !pair_ready || floor_dist <= 0.0 || floor_dist > 50.0 {
         return false;
     }
@@ -892,14 +1053,40 @@ unsafe fn start_finder_pair(lua_state: u64, crazy_boma: *mut BattleObjectModuleA
     // These are the real item statuses used by Ultimate's compound Finder
     // protocol. Request both before returning so neither hand remains in the
     // normal gameplay path after the pair is accepted.
-    StatusModule::change_status_request_from_script(
+    if !begin_hand_team_authority(
+        HAND_TEAM_ACTION_FINDER,
+        crazy_entry,
+        master_entry,
         master_boma,
-        *ITEM_MASTERHAND_STATUS_KIND_FINDER,
-        true,
+        crazy_entry,
+        crazy_boma,
+    ) {
+        FINDER = false;
+        FINDER_BASE_RANGE_CAPTURED = false;
+        crate::boss_log!(
+            "[PB][Finder] abort pair_authority_failed master_entry={} crazy_entry={}",
+            master_entry,
+            crazy_entry
+        );
+        return false;
+    }
+
+    // The native compound path marks this Crazy Hand work flag before the
+    // Finder status is accepted. Set the named flag before requesting either
+    // status, then request Crazy first so its partner role is ready when the
+    // Master Hand Finder state starts.
+    WorkModule::on_flag(
+        crazy_boma,
+        *ITEM_CRAZYHAND_INSTANCE_WORK_FLAG_FINDER_SHIRINK_START,
     );
-    StatusModule::change_status_request_from_script(
+    let crazy_request_result = StatusModule::change_status_request_from_script(
         crazy_boma,
         *ITEM_CRAZYHAND_STATUS_KIND_FINDER,
+        true,
+    );
+    let master_request_result = StatusModule::change_status_request_from_script(
+        master_boma,
+        *ITEM_MASTERHAND_STATUS_KIND_FINDER,
         true,
     );
     let base = core::ptr::addr_of!(FINDER_BASE_RANGE).read();
@@ -908,11 +1095,21 @@ unsafe fn start_finder_pair(lua_state: u64, crazy_boma: *mut BattleObjectModuleA
     let master_frame = MotionModule::frame(master_boma);
     let crazy_frame = MotionModule::frame(crazy_boma);
     crate::boss_log!(
-        "[PB][Finder] native_status=queued start_sync_frame=0 master_entry={} crazy_entry={} status_before=master:{} crazy:{} master_motion=0x{:x} master_frame={:.1} crazy_motion=0x{:x} crazy_frame={:.1} captured_dead_area=({:.1},{:.1},{:.1},{:.1}) camera_state=native_status_pending finder_dead_area=native_status_pending",
+        "[PB][Finder] native_status=queued request_order=crazy_then_master crazy_status_id={} master_status_id={} crazy_request_result=0x{:x} master_request_result=0x{:x} crazy_shrink_flag={} start_sync_frame=0 master_entry={} crazy_entry={} status_before=master:{} crazy:{} status_after_request=master:{} crazy:{} master_motion=0x{:x} master_frame={:.1} crazy_motion=0x{:x} crazy_frame={:.1} captured_dead_area=({:.1},{:.1},{:.1},{:.1}) camera_state=native_status_pending finder_dead_area=native_status_pending",
+        *ITEM_CRAZYHAND_STATUS_KIND_FINDER,
+        *ITEM_MASTERHAND_STATUS_KIND_FINDER,
+        crazy_request_result,
+        master_request_result,
+        WorkModule::is_flag(
+            crazy_boma,
+            *ITEM_CRAZYHAND_INSTANCE_WORK_FLAG_FINDER_SHIRINK_START,
+        ),
         master_entry,
         crazy_entry,
         master_status,
         crazy_status,
+        StatusModule::status_kind(master_boma),
+        StatusModule::status_kind(crazy_boma),
         master_motion,
         master_frame,
         crazy_motion,
@@ -957,6 +1154,29 @@ unsafe fn update_finder_runtime(lua_state: u64) {
     CRAZY_FINDER_ACTIVE = crazy_native;
     FINDER_CAMERA_APPLIED = master_native && crazy_native;
     FINDER_DEAD_RANGE_APPLIED = master_native && crazy_native;
+
+    let status_signature = (master_status as u32 as u64)
+        ^ ((crazy_status as u32 as u64) << 19)
+        ^ MotionModule::motion_kind(master_boma).rotate_left(7)
+        ^ MotionModule::motion_kind(crazy_boma).rotate_left(29);
+    if status_signature != FINDER_LAST_STATUS_SIGNATURE {
+        FINDER_LAST_STATUS_SIGNATURE = status_signature;
+        let sync_frames = FINDER_SYNC_FRAMES;
+        crate::boss_log!(
+            "[PB][Finder] status_transition sync_frame={} master_status={} crazy_status={} master_motion=0x{:x} crazy_motion=0x{:x} crazy_shrink_flag={} native_master={} native_crazy={}",
+            sync_frames,
+            master_status,
+            crazy_status,
+            MotionModule::motion_kind(master_boma),
+            MotionModule::motion_kind(crazy_boma),
+            WorkModule::is_flag(
+                crazy_boma,
+                *ITEM_CRAZYHAND_INSTANCE_WORK_FLAG_FINDER_SHIRINK_START,
+            ),
+            master_native,
+            crazy_native
+        );
+    }
 
     if master_native && crazy_native {
         FINDER_NATIVE_ACTIVE_SEEN = true;
@@ -1088,7 +1308,1284 @@ unsafe fn configure_boss_owner_mode(boss_boma: *mut BattleObjectModuleAccessor, 
 }
 
 #[inline(always)]
+fn hand_team_action_name(action: i32) -> &'static str {
+    match action {
+        HAND_TEAM_ACTION_BARK => "bark",
+        HAND_TEAM_ACTION_PUNCH => "team_punch",
+        HAND_TEAM_ACTION_SHOCK => "electric_shock",
+        HAND_TEAM_ACTION_LASER => "double_finger_beam",
+        HAND_TEAM_ACTION_SCRATCH => "scratch",
+        HAND_TEAM_ACTION_FINDER => "finder",
+        _ => "none",
+    }
+}
+
+#[inline(always)]
+unsafe fn shared_hand_action() -> i32 {
+    if FINDER {
+        HAND_TEAM_ACTION_FINDER
+    } else if BARK {
+        HAND_TEAM_ACTION_BARK
+    } else if PUNCH {
+        HAND_TEAM_ACTION_PUNCH
+    } else if SHOCK {
+        HAND_TEAM_ACTION_SHOCK
+    } else if LASER {
+        HAND_TEAM_ACTION_LASER
+    } else if SCRATCH_BLOW {
+        HAND_TEAM_ACTION_SCRATCH
+    } else {
+        0
+    }
+}
+
+#[inline(always)]
+unsafe fn hand_team_action_statuses(action: i32) -> (i32, i32) {
+    match action {
+        HAND_TEAM_ACTION_BARK => (
+            *ITEM_MASTERHAND_STATUS_KIND_BARK,
+            *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT,
+        ),
+        HAND_TEAM_ACTION_PUNCH => (
+            *ITEM_MASTERHAND_STATUS_KIND_GOOPAA,
+            *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT,
+        ),
+        HAND_TEAM_ACTION_SHOCK => (
+            *ITEM_MASTERHAND_STATUS_KIND_ELECTROSHOCK_START,
+            *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT,
+        ),
+        HAND_TEAM_ACTION_LASER => (
+            *ITEM_MASTERHAND_STATUS_KIND_WFINGER_BEAM_START,
+            *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT,
+        ),
+        HAND_TEAM_ACTION_SCRATCH => (
+            *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW_START,
+            *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_START,
+        ),
+        HAND_TEAM_ACTION_FINDER => (
+            *ITEM_MASTERHAND_STATUS_KIND_FINDER,
+            *ITEM_CRAZYHAND_STATUS_KIND_FINDER,
+        ),
+        _ => (-1, -1),
+    }
+}
+
+#[inline(always)]
+unsafe fn hand_team_authority_active_for_boma(boma: *mut BattleObjectModuleAccessor) -> bool {
+    if !HAND_TEAM_AUTHORITY_ACTIVE || boma.is_null() {
+        return false;
+    }
+    (HAND_TEAM_MASTER_ID != 0
+        && sv_battle_object::is_active(HAND_TEAM_MASTER_ID)
+        && sv_battle_object::module_accessor(HAND_TEAM_MASTER_ID) == boma)
+        || (HAND_TEAM_CRAZY_ID != 0
+            && sv_battle_object::is_active(HAND_TEAM_CRAZY_ID)
+            && sv_battle_object::module_accessor(HAND_TEAM_CRAZY_ID) == boma)
+}
+
+#[inline(always)]
+unsafe fn begin_hand_team_authority(
+    action: i32,
+    initiator_entry: usize,
+    master_entry: usize,
+    master_boma: *mut BattleObjectModuleAccessor,
+    crazy_entry: usize,
+    crazy_boma: *mut BattleObjectModuleAccessor,
+) -> bool {
+    if action == 0
+        || master_entry >= 8
+        || crazy_entry >= 8
+        || master_boma.is_null()
+        || crazy_boma.is_null()
+        || !sv_battle_object::is_active(BOSS_ID[master_entry])
+        || !sv_battle_object::is_active(BOSS_ID_2[crazy_entry])
+        || TeamModule::team_no(master_boma) != TeamModule::team_no(crazy_boma)
+    {
+        return false;
+    }
+
+    if HAND_TEAM_AUTHORITY_ACTIVE {
+        return HAND_TEAM_MASTER_ID == BOSS_ID[master_entry]
+            && HAND_TEAM_CRAZY_ID == BOSS_ID_2[crazy_entry]
+            && HAND_TEAM_ACTION == action;
+    }
+
+    let master_player_was_set = WorkModule::is_flag(master_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+    let crazy_player_was_set = WorkModule::is_flag(crazy_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+    let requested = hand_team_action_statuses(action);
+    let fighter_manager = boss_helpers::fighter_manager();
+    let master_cpu = !fighter_manager.is_null()
+        && boss_helpers::is_operation_cpu_entry(fighter_manager, master_entry);
+    let crazy_cpu = !fighter_manager.is_null()
+        && boss_helpers::is_operation_cpu_entry(fighter_manager, crazy_entry);
+
+    HAND_TEAM_AUTHORITY_ACTIVE = true;
+    HAND_TEAM_ACTION = action;
+    HAND_TEAM_INITIATOR_ENTRY = initiator_entry;
+    HAND_TEAM_MASTER_ENTRY = master_entry;
+    HAND_TEAM_CRAZY_ENTRY = crazy_entry;
+    let master_id = BOSS_ID[master_entry];
+    let crazy_id = BOSS_ID_2[crazy_entry];
+    HAND_TEAM_MASTER_ID = master_id;
+    HAND_TEAM_CRAZY_ID = crazy_id;
+    HAND_TEAM_MASTER_PLAYER_WAS_SET = master_player_was_set;
+    HAND_TEAM_CRAZY_PLAYER_WAS_SET = crazy_player_was_set;
+    HAND_TEAM_REQUESTED_MASTER_STATUS = requested.0;
+    HAND_TEAM_REQUESTED_CRAZY_STATUS = requested.1;
+    HAND_TEAM_LAST_STATUS_SIGNATURE = u64::MAX;
+
+    // The native item status is still the source of the animation/action. The
+    // temporary player-owner flag only prevents an operation-CPU item from
+    // immediately handing the synchronized status back to its generic AI.
+    WorkModule::on_flag(master_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+    WorkModule::on_flag(crazy_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+    WorkModule::set_int(
+        master_boma,
+        master_entry as i32,
+        ITEM_INSTANCE_WORK_INT_ENTRY_ID,
+    );
+    WorkModule::set_int(
+        crazy_boma,
+        crazy_entry as i32,
+        ITEM_INSTANCE_WORK_INT_ENTRY_ID,
+    );
+
+    crate::boss_log!(
+        "[PB][HandTeam] request action={} initiator_entry={} master_entry={} crazy_entry={} master_cpu={} crazy_cpu={} master_object=0x{:x} crazy_object=0x{:x} pre_status=master:{} crazy:{} pre_motion=master:0x{:x} crazy:0x{:x} requested_status=master:{} crazy:{} temporary_ai_suppression=true prior_player_flag=master:{} crazy:{} activation_result=authority_acquired",
+        hand_team_action_name(action),
+        initiator_entry,
+        master_entry,
+        crazy_entry,
+        master_cpu,
+        crazy_cpu,
+        master_id,
+        crazy_id,
+        StatusModule::status_kind(master_boma),
+        StatusModule::status_kind(crazy_boma),
+        MotionModule::motion_kind(master_boma),
+        MotionModule::motion_kind(crazy_boma),
+        requested.0,
+        requested.1,
+        master_player_was_set,
+        crazy_player_was_set
+    );
+    true
+}
+
+#[inline(always)]
+unsafe fn log_hand_team_status() {
+    if !HAND_TEAM_AUTHORITY_ACTIVE {
+        return;
+    }
+    let snapshot = hand_team_log_snapshot();
+    let master_boma = if snapshot.master_id != 0 && sv_battle_object::is_active(snapshot.master_id)
+    {
+        sv_battle_object::module_accessor(snapshot.master_id)
+    } else {
+        core::ptr::null_mut()
+    };
+    let crazy_boma = if snapshot.crazy_id != 0 && sv_battle_object::is_active(snapshot.crazy_id) {
+        sv_battle_object::module_accessor(snapshot.crazy_id)
+    } else {
+        core::ptr::null_mut()
+    };
+    if master_boma.is_null() || crazy_boma.is_null() {
+        return;
+    }
+
+    let master_status = StatusModule::status_kind(master_boma);
+    let crazy_status = StatusModule::status_kind(crazy_boma);
+    let master_motion = MotionModule::motion_kind(master_boma);
+    let crazy_motion = MotionModule::motion_kind(crazy_boma);
+    let signature = (master_status as u32 as u64)
+        ^ ((crazy_status as u32 as u64) << 17)
+        ^ (master_motion.rotate_left(7))
+        ^ (crazy_motion.rotate_left(23));
+    if signature == HAND_TEAM_LAST_STATUS_SIGNATURE {
+        return;
+    }
+    HAND_TEAM_LAST_STATUS_SIGNATURE = signature;
+    crate::boss_log!(
+        "[PB][HandTeam] active=true action={} initiator_entry={} master_entry={} crazy_entry={} master_object=0x{:x} crazy_object=0x{:x} requested_master_status={} requested_crazy_status={} observed_master_status={} observed_crazy_status={} observed_master_motion=0x{:x} observed_crazy_motion=0x{:x} temporary_ai_suppression=true",
+        hand_team_action_name(snapshot.action),
+        snapshot.initiator_entry,
+        snapshot.master_entry,
+        snapshot.crazy_entry,
+        snapshot.master_id,
+        snapshot.crazy_id,
+        snapshot.requested_master_status,
+        snapshot.requested_crazy_status,
+        master_status,
+        crazy_status,
+        master_motion,
+        crazy_motion
+    );
+}
+
+#[inline(always)]
+unsafe fn release_hand_team_authority(reason: &str) {
+    if !HAND_TEAM_AUTHORITY_ACTIVE {
+        return;
+    }
+
+    let master_id = HAND_TEAM_MASTER_ID;
+    let crazy_id = HAND_TEAM_CRAZY_ID;
+    let master_entry = HAND_TEAM_MASTER_ENTRY;
+    let crazy_entry = HAND_TEAM_CRAZY_ENTRY;
+    let initiator_entry = HAND_TEAM_INITIATOR_ENTRY;
+    let action = HAND_TEAM_ACTION;
+    let master_was_player = HAND_TEAM_MASTER_PLAYER_WAS_SET;
+    let crazy_was_player = HAND_TEAM_CRAZY_PLAYER_WAS_SET;
+    let master_boma = if master_id != 0 && sv_battle_object::is_active(master_id) {
+        sv_battle_object::module_accessor(master_id)
+    } else {
+        core::ptr::null_mut()
+    };
+    let crazy_boma = if crazy_id != 0 && sv_battle_object::is_active(crazy_id) {
+        sv_battle_object::module_accessor(crazy_id)
+    } else {
+        core::ptr::null_mut()
+    };
+    if !master_boma.is_null() {
+        if master_was_player {
+            WorkModule::on_flag(master_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+        } else {
+            WorkModule::off_flag(master_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+        }
+    }
+    if !crazy_boma.is_null() {
+        if crazy_was_player {
+            WorkModule::on_flag(crazy_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+        } else {
+            WorkModule::off_flag(crazy_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+        }
+    }
+
+    let fighter_manager = boss_helpers::fighter_manager();
+    if !fighter_manager.is_null() {
+        if master_entry < 8 {
+            CONTROLLABLE = !boss_helpers::is_operation_cpu_entry(fighter_manager, master_entry);
+        }
+        if crazy_entry < 8 {
+            CONTROLLABLE_2 = !boss_helpers::is_operation_cpu_entry(fighter_manager, crazy_entry);
+        }
+    }
+
+    crate::boss_log!(
+        "[PB][HandTeam] exit action={} initiator_entry={} master_entry={} crazy_entry={} master_object=0x{:x} crazy_object=0x{:x} reason={} observed_status=master:{} crazy:{} temporary_ai_suppression=false restored_player_flag=master:{} crazy:{}",
+        hand_team_action_name(action),
+        initiator_entry,
+        master_entry,
+        crazy_entry,
+        master_id,
+        crazy_id,
+        reason,
+        if master_boma.is_null() { -1 } else { StatusModule::status_kind(master_boma) },
+        if crazy_boma.is_null() { -1 } else { StatusModule::status_kind(crazy_boma) },
+        master_was_player,
+        crazy_was_player
+    );
+
+    HAND_TEAM_AUTHORITY_ACTIVE = false;
+    HAND_TEAM_ACTION = 0;
+    HAND_TEAM_INITIATOR_ENTRY = usize::MAX;
+    HAND_TEAM_MASTER_ENTRY = usize::MAX;
+    HAND_TEAM_CRAZY_ENTRY = usize::MAX;
+    HAND_TEAM_MASTER_ID = 0;
+    HAND_TEAM_CRAZY_ID = 0;
+    HAND_TEAM_MASTER_PLAYER_WAS_SET = false;
+    HAND_TEAM_CRAZY_PLAYER_WAS_SET = false;
+    HAND_TEAM_REQUESTED_MASTER_STATUS = -1;
+    HAND_TEAM_REQUESTED_CRAZY_STATUS = -1;
+    HAND_TEAM_LAST_STATUS_SIGNATURE = u64::MAX;
+}
+
+#[inline(always)]
+unsafe fn release_hand_entrance_authority(reason: &str) {
+    if !HAND_ENTRANCE_AUTHORITY_ACTIVE {
+        return;
+    }
+
+    let master_id = HAND_ENTRANCE_MASTER_ID;
+    let crazy_id = HAND_ENTRANCE_CRAZY_ID;
+    let master_entry = HAND_ENTRANCE_MASTER_ENTRY;
+    let crazy_entry = HAND_ENTRANCE_CRAZY_ENTRY;
+    let phase = HAND_ENTRANCE_PHASE;
+    let master_was_player = HAND_ENTRANCE_MASTER_PLAYER_WAS_SET;
+    let crazy_was_player = HAND_ENTRANCE_CRAZY_PLAYER_WAS_SET;
+    let master_boma = if master_id != 0 && sv_battle_object::is_active(master_id) {
+        sv_battle_object::module_accessor(master_id)
+    } else {
+        core::ptr::null_mut()
+    };
+    let crazy_boma = if crazy_id != 0 && sv_battle_object::is_active(crazy_id) {
+        sv_battle_object::module_accessor(crazy_id)
+    } else {
+        core::ptr::null_mut()
+    };
+
+    if !master_boma.is_null() {
+        if master_was_player {
+            WorkModule::on_flag(master_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+        } else {
+            WorkModule::off_flag(master_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+        }
+    }
+    if !crazy_boma.is_null() {
+        if crazy_was_player {
+            WorkModule::on_flag(crazy_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+        } else {
+            WorkModule::off_flag(crazy_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+        }
+    }
+
+    crate::boss_log!(
+        "[PB][HandEntrance] exit master_entry={} crazy_entry={} master_object=0x{:x} crazy_object=0x{:x} reason={} phase={} observed_status=master:{} crazy:{} observed_motion=master:0x{:x} crazy:0x{:x} position=master:({:.2},{:.2},{:.2}) crazy:({:.2},{:.2},{:.2}) authority_restored=true",
+        master_entry,
+        crazy_entry,
+        master_id,
+        crazy_id,
+        reason,
+        phase,
+        if master_boma.is_null() { -1 } else { StatusModule::status_kind(master_boma) },
+        if crazy_boma.is_null() { -1 } else { StatusModule::status_kind(crazy_boma) },
+        if master_boma.is_null() { 0 } else { MotionModule::motion_kind(master_boma) },
+        if crazy_boma.is_null() { 0 } else { MotionModule::motion_kind(crazy_boma) },
+        if master_boma.is_null() { 0.0 } else { PostureModule::pos_x(master_boma) },
+        if master_boma.is_null() { 0.0 } else { PostureModule::pos_y(master_boma) },
+        if master_boma.is_null() { 0.0 } else { PostureModule::pos_z(master_boma) },
+        if crazy_boma.is_null() { 0.0 } else { PostureModule::pos_x(crazy_boma) },
+        if crazy_boma.is_null() { 0.0 } else { PostureModule::pos_y(crazy_boma) },
+        if crazy_boma.is_null() { 0.0 } else { PostureModule::pos_z(crazy_boma) },
+    );
+
+    HAND_ENTRANCE_AUTHORITY_ACTIVE = false;
+    HAND_ENTRANCE_MASTER_ENTRY = usize::MAX;
+    HAND_ENTRANCE_CRAZY_ENTRY = usize::MAX;
+    HAND_ENTRANCE_MASTER_ID = 0;
+    HAND_ENTRANCE_CRAZY_ID = 0;
+    HAND_ENTRANCE_MASTER_PLAYER_WAS_SET = false;
+    HAND_ENTRANCE_CRAZY_PLAYER_WAS_SET = false;
+    HAND_ENTRANCE_MASTER_SEEN = false;
+    HAND_ENTRANCE_CRAZY_SEEN = false;
+    HAND_ENTRANCE_MASTER_STATUS_ACCEPTED = false;
+    HAND_ENTRANCE_CRAZY_STATUS_ACCEPTED = false;
+    HAND_ENTRANCE_TICKS = 0;
+    HAND_ENTRANCE_LAST_SIGNATURE = u64::MAX;
+    HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED = false;
+    HAND_ENTRANCE_LAST_ANCHOR_LOG_TICK = -1;
+    HAND_ENTRANCE_PHASE = HAND_ENTRANCE_PHASE_IDLE;
+    HAND_ENTRANCE_DONE = true;
+    HAND_ENTRANCE_ANCHOR_VALID = false;
+    HAND_ENTRANCE_ANCHOR_X = 0.0;
+    HAND_ENTRANCE_ANCHOR_Y = 0.0;
+    HAND_ENTRANCE_ANCHOR_Z = 0.0;
+}
+
+#[inline(always)]
+unsafe fn find_hand_entrance_pair() -> Option<(
+    usize,
+    u32,
+    *mut BattleObjectModuleAccessor,
+    usize,
+    u32,
+    *mut BattleObjectModuleAccessor,
+)> {
+    if sv_information::is_ready_go() || HAND_ENTRANCE_DONE {
+        return None;
+    }
+    let fighter_manager = boss_helpers::fighter_manager();
+    if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
+        return None;
+    }
+    if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
+        return None;
+    }
+
+    let entry_motion = smash::hash40("entry2");
+    for master_entry in 0..8 {
+        let master_id = BOSS_ID[master_entry];
+        if master_id == 0 || !sv_battle_object::is_active(master_id) {
+            continue;
+        }
+        let master_boma = sv_battle_object::module_accessor(master_id);
+        if master_boma.is_null()
+            || smash::app::utility::get_kind(&mut *master_boma) != *ITEM_KIND_MASTERHAND
+        {
+            continue;
+        }
+        let master_status = StatusModule::status_kind(master_boma);
+        let master_motion = MotionModule::motion_kind(master_boma);
+        let master_is_entering =
+            master_status == *ITEM_STATUS_KIND_ENTRY || master_motion == entry_motion;
+        let master_is_safe_wait = master_cpu_wait_family_status(master_status);
+
+        for crazy_entry in 0..8 {
+            let crazy_id = BOSS_ID_2[crazy_entry];
+            if crazy_id == 0 || !sv_battle_object::is_active(crazy_id) {
+                continue;
+            }
+            let crazy_boma = sv_battle_object::module_accessor(crazy_id);
+            if crazy_boma.is_null()
+                || smash::app::utility::get_kind(&mut *crazy_boma) != *ITEM_KIND_CRAZYHAND
+                || TeamModule::team_no(master_boma) != TeamModule::team_no(crazy_boma)
+            {
+                continue;
+            }
+            let crazy_status = StatusModule::status_kind(crazy_boma);
+            let crazy_motion = MotionModule::motion_kind(crazy_boma);
+            let crazy_is_entering =
+                crazy_status == *ITEM_STATUS_KIND_ENTRY || crazy_motion == entry_motion;
+            let crazy_is_safe_wait = crazy_cpu_wait_family_status(crazy_status);
+
+            // One hand can advance into its native wait state before the
+            // partner item is acquired. Only accept that ordering while the
+            // other hand is still entering, so a completed entrance cannot
+            // be retriggered on subsequent pre-Ready-Go frames.
+            if (master_is_entering || (master_is_safe_wait && crazy_is_entering))
+                && (crazy_is_entering || (crazy_is_safe_wait && master_is_entering))
+            {
+                return Some((
+                    master_entry,
+                    master_id,
+                    master_boma,
+                    crazy_entry,
+                    crazy_id,
+                    crazy_boma,
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// Entry2 is authored for the native boss presentation and does not guarantee
+/// that an item acquired on a normal stage starts inside that stage's camera.
+/// Rebase the pair only when the current item positions are outside the live
+/// dead range, preserving their relative spacing and using the current hidden
+/// host as the stage-local anchor when it is valid.
+#[inline(always)]
+unsafe fn anchor_hand_entrance_pair(
+    master_boma: *mut BattleObjectModuleAccessor,
+    crazy_boma: *mut BattleObjectModuleAccessor,
+    host_boma: *mut BattleObjectModuleAccessor,
+    lua_state: u64,
+    force_stage_center: bool,
+) {
+    if master_boma.is_null() || crazy_boma.is_null() {
+        return;
+    }
+
+    let master_before = Vector3f {
+        x: PostureModule::pos_x(master_boma),
+        y: PostureModule::pos_y(master_boma),
+        z: PostureModule::pos_z(master_boma),
+    };
+    let crazy_before = Vector3f {
+        x: PostureModule::pos_x(crazy_boma),
+        y: PostureModule::pos_y(crazy_boma),
+        z: PostureModule::pos_z(crazy_boma),
+    };
+    let range = dead_range(lua_state);
+    // dead_range is ordered as left, right, top, bottom.  Treating the first
+    // two fields as symmetric extents can put the native Entry2 pair outside
+    // the current stage camera on asymmetric stages.
+    let range_width = range.y - range.x;
+    let range_height = range.z - range.w;
+    if !range.x.is_finite()
+        || !range.y.is_finite()
+        || !range.z.is_finite()
+        || !range.w.is_finite()
+        || range_width <= 1.0
+        || range_height <= 1.0
+        || !master_before.x.is_finite()
+        || !master_before.y.is_finite()
+        || !crazy_before.x.is_finite()
+        || !crazy_before.y.is_finite()
+    {
+        let anchor_tick = HAND_ENTRANCE_TICKS;
+        if HAND_ENTRANCE_LAST_ANCHOR_LOG_TICK != anchor_tick
+            && (anchor_tick <= 1 || anchor_tick % 15 == 0)
+        {
+            HAND_ENTRANCE_LAST_ANCHOR_LOG_TICK = anchor_tick;
+            crate::boss_log!(
+                "[PB][HandEntrance] position_anchor skipped reason=invalid_range_or_position master_pos=({:.2},{:.2},{:.2}) crazy_pos=({:.2},{:.2},{:.2}) dead_range=({:.2},{:.2},{:.2},{:.2})",
+                master_before.x,
+                master_before.y,
+                master_before.z,
+                crazy_before.x,
+                crazy_before.y,
+                crazy_before.z,
+                range.x,
+                range.y,
+                range.z,
+                range.w
+            );
+        }
+        return;
+    }
+
+    let center = Vector3f {
+        x: (master_before.x + crazy_before.x) * 0.5,
+        y: (master_before.y + crazy_before.y) * 0.5,
+        z: (master_before.z + crazy_before.z) * 0.5,
+    };
+    let half_width = (master_before.x - crazy_before.x).abs() * 0.5;
+    let half_height = (master_before.y - crazy_before.y).abs() * 0.5;
+    let margin_x = range_width * 0.10;
+    let margin_y = range_height * 0.10;
+    let visible_left = range.x + margin_x;
+    let visible_right = range.y - margin_x;
+    let visible_bottom = range.w + margin_y;
+    let visible_top = range.z - margin_y;
+    let pair_min_x = visible_left + half_width;
+    let pair_max_x = visible_right - half_width;
+    let pair_min_y = visible_bottom + half_height;
+    let pair_max_y = visible_top - half_height;
+    let pair_fits = pair_min_x <= pair_max_x && pair_min_y <= pair_max_y;
+    let pair_outside = !pair_fits
+        || center.x < pair_min_x
+        || center.x > pair_max_x
+        || center.y < pair_min_y
+        || center.y > pair_max_y;
+
+    let host_anchor = if HAND_ENTRANCE_ANCHOR_VALID {
+        Vector3f {
+            x: HAND_ENTRANCE_ANCHOR_X,
+            y: HAND_ENTRANCE_ANCHOR_Y,
+            z: HAND_ENTRANCE_ANCHOR_Z,
+        }
+    } else if !host_boma.is_null() {
+        Vector3f {
+            x: PostureModule::pos_x(host_boma),
+            y: PostureModule::pos_y(host_boma),
+            z: PostureModule::pos_z(host_boma),
+        }
+    } else {
+        Vector3f {
+            x: (range.x + range.y) * 0.5,
+            y: (range.z + range.w) * 0.5,
+            z: center.z,
+        }
+    };
+    let host_is_finite =
+        host_anchor.x.is_finite() && host_anchor.y.is_finite() && host_anchor.z.is_finite();
+    let stage_center = Vector3f {
+        x: (range.x + range.y) * 0.5,
+        y: (range.z + range.w) * 0.5,
+        z: center.z,
+    };
+    let anchor = if host_is_finite {
+        host_anchor
+    } else {
+        stage_center
+    };
+    // A newly acquired pair can inherit the native boss-stage separation. If
+    // that separation is larger than the current stage's visible area, merely
+    // translating both objects preserves an off-screen pair. Derive a safe
+    // temporary separation from the live range instead; this changes only the
+    // bounded Entry2 presentation transform and never changes collision data.
+    let safe_half_width = ((visible_right - visible_left) * 0.32).max(1.0);
+    let safe_half_height = ((visible_top - visible_bottom) * 0.18).max(1.0);
+    let temporary_half_width = if pair_fits {
+        half_width
+    } else {
+        safe_half_width
+    };
+    let temporary_half_height = if pair_fits {
+        half_height
+    } else {
+        safe_half_height
+    };
+    let target_center = if force_stage_center {
+        // Prefer the stable hidden-host anchor when it is available. The
+        // native Entry2 motion is authored around the host/presentation
+        // origin, while the dead-area midpoint can be outside the active
+        // camera on normal and custom stages. Clamp either anchor to the
+        // current live range so this remains stage-agnostic.
+        let preferred_center = if HAND_ENTRANCE_ANCHOR_VALID || !host_boma.is_null() {
+            anchor
+        } else {
+            stage_center
+        };
+        if pair_fits {
+            Vector3f {
+                x: preferred_center.x.clamp(pair_min_x, pair_max_x),
+                y: preferred_center.y.clamp(pair_min_y, pair_max_y),
+                z: preferred_center.z,
+            }
+        } else {
+            Vector3f {
+                x: preferred_center.x.clamp(
+                    visible_left + safe_half_width,
+                    visible_right - safe_half_width,
+                ),
+                y: preferred_center.y.clamp(
+                    visible_bottom + safe_half_height,
+                    visible_top - safe_half_height,
+                ),
+                z: preferred_center.z,
+            }
+        }
+    } else if pair_fits {
+        Vector3f {
+            x: anchor.x.clamp(pair_min_x, pair_max_x),
+            y: anchor.y.clamp(pair_min_y, pair_max_y),
+            z: anchor.z,
+        }
+    } else {
+        Vector3f {
+            x: anchor.x.clamp(
+                visible_left + safe_half_width,
+                visible_right - safe_half_width,
+            ),
+            y: anchor.y.clamp(
+                visible_bottom + safe_half_height,
+                visible_top - safe_half_height,
+            ),
+            z: anchor.z,
+        }
+    };
+
+    let mut master_after = master_before;
+    let mut crazy_after = crazy_before;
+    let mut rebased = false;
+    let mut recomposed = false;
+    if force_stage_center || pair_outside {
+        if !pair_fits {
+            let horizontal_pair = (master_before.x - crazy_before.x).abs()
+                >= (master_before.y - crazy_before.y).abs();
+            let master_side = if master_before.x >= crazy_before.x {
+                1.0
+            } else {
+                -1.0
+            };
+            let master_vertical = if master_before.y >= crazy_before.y {
+                1.0
+            } else {
+                -1.0
+            };
+            master_after.x = target_center.x
+                + if horizontal_pair {
+                    master_side * temporary_half_width
+                } else {
+                    0.0
+                };
+            crazy_after.x = target_center.x
+                - if horizontal_pair {
+                    master_side * temporary_half_width
+                } else {
+                    0.0
+                };
+            master_after.y = target_center.y
+                + if horizontal_pair {
+                    0.0
+                } else {
+                    master_vertical * temporary_half_height
+                };
+            crazy_after.y = target_center.y
+                - if horizontal_pair {
+                    0.0
+                } else {
+                    master_vertical * temporary_half_height
+                };
+            master_after.z = target_center.z;
+            crazy_after.z = target_center.z;
+            recomposed = true;
+        } else {
+            let delta = Vector3f {
+                x: target_center.x - center.x,
+                y: target_center.y - center.y,
+                z: target_center.z - center.z,
+            };
+            master_after.x += delta.x;
+            master_after.y += delta.y;
+            master_after.z += delta.z;
+            crazy_after.x += delta.x;
+            crazy_after.y += delta.y;
+            crazy_after.z += delta.z;
+        }
+        PostureModule::set_pos(master_boma, &master_after);
+        PostureModule::set_pos(crazy_boma, &crazy_after);
+        rebased = true;
+    }
+
+    let anchor_tick = HAND_ENTRANCE_TICKS;
+    if HAND_ENTRANCE_LAST_ANCHOR_LOG_TICK != anchor_tick
+        && (anchor_tick <= 1 || anchor_tick % 15 == 0)
+    {
+        HAND_ENTRANCE_LAST_ANCHOR_LOG_TICK = anchor_tick;
+        crate::boss_log!(
+            "[PB][HandEntrance] position_anchor rebased={} recomposed={} force_stage_center={} pair_outside={} pair_fits={} anchor=({:.2},{:.2},{:.2}) dead_range=({:.2},{:.2},{:.2},{:.2}) master_before=({:.2},{:.2},{:.2}) crazy_before=({:.2},{:.2},{:.2}) master_after=({:.2},{:.2},{:.2}) crazy_after=({:.2},{:.2},{:.2})",
+            rebased,
+            recomposed,
+            force_stage_center,
+            pair_outside,
+            pair_fits,
+            target_center.x,
+            target_center.y,
+            target_center.z,
+            range.x,
+            range.y,
+            range.z,
+            range.w,
+            master_before.x,
+            master_before.y,
+            master_before.z,
+            crazy_before.x,
+            crazy_before.y,
+            crazy_before.z,
+            master_after.x,
+            master_after.y,
+            master_after.z,
+            crazy_after.x,
+            crazy_after.y,
+            crazy_after.z
+        );
+    }
+}
+
+/// Return true while the coordinator owns an entrance claim. Spawn bookkeeping
+/// must not reset the shared HandTeam state after both native Entry2 objects
+/// have been accepted, even if a transient native activity read is stale.
+#[inline(always)]
+unsafe fn hand_entrance_authority_claimed() -> bool {
+    HAND_ENTRANCE_AUTHORITY_ACTIVE && HAND_ENTRANCE_MASTER_ID != 0 && HAND_ENTRANCE_CRAZY_ID != 0
+}
+
+#[inline(always)]
+unsafe fn hand_entrance_owns_entry(entry_id: usize, crazy: bool) -> bool {
+    // The per-host reset path must not revoke a valid entrance merely because
+    // native status processing temporarily makes a kind/activity read stale.
+    // hand_entrance_step performs the authoritative live-object check and
+    // releases the claim if either object is genuinely gone.
+    if !hand_entrance_authority_claimed() {
+        return false;
+    }
+    if crazy {
+        HAND_ENTRANCE_CRAZY_ENTRY == entry_id
+    } else {
+        HAND_ENTRANCE_MASTER_ENTRY == entry_id
+    }
+}
+
+#[inline(always)]
+unsafe fn begin_hand_entrance_authority(
+    master_entry: usize,
+    master_id: u32,
+    master_boma: *mut BattleObjectModuleAccessor,
+    crazy_entry: usize,
+    crazy_id: u32,
+    crazy_boma: *mut BattleObjectModuleAccessor,
+    lua_state: u64,
+    host_boma: *mut BattleObjectModuleAccessor,
+) {
+    if HAND_ENTRANCE_AUTHORITY_ACTIVE {
+        return;
+    }
+
+    HAND_ENTRANCE_AUTHORITY_ACTIVE = true;
+    HAND_ENTRANCE_PHASE = HAND_ENTRANCE_PHASE_REQUESTED;
+    HAND_ENTRANCE_MASTER_ENTRY = master_entry;
+    HAND_ENTRANCE_CRAZY_ENTRY = crazy_entry;
+    HAND_ENTRANCE_MASTER_ID = master_id;
+    HAND_ENTRANCE_CRAZY_ID = crazy_id;
+    HAND_ENTRANCE_MASTER_PLAYER_WAS_SET =
+        WorkModule::is_flag(master_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+    HAND_ENTRANCE_CRAZY_PLAYER_WAS_SET =
+        WorkModule::is_flag(crazy_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+    HAND_ENTRANCE_MASTER_SEEN = MotionModule::motion_kind(master_boma) == smash::hash40("entry2");
+    HAND_ENTRANCE_CRAZY_SEEN = MotionModule::motion_kind(crazy_boma) == smash::hash40("entry2");
+    HAND_ENTRANCE_MASTER_STATUS_ACCEPTED =
+        StatusModule::status_kind(master_boma) == *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT;
+    HAND_ENTRANCE_CRAZY_STATUS_ACCEPTED =
+        StatusModule::status_kind(crazy_boma) == *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT;
+    HAND_ENTRANCE_TICKS = 0;
+    HAND_ENTRANCE_LAST_SIGNATURE = u64::MAX;
+    HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED = false;
+    HAND_ENTRANCE_LAST_ANCHOR_LOG_TICK = -1;
+
+    if !host_boma.is_null() {
+        let host_x = PostureModule::pos_x(host_boma);
+        let host_y = PostureModule::pos_y(host_boma);
+        let host_z = PostureModule::pos_z(host_boma);
+        if host_x.is_finite() && host_y.is_finite() && host_z.is_finite() {
+            HAND_ENTRANCE_ANCHOR_VALID = true;
+            HAND_ENTRANCE_ANCHOR_X = host_x;
+            HAND_ENTRANCE_ANCHOR_Y = host_y;
+            HAND_ENTRANCE_ANCHOR_Z = host_z;
+        } else {
+            HAND_ENTRANCE_ANCHOR_VALID = false;
+        }
+    } else {
+        HAND_ENTRANCE_ANCHOR_VALID = false;
+    }
+
+    let fighter_manager = boss_helpers::fighter_manager();
+    let master_cpu = boss_helpers::is_operation_cpu_entry(fighter_manager, master_entry);
+    let crazy_cpu = boss_helpers::is_operation_cpu_entry(fighter_manager, crazy_entry);
+    let pre_master_status = StatusModule::status_kind(master_boma);
+    let pre_crazy_status = StatusModule::status_kind(crazy_boma);
+    let pre_master_motion = MotionModule::motion_kind(master_boma);
+    let pre_crazy_motion = MotionModule::motion_kind(crazy_boma);
+    let master_status = *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT;
+    let crazy_status = *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT;
+
+    // Entry2 is authored for the native boss presentation scene. Start the
+    // pair at the stable stage-local host anchor (clamped to the live range)
+    // so its first camera-facing frame is not inherited from an off-stage
+    // boss spawn coordinate.
+    anchor_hand_entrance_pair(master_boma, crazy_boma, host_boma, lua_state, true);
+
+    WorkModule::on_flag(master_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+    WorkModule::on_flag(crazy_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+    WorkModule::set_int(
+        master_boma,
+        master_entry as i32,
+        ITEM_INSTANCE_WORK_INT_ENTRY_ID,
+    );
+    WorkModule::set_int(
+        crazy_boma,
+        crazy_entry as i32,
+        ITEM_INSTANCE_WORK_INT_ENTRY_ID,
+    );
+    StatusModule::change_status_request_from_script(master_boma, master_status, true);
+    StatusModule::change_status_request_from_script(crazy_boma, crazy_status, true);
+    MotionModule::change_motion(
+        master_boma,
+        Hash40::new("entry2"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    MotionModule::change_motion(
+        crazy_boma,
+        Hash40::new("entry2"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    MotionModule::set_rate(master_boma, 1.5);
+    MotionModule::set_rate(crazy_boma, 1.5);
+    smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(master_boma, 1.5);
+    smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(crazy_boma, 1.5);
+
+    // Entry2 may apply its authored translation when the status/motion is
+    // accepted. Recheck the pair after that native setup, not only before it,
+    // so the generic stage camera sees the same stage-local anchor.
+    anchor_hand_entrance_pair(master_boma, crazy_boma, host_boma, lua_state, true);
+
+    crate::boss_log!(
+        "[PB][HandEntrance] request master_entry={} crazy_entry={} master_cpu={} crazy_cpu={} master_object=0x{:x} crazy_object=0x{:x} pre_status=master:{} crazy:{} pre_motion=master:0x{:x} crazy:0x{:x} requested_status=master:{} crazy:{} requested_motion=entry2 position=master:({:.2},{:.2},{:.2}) crazy:({:.2},{:.2},{:.2}) authority_acquired=true",
+        master_entry,
+        crazy_entry,
+        master_cpu,
+        crazy_cpu,
+        master_id,
+        crazy_id,
+        pre_master_status,
+        pre_crazy_status,
+        pre_master_motion,
+        pre_crazy_motion,
+        master_status,
+        crazy_status,
+        PostureModule::pos_x(master_boma),
+        PostureModule::pos_y(master_boma),
+        PostureModule::pos_z(master_boma),
+        PostureModule::pos_x(crazy_boma),
+        PostureModule::pos_y(crazy_boma),
+        PostureModule::pos_z(crazy_boma),
+    );
+}
+
+/// Synchronize the native Master/Crazy entry2 animation after both item
+/// objects exist. This closes the ordering gap where the two per-host frame
+/// callbacks each saw only one hand during their own ENTRY branch.
+pub unsafe fn hand_entrance_step(lua_state: u64, host_boma: *mut BattleObjectModuleAccessor) {
+    if crate::any_post_match_pre_result() {
+        return;
+    }
+
+    if HAND_ENTRANCE_AUTHORITY_ACTIVE {
+        // The dispatcher visits both hidden hosts. Advance the coordinator's
+        // clock from one canonical side only, otherwise a two-hand pair ages
+        // twice as fast and can hit timeout/recovery paths inconsistently.
+        let caller_entry = boss_helpers::entry_id(host_boma);
+        let coordinator_tick = caller_entry == HAND_ENTRANCE_MASTER_ENTRY;
+        if coordinator_tick {
+            HAND_ENTRANCE_TICKS += 1;
+        }
+        let master_boma = if HAND_ENTRANCE_MASTER_ID != 0
+            && sv_battle_object::is_active(HAND_ENTRANCE_MASTER_ID)
+        {
+            sv_battle_object::module_accessor(HAND_ENTRANCE_MASTER_ID)
+        } else {
+            core::ptr::null_mut()
+        };
+        let crazy_boma =
+            if HAND_ENTRANCE_CRAZY_ID != 0 && sv_battle_object::is_active(HAND_ENTRANCE_CRAZY_ID) {
+                sv_battle_object::module_accessor(HAND_ENTRANCE_CRAZY_ID)
+            } else {
+                core::ptr::null_mut()
+            };
+        let fighter_manager = boss_helpers::fighter_manager();
+        if master_boma.is_null()
+            || crazy_boma.is_null()
+            || (!fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager))
+        {
+            release_hand_entrance_authority("transition_or_object_invalid");
+            return;
+        }
+
+        let master_status = StatusModule::status_kind(master_boma);
+        let crazy_status = StatusModule::status_kind(crazy_boma);
+        let master_motion = MotionModule::motion_kind(master_boma);
+        let crazy_motion = MotionModule::motion_kind(crazy_boma);
+        let entry_motion = smash::hash40("entry2");
+        HAND_ENTRANCE_MASTER_SEEN |= master_motion == entry_motion;
+        HAND_ENTRANCE_CRAZY_SEEN |= crazy_motion == entry_motion;
+        HAND_ENTRANCE_MASTER_STATUS_ACCEPTED |=
+            master_status == *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT;
+        HAND_ENTRANCE_CRAZY_STATUS_ACCEPTED |=
+            crazy_status == *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT;
+        let entrance_was_active = HAND_ENTRANCE_PHASE == HAND_ENTRANCE_PHASE_ACTIVE;
+        if HAND_ENTRANCE_MASTER_SEEN
+            && HAND_ENTRANCE_CRAZY_SEEN
+            && HAND_ENTRANCE_MASTER_STATUS_ACCEPTED
+            && HAND_ENTRANCE_CRAZY_STATUS_ACCEPTED
+        {
+            HAND_ENTRANCE_PHASE = HAND_ENTRANCE_PHASE_ACTIVE;
+            if !entrance_was_active {
+                let snapshot = hand_entrance_log_snapshot();
+                crate::boss_log!(
+                    "[PB][HandEntrance] phase=active master_entry={} crazy_entry={} master_object=0x{:x} crazy_object=0x{:x} observed_status=master:{} crazy:{} observed_motion=master:0x{:x} crazy:0x{:x}",
+                    snapshot.master_entry,
+                    snapshot.crazy_entry,
+                    snapshot.master_id,
+                    snapshot.crazy_id,
+                    master_status,
+                    crazy_status,
+                    master_motion,
+                    crazy_motion
+                );
+            }
+        }
+
+        // Native Entry2 can reapply its authored translation for a few frames
+        // after the request. Re-anchor only during that bounded entrance
+        // window; after it closes, native motion owns the positions normally.
+        if coordinator_tick && HAND_ENTRANCE_TICKS <= HAND_ENTRANCE_ANCHOR_FRAMES {
+            // Entry2 is authored for the native boss presentation scene. On a
+            // normal stage its root translation can leave the camera before
+            // Ready-Go, so keep the pair inside the live dead-range margins
+            // around the stable stage-local anchor for the bounded entrance
+            // window. This changes only the temporary item presentation
+            // transform; no camera or collision state is modified.
+            anchor_hand_entrance_pair(master_boma, crazy_boma, host_boma, lua_state, false);
+        }
+
+        let signature = (master_status as u32 as u64)
+            ^ ((crazy_status as u32 as u64) << 17)
+            ^ master_motion.rotate_left(7)
+            ^ crazy_motion.rotate_left(23);
+        if HAND_ENTRANCE_LAST_SIGNATURE != signature {
+            HAND_ENTRANCE_LAST_SIGNATURE = signature;
+            let snapshot = hand_entrance_log_snapshot();
+            crate::boss_log!(
+                "[PB][HandEntrance] active master_entry={} crazy_entry={} master_object=0x{:x} crazy_object=0x{:x} observed_status=master:{} crazy:{} observed_motion=master:0x{:x} crazy:0x{:x} position=master:({:.2},{:.2},{:.2}) crazy:({:.2},{:.2},{:.2}) seen=master:{} crazy:{}",
+                snapshot.master_entry,
+                snapshot.crazy_entry,
+                snapshot.master_id,
+                snapshot.crazy_id,
+                master_status,
+                crazy_status,
+                master_motion,
+                crazy_motion,
+                PostureModule::pos_x(master_boma),
+                PostureModule::pos_y(master_boma),
+                PostureModule::pos_z(master_boma),
+                PostureModule::pos_x(crazy_boma),
+                PostureModule::pos_y(crazy_boma),
+                PostureModule::pos_z(crazy_boma),
+                snapshot.master_seen,
+                snapshot.crazy_seen,
+            );
+        }
+
+        let both_native_accepted = HAND_ENTRANCE_MASTER_STATUS_ACCEPTED
+            && HAND_ENTRANCE_CRAZY_STATUS_ACCEPTED
+            && HAND_ENTRANCE_MASTER_SEEN
+            && HAND_ENTRANCE_CRAZY_SEEN;
+        if sv_information::is_ready_go() {
+            release_hand_entrance_authority(if both_native_accepted {
+                "native_entrance_complete"
+            } else {
+                "ready_go_before_native_accept"
+            });
+            return;
+        }
+
+        if HAND_ENTRANCE_MASTER_SEEN
+            && HAND_ENTRANCE_CRAZY_SEEN
+            && ((master_motion != entry_motion && crazy_motion != entry_motion)
+                || (MotionModule::is_end(master_boma) && MotionModule::is_end(crazy_boma)))
+        {
+            release_hand_entrance_authority("native_entrance_complete");
+        } else if HAND_ENTRANCE_TICKS >= HAND_ENTRANCE_TIMEOUT {
+            release_hand_entrance_authority("timeout");
+        }
+        return;
+    }
+
+    if let Some((master_entry, master_id, master_boma, crazy_entry, crazy_id, crazy_boma)) =
+        find_hand_entrance_pair()
+    {
+        begin_hand_entrance_authority(
+            master_entry,
+            master_id,
+            master_boma,
+            crazy_entry,
+            crazy_id,
+            crazy_boma,
+            lua_state,
+            host_boma,
+        );
+    }
+}
+
+pub unsafe fn hand_team_authority_active_for_debug() -> bool {
+    HAND_TEAM_AUTHORITY_ACTIVE || HAND_ENTRANCE_AUTHORITY_ACTIVE
+}
+
+pub unsafe fn abort_hand_team_for_transition(reason: &str) {
+    if FINDER || FINDER_BASE_RANGE_CAPTURED {
+        clear_finder_runtime_with_reason(reason);
+    }
+    release_hand_entrance_authority(reason);
+    release_hand_team_authority(reason);
+    reset_mastercrazy_shared_runtime();
+}
+
+/// Drop plugin-owned hand-action latches after native result mode has begun.
+///
+/// The normal post-match path calls `abort_hand_team_for_transition` while the
+/// battle objects are still available, which restores temporary item flags and
+/// Finder state. Result mode can also be observed without that intermediate
+/// callback, however. At that point native teardown owns the item objects, so
+/// this fallback must not dereference them or write their WorkModule state.
+/// Scene-exit reset retains the Finder snapshot until the native transition is
+/// over and performs the ordinary idempotent restoration at the safe boundary.
+pub unsafe fn quarantine_hand_authority_for_result(reason: &str) {
+    let had_hand_team = HAND_TEAM_AUTHORITY_ACTIVE;
+    let had_entrance = HAND_ENTRANCE_AUTHORITY_ACTIVE;
+    if crate::debug::enabled() && (had_hand_team || had_entrance) {
+        crate::boss_log!(
+            "[PB][ResultTransition] hand_authority_quarantine reason={} hand_team_active={} entrance_active={} native_item_access=false finder_state_preserved={}",
+            reason,
+            had_hand_team,
+            had_entrance,
+            FINDER || FINDER_BASE_RANGE_CAPTURED
+        );
+    }
+
+    // Only clear plugin bookkeeping. The original player flags are not
+    // restored here because doing so would require touching objects owned by
+    // native result teardown. The post-match path normally restores them
+    // before this fallback is reached.
+    HAND_TEAM_AUTHORITY_ACTIVE = false;
+    HAND_TEAM_ACTION = 0;
+    HAND_TEAM_INITIATOR_ENTRY = usize::MAX;
+    HAND_TEAM_MASTER_ENTRY = usize::MAX;
+    HAND_TEAM_CRAZY_ENTRY = usize::MAX;
+    HAND_TEAM_MASTER_ID = 0;
+    HAND_TEAM_CRAZY_ID = 0;
+    HAND_TEAM_MASTER_PLAYER_WAS_SET = false;
+    HAND_TEAM_CRAZY_PLAYER_WAS_SET = false;
+    HAND_TEAM_REQUESTED_MASTER_STATUS = -1;
+    HAND_TEAM_REQUESTED_CRAZY_STATUS = -1;
+    HAND_TEAM_LAST_STATUS_SIGNATURE = u64::MAX;
+
+    HAND_ENTRANCE_AUTHORITY_ACTIVE = false;
+    HAND_ENTRANCE_MASTER_ENTRY = usize::MAX;
+    HAND_ENTRANCE_CRAZY_ENTRY = usize::MAX;
+    HAND_ENTRANCE_MASTER_ID = 0;
+    HAND_ENTRANCE_CRAZY_ID = 0;
+    HAND_ENTRANCE_MASTER_PLAYER_WAS_SET = false;
+    HAND_ENTRANCE_CRAZY_PLAYER_WAS_SET = false;
+    HAND_ENTRANCE_MASTER_SEEN = false;
+    HAND_ENTRANCE_CRAZY_SEEN = false;
+    HAND_ENTRANCE_MASTER_STATUS_ACCEPTED = false;
+    HAND_ENTRANCE_CRAZY_STATUS_ACCEPTED = false;
+    HAND_ENTRANCE_TICKS = 0;
+    HAND_ENTRANCE_LAST_SIGNATURE = u64::MAX;
+    HAND_ENTRANCE_PHASE = HAND_ENTRANCE_PHASE_IDLE;
+    HAND_ENTRANCE_DONE = true;
+}
+
+#[inline(always)]
+unsafe fn sync_hand_team_authority_from_flags(
+    crazy_boma: *mut BattleObjectModuleAccessor,
+    initiator_entry: usize,
+) {
+    let action = shared_hand_action();
+    if action == 0 || action == HAND_TEAM_ACTION_FINDER || HAND_TEAM_AUTHORITY_ACTIVE {
+        return;
+    }
+    let (master_entry, master_boma) = finder_master_for_crazy(crazy_boma);
+    let mut crazy_entry = usize::MAX;
+    for entry in 0..8 {
+        if BOSS_ID_2[entry] != 0
+            && sv_battle_object::is_active(BOSS_ID_2[entry])
+            && sv_battle_object::module_accessor(BOSS_ID_2[entry]) == crazy_boma
+        {
+            crazy_entry = entry;
+            break;
+        }
+    }
+    if master_entry < 8 && crazy_entry < 8 {
+        let _ = begin_hand_team_authority(
+            action,
+            initiator_entry,
+            master_entry,
+            master_boma,
+            crazy_entry,
+            crazy_boma,
+        );
+    }
+}
+
+#[inline(always)]
+unsafe fn hand_team_native_action_still_active(
+    action: i32,
+    master_boma: *mut BattleObjectModuleAccessor,
+    crazy_boma: *mut BattleObjectModuleAccessor,
+) -> bool {
+    if master_boma.is_null() || crazy_boma.is_null() {
+        return false;
+    }
+
+    let master_status = StatusModule::status_kind(master_boma);
+    let crazy_status = StatusModule::status_kind(crazy_boma);
+    let master_motion = MotionModule::motion_kind(master_boma);
+    let crazy_motion = MotionModule::motion_kind(crazy_boma);
+
+    let motion_is = |motion: u64, name: &str| motion == smash::hash40(name);
+    match action {
+        HAND_TEAM_ACTION_BARK => {
+            master_status == *ITEM_MASTERHAND_STATUS_KIND_BARK
+                || motion_is(master_motion, "bark")
+                || motion_is(crazy_motion, "bark")
+        }
+        HAND_TEAM_ACTION_PUNCH => {
+            master_status == *ITEM_MASTERHAND_STATUS_KIND_GOOPAA
+                || motion_is(master_motion, "goopaa")
+                || motion_is(crazy_motion, "taggoopaa")
+        }
+        HAND_TEAM_ACTION_SHOCK => {
+            master_status == *ITEM_MASTERHAND_STATUS_KIND_ELECTROSHOCK_START
+                || master_status == *ITEM_MASTERHAND_STATUS_KIND_ELECTROSHOCK
+                || master_status == *ITEM_MASTERHAND_STATUS_KIND_ELECTROSHOCK_END
+                || motion_is(master_motion, "electroshock_start")
+                || motion_is(master_motion, "electroshock")
+                || motion_is(master_motion, "electroshock_end")
+                || motion_is(crazy_motion, "electroshock_start")
+                || motion_is(crazy_motion, "electroshock")
+                || motion_is(crazy_motion, "electroshock_end")
+        }
+        HAND_TEAM_ACTION_LASER => {
+            master_status == *ITEM_MASTERHAND_STATUS_KIND_WFINGER_BEAM_START
+                || crazy_status == *ITEM_CRAZYHAND_STATUS_KIND_WFINGER_BEAM_START
+                || motion_is(master_motion, "wfinger_beam_start")
+                || motion_is(master_motion, "finger_beam")
+                || motion_is(crazy_motion, "wfinger_beam_start")
+                || motion_is(crazy_motion, "finger_beam")
+        }
+        HAND_TEAM_ACTION_SCRATCH => {
+            master_status == *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW_START
+                || master_status == *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW_LOOP
+                || master_status == *ITEM_MASTERHAND_STATUS_KIND_SCRATCH_BLOW
+                || crazy_status == *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_START
+                || crazy_status == *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW_LOOP
+                || crazy_status == *ITEM_CRAZYHAND_STATUS_KIND_SCRATCH_BLOW
+        }
+        HAND_TEAM_ACTION_FINDER => {
+            master_status == *ITEM_MASTERHAND_STATUS_KIND_FINDER
+                || crazy_status == *ITEM_CRAZYHAND_STATUS_KIND_FINDER
+        }
+        _ => false,
+    }
+}
+
+#[inline(always)]
+unsafe fn maybe_finish_hand_team_authority(reason: &str) {
+    if !HAND_TEAM_AUTHORITY_ACTIVE || HAND_TEAM_ACTION == HAND_TEAM_ACTION_FINDER {
+        return;
+    }
+    if shared_hand_action() == 0 {
+        let master_boma =
+            if HAND_TEAM_MASTER_ID != 0 && sv_battle_object::is_active(HAND_TEAM_MASTER_ID) {
+                sv_battle_object::module_accessor(HAND_TEAM_MASTER_ID)
+            } else {
+                core::ptr::null_mut()
+            };
+        let crazy_boma =
+            if HAND_TEAM_CRAZY_ID != 0 && sv_battle_object::is_active(HAND_TEAM_CRAZY_ID) {
+                sv_battle_object::module_accessor(HAND_TEAM_CRAZY_ID)
+            } else {
+                core::ptr::null_mut()
+            };
+        if !hand_team_native_action_still_active(HAND_TEAM_ACTION, master_boma, crazy_boma) {
+            release_hand_team_authority(reason);
+        }
+    } else if !hand_team_native_action_still_active(
+        HAND_TEAM_ACTION,
+        if HAND_TEAM_MASTER_ID != 0 && sv_battle_object::is_active(HAND_TEAM_MASTER_ID) {
+            sv_battle_object::module_accessor(HAND_TEAM_MASTER_ID)
+        } else {
+            core::ptr::null_mut()
+        },
+        if HAND_TEAM_CRAZY_ID != 0 && sv_battle_object::is_active(HAND_TEAM_CRAZY_ID) {
+            sv_battle_object::module_accessor(HAND_TEAM_CRAZY_ID)
+        } else {
+            core::ptr::null_mut()
+        },
+    ) {
+        // A shared flag can be cleared by a failed native transition. Do not
+        // leave the temporary ownership barrier installed in that case.
+        release_hand_team_authority(reason);
+    }
+}
+
+#[inline(always)]
 unsafe fn reset_mastercrazy_shared_runtime() {
+    // This helper resets ordinary shared attack state. It is deliberately not
+    // allowed to touch any shared state while HandEntrance owns both objects:
+    // per-host spawn bookkeeping can call it while native Entry2 is active.
+    // Only the coordinator or an explicit scene/match reset may release the
+    // entrance claim. The explicit early return also prevents a runtime reset
+    // from clearing attack/entrance latches and causing request/reset thrash.
+    if HAND_ENTRANCE_AUTHORITY_ACTIVE && !HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED {
+        HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED = true;
+        let snapshot = hand_entrance_log_snapshot();
+        crate::boss_log!(
+            "[PB][HandEntrance] shared_runtime_reset_suppressed master_entry={} crazy_entry={} master_object=0x{:x} crazy_object=0x{:x} phase={}",
+            snapshot.master_entry,
+            snapshot.crazy_entry,
+            snapshot.master_id,
+            snapshot.crazy_id,
+            snapshot.phase
+        );
+    }
+    if HAND_ENTRANCE_AUTHORITY_ACTIVE {
+        return;
+    }
+    release_hand_team_authority("runtime_reset");
     BARK = false;
     PUNCH = false;
     SHOCK = false;
@@ -1102,6 +2599,9 @@ unsafe fn reset_mastercrazy_shared_runtime() {
     FINDER_DEAD_RANGE_APPLIED = false;
     FINDER_BASE_RANGE_CAPTURED = false;
     FINDER_NATIVE_ACTIVE_SEEN = false;
+    FINDER_LAST_STATUS_SIGNATURE = u64::MAX;
+    FINDER_LAST_REQUEST_SIGNATURE = u64::MAX;
+    FINDER_TRIGGER_LATCH = [false; 8];
     FINDER_COOLDOWN_FRAMES = 0;
     FINDER_BASE_RANGE = Vector4f {
         x: 0.0,
@@ -1142,7 +2642,22 @@ unsafe fn reset_master_runtime_for_spawn() {
     MASTER_IRON_BALL_SMOOTH_CANCEL = false;
     MASTER_KENZAN_SPAWNED = false;
     reset_master_cpu_idle_recovery(ENTRY_ID);
-    reset_mastercrazy_shared_runtime();
+    if hand_entrance_authority_claimed() {
+        if !HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED {
+            HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED = true;
+            let snapshot = hand_entrance_log_snapshot();
+            crate::boss_log!(
+                "[PB][HandEntrance] spawn_reset_suppressed master_entry={} crazy_entry={} master_object=0x{:x} crazy_object=0x{:x} phase={} reason=authority_claimed",
+                snapshot.master_entry,
+                snapshot.crazy_entry,
+                snapshot.master_id,
+                snapshot.crazy_id,
+                snapshot.phase
+            );
+        }
+    } else {
+        reset_mastercrazy_shared_runtime();
+    }
 }
 
 #[inline(always)]
@@ -1157,22 +2672,48 @@ unsafe fn reset_crazy_runtime_for_spawn() {
     CRAZY_KUMO_ENDING = false;
     reset_crazy_cpu_idle_recovery(ENTRY_ID_2);
     reset_crazy_fire_chariot_latches(ENTRY_ID_2);
-    reset_mastercrazy_shared_runtime();
+    if hand_entrance_authority_claimed() {
+        if !HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED {
+            HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED = true;
+            let snapshot = hand_entrance_log_snapshot();
+            crate::boss_log!(
+                "[PB][HandEntrance] spawn_reset_suppressed master_entry={} crazy_entry={} master_object=0x{:x} crazy_object=0x{:x} phase={} reason=authority_claimed",
+                snapshot.master_entry,
+                snapshot.crazy_entry,
+                snapshot.master_id,
+                snapshot.crazy_id,
+                snapshot.phase
+            );
+        }
+    } else {
+        reset_mastercrazy_shared_runtime();
+    }
 }
 
-#[inline(always)]
-unsafe fn reset_mastercrazy_result_runtime() {
-    if FINDER || FINDER_BASE_RANGE_CAPTURED {
-        clear_finder_runtime_with_reason("result_runtime_reset");
-    }
-    reset_mastercrazy_shared_runtime();
+/// Clear only plugin-owned Master/Crazy bookkeeping after native item
+/// teardown has begun. The caller must have already released HandTeam,
+/// HandEntrance, and Finder authority while both item objects were valid.
+/// This function intentionally performs no battle-object lookup and no native
+/// module access, so it is safe in the post-match/pre-result gap.
+pub unsafe fn invalidate_transition_tracking(entry_id: usize) {
+    let entry = boss_runtime::sanitize_entry_id(entry_id);
+    let had_tracking = BOSS_ID[entry] != 0
+        || BOSS_ID_2[entry] != 0
+        || MASTER_EXISTS
+        || CRAZY_EXISTS
+        || HAND_TEAM_AUTHORITY_ACTIVE
+        || HAND_ENTRANCE_AUTHORITY_ACTIVE
+        || FINDER
+        || FINDER_BASE_RANGE_CAPTURED;
 
     CONTROLLABLE = true;
-    ENTRY_ID = 0;
+    ENTRY_ID = entry;
     FIGHTER_MANAGER = 0;
+    BOSS_ID[entry] = 0;
     MULTIPLE_BULLETS = 0;
     DEAD = false;
     JUMP_START = false;
+    RESULT_SPAWNED = false;
     STOP = false;
     MASTER_EXISTS = false;
     EXISTS_PUBLIC = false;
@@ -1185,12 +2726,15 @@ unsafe fn reset_mastercrazy_result_runtime() {
     MASTER_CPU_IDLE_STALL_FRAMES = [0; 8];
     MASTER_CPU_LAST_X = [0.0; 8];
     MASTER_CPU_LAST_Y = [0.0; 8];
+    MASTER_CPU_RECOVERY_LOG_COOLDOWN = [0; 8];
 
     CONTROLLABLE_2 = true;
-    ENTRY_ID_2 = 0;
+    ENTRY_ID_2 = entry;
     FIGHTER_MANAGER_2 = 0;
+    BOSS_ID_2[entry] = 0;
     DEAD_2 = false;
     JUMP_START_2 = false;
+    RESULT_SPAWNED_2 = false;
     STOP_2 = false;
     CRAZY_EXISTS = false;
     EXISTS_PUBLIC_2 = false;
@@ -1202,8 +2746,98 @@ unsafe fn reset_mastercrazy_result_runtime() {
     CRAZY_CPU_IDLE_STALL_FRAMES = [0; 8];
     CRAZY_CPU_LAST_X = [0.0; 8];
     CRAZY_CPU_LAST_Y = [0.0; 8];
+    CRAZY_CPU_RECOVERY_LOG_COOLDOWN = [0; 8];
     CRAZY_FIRE_CHARIOT_PINKY_LATCH = [false; 8];
     CRAZY_FIRE_CHARIOT_THUMB_LATCH = [false; 8];
+
+    // Shared attack/Finder state is cleared by assignment only. Native
+    // camera/dead-area and WorkModule restoration happened in the preceding
+    // transition authority abort while the objects were still live.
+    BARK = false;
+    PUNCH = false;
+    SHOCK = false;
+    LASER = false;
+    SCRATCH_BLOW = false;
+    FINDER = false;
+    MASTER_FINDER_ACTIVE = false;
+    CRAZY_FINDER_ACTIVE = false;
+    FINDER_SYNC_FRAMES = 0;
+    FINDER_CAMERA_APPLIED = false;
+    FINDER_DEAD_RANGE_APPLIED = false;
+    FINDER_BASE_RANGE_CAPTURED = false;
+    FINDER_NATIVE_ACTIVE_SEEN = false;
+    FINDER_COOLDOWN_FRAMES = 0;
+    FINDER_MASTER_ENTRY = 8;
+    FINDER_CRAZY_ENTRY = 8;
+    FINDER_BASE_RANGE = Vector4f {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        w: 0.0,
+    };
+    FINDER_LAST_STATUS_SIGNATURE = u64::MAX;
+    FINDER_LAST_REQUEST_SIGNATURE = u64::MAX;
+    FINDER_TRIGGER_LATCH = [false; 8];
+    CONTROL_SPEED_MUL = 2.0;
+    CONTROL_SPEED_MUL_2 = 0.05;
+    MASTER_X_POS = 0.0;
+    MASTER_Y_POS = 0.0;
+    MASTER_Z_POS = 0.0;
+    MASTER_USABLE = false;
+    MASTER_FACING_LEFT = true;
+    CONTROLLER_X_MASTER = 0.0;
+    CONTROLLER_Y_MASTER = 0.0;
+    CRAZY_X_POS = 0.0;
+    CRAZY_Y_POS = 0.0;
+    CRAZY_Z_POS = 0.0;
+    CRAZY_USABLE = false;
+    CRAZY_FACING_RIGHT = true;
+    CONTROLLER_X_CRAZY = 0.0;
+    CONTROLLER_Y_CRAZY = 0.0;
+
+    // Both authority records are invalidated without touching their objects.
+    // The done latch prevents a stale entrance discovery from re-requesting
+    // Entry2 during the remainder of the native transition.
+    HAND_TEAM_AUTHORITY_ACTIVE = false;
+    HAND_TEAM_ACTION = 0;
+    HAND_TEAM_INITIATOR_ENTRY = usize::MAX;
+    HAND_TEAM_MASTER_ENTRY = usize::MAX;
+    HAND_TEAM_CRAZY_ENTRY = usize::MAX;
+    HAND_TEAM_MASTER_ID = 0;
+    HAND_TEAM_CRAZY_ID = 0;
+    HAND_TEAM_MASTER_PLAYER_WAS_SET = false;
+    HAND_TEAM_CRAZY_PLAYER_WAS_SET = false;
+    HAND_TEAM_REQUESTED_MASTER_STATUS = -1;
+    HAND_TEAM_REQUESTED_CRAZY_STATUS = -1;
+    HAND_TEAM_LAST_STATUS_SIGNATURE = u64::MAX;
+    HAND_ENTRANCE_AUTHORITY_ACTIVE = false;
+    HAND_ENTRANCE_MASTER_ENTRY = usize::MAX;
+    HAND_ENTRANCE_CRAZY_ENTRY = usize::MAX;
+    HAND_ENTRANCE_MASTER_ID = 0;
+    HAND_ENTRANCE_CRAZY_ID = 0;
+    HAND_ENTRANCE_MASTER_PLAYER_WAS_SET = false;
+    HAND_ENTRANCE_CRAZY_PLAYER_WAS_SET = false;
+    HAND_ENTRANCE_MASTER_SEEN = false;
+    HAND_ENTRANCE_CRAZY_SEEN = false;
+    HAND_ENTRANCE_MASTER_STATUS_ACCEPTED = false;
+    HAND_ENTRANCE_CRAZY_STATUS_ACCEPTED = false;
+    HAND_ENTRANCE_TICKS = 0;
+    HAND_ENTRANCE_LAST_SIGNATURE = u64::MAX;
+    HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED = false;
+    HAND_ENTRANCE_LAST_ANCHOR_LOG_TICK = -1;
+    HAND_ENTRANCE_PHASE = HAND_ENTRANCE_PHASE_IDLE;
+    HAND_ENTRANCE_DONE = true;
+    HAND_ENTRANCE_ANCHOR_VALID = false;
+    HAND_ENTRANCE_ANCHOR_X = 0.0;
+    HAND_ENTRANCE_ANCHOR_Y = 0.0;
+    HAND_ENTRANCE_ANCHOR_Z = 0.0;
+
+    if had_tracking {
+        crate::boss_log!(
+            "[PB][ResultTransition] mastercrazy_tracking_invalidated entry={} native_item_access=false hand_authority_cleared=true",
+            entry
+        );
+    }
 }
 
 pub unsafe fn reset_match_state(entry_id: usize) {
@@ -1240,7 +2874,9 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     if FINDER || FINDER_BASE_RANGE_CAPTURED {
         clear_finder_runtime_with_reason("match_state_reset");
     }
+    release_hand_entrance_authority("match_state_reset");
     reset_mastercrazy_shared_runtime();
+    HAND_ENTRANCE_DONE = false;
 
     CONTROLLABLE = true;
     ENTRY_ID = entry;
@@ -1297,21 +2933,6 @@ unsafe fn acquire_master_hand_item(
         StatusModule::status_kind(boss_boma),
         ModelModule::scale(module_accessor)
     );
-    boss_boma
-}
-
-#[inline(always)]
-unsafe fn acquire_master_hand_result_item(
-    module_accessor: *mut BattleObjectModuleAccessor,
-    entry_id: usize,
-) -> *mut BattleObjectModuleAccessor {
-    let boss_boma = boss_helpers::acquire_boss_item_any_slot(
-        module_accessor,
-        &raw mut BOSS_ID,
-        *ITEM_KIND_MASTERHAND,
-        &[*ITEM_KIND_MASTERHAND],
-    );
-    configure_boss_owner_mode(boss_boma, entry_id);
     boss_boma
 }
 
@@ -1403,21 +3024,6 @@ unsafe fn acquire_crazy_hand_item(
 }
 
 #[inline(always)]
-unsafe fn acquire_crazy_hand_result_item(
-    module_accessor: *mut BattleObjectModuleAccessor,
-    entry_id: usize,
-) -> *mut BattleObjectModuleAccessor {
-    let boss_boma = boss_helpers::acquire_boss_item_any_slot(
-        module_accessor,
-        &raw mut BOSS_ID_2,
-        *ITEM_KIND_CRAZYHAND,
-        &[*ITEM_KIND_CRAZYHAND],
-    );
-    configure_boss_owner_mode(boss_boma, entry_id);
-    boss_boma
-}
-
-#[inline(always)]
 unsafe fn initialize_master_hand_boss(
     boss_boma: *mut BattleObjectModuleAccessor,
     get_boss_intensity: f32,
@@ -1487,6 +3093,9 @@ unsafe fn restore_master_hand_after_item_wipe(
     if module_accessor.is_null() || !sv_information::is_ready_go() || DEAD {
         return;
     }
+    if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
+        return;
+    }
 
     let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
     ENTRY_ID = entry;
@@ -1551,6 +3160,9 @@ unsafe fn restore_crazy_hand_after_item_wipe(
     fighter_manager: *mut smash::app::FighterManager,
 ) {
     if module_accessor.is_null() || !sv_information::is_ready_go() || DEAD_2 {
+        return;
+    }
+    if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
         return;
     }
 
@@ -1905,12 +3517,22 @@ unsafe fn store_crazy_hand_runtime(slot: *mut BossCommonRuntime) {
 
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
-        tick_finder_cooldown();
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+        if crate::should_quarantine_boss_frame(module_accessor) {
+            return;
+        }
+        tick_finder_cooldown();
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
         if fighter_kind == *FIGHTER_KIND_MARIO {
             ENTRY_ID = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
+            // The paired entrance coordinator is the sole writer while the
+            // native Entry2 pair is active. Returning before the ordinary
+            // host/item logic prevents CPU recovery, entry setup, or a second
+            // status request from competing with the synchronized entrance.
+            if hand_entrance_owns_entry(ENTRY_ID, false) {
+                return;
+            }
             let _runtime_guard = CommonRuntimeSyncGuard::new(
                 boss_runtime::slot_ptr(&raw mut boss_runtime::MASTER_HAND_RUNTIME, ENTRY_ID),
                 load_master_hand_runtime,
@@ -1922,7 +3544,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 selection::is_selected_css_boss(module_accessor, *ITEM_KIND_MASTERHAND);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
+                let stage_id = smash::app::stage::get_stage_id();
+                if boss_helpers::is_boss_preview_stage(stage_id) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor =
                         smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -1969,21 +3592,25 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             ModelModule::rotation_order(module_accessor),
                         );
                     }
-                } else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id())
-                {
+                } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_master_hand_after_item_wipe(module_accessor, fighter_manager);
                     if sv_information::is_ready_go() == false {
                         let entry = boss_helpers::entry_id(module_accessor);
-                        let needs_entry_init = boss_helpers::needs_hidden_host_entry_init(
-                            module_accessor,
-                            &raw const BOSS_ID,
-                            entry,
-                        );
+                        let needs_entry_init = !hand_entrance_owns_entry(entry, false)
+                            && boss_helpers::needs_hidden_host_entry_init(
+                                module_accessor,
+                                &raw const BOSS_ID,
+                                entry,
+                            );
                         if needs_entry_init {
                             DEAD = false;
                             CONTROLLABLE = true;
+                            // This reset must happen once for a new hidden
+                            // host, not on every pre-Ready-Go frame. The old
+                            // unconditional call released HandEntrance while
+                            // its native pair was already active.
+                            reset_master_runtime_for_spawn();
                         }
-                        reset_master_runtime_for_spawn();
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor =
                             smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -1992,11 +3619,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             module_accessor,
                             *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID,
                         ) as usize;
-                        let needs_entry_init = boss_helpers::needs_hidden_host_entry_init(
-                            module_accessor,
-                            &raw const BOSS_ID,
-                            ENTRY_ID,
-                        );
+                        let needs_entry_init = !hand_entrance_owns_entry(ENTRY_ID, false)
+                            && boss_helpers::needs_hidden_host_entry_init(
+                                module_accessor,
+                                &raw const BOSS_ID,
+                                ENTRY_ID,
+                            );
                         if needs_entry_init {
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
@@ -2005,6 +3633,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let boss_boma = acquire_master_hand_item(module_accessor, ENTRY_ID);
                             initialize_master_hand_boss(boss_boma, get_boss_intensity);
                             ModelModule::set_scale(module_accessor, 0.0001);
+                            let host_pos = Vector3f {
+                                x: PostureModule::pos_x(module_accessor),
+                                y: PostureModule::pos_y(module_accessor),
+                                z: PostureModule::pos_z(module_accessor),
+                            };
+                            PostureModule::set_pos(boss_boma, &host_pos);
                             StatusModule::change_status_request_from_script(
                                 boss_boma,
                                 *ITEM_STATUS_KIND_FOR_BOSS_START,
@@ -2156,6 +3790,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         );
                         if StatusModule::status_kind(boss_boma) == *ITEM_MASTERHAND_STATUS_KIND_BARK
                             && !CRAZY_USABLE
+                            && !HAND_TEAM_AUTHORITY_ACTIVE
                         {
                             BARK = false;
                             StatusModule::change_status_request_from_script(
@@ -2183,6 +3818,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == true
                         && !DEAD
                         && !FINDER
+                        && !HAND_TEAM_AUTHORITY_ACTIVE
                         && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0
                     {
                         let boss_boma = sv_battle_object::module_accessor(
@@ -2560,38 +4196,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                         }
-                    }
-
-                    if FighterManager::is_result_mode(fighter_manager) == true {
-                        if RESULT_SPAWNED == false {
-                            let result_entry = ENTRY_ID.min(7);
-                            let boss_boma =
-                                acquire_master_hand_result_item(module_accessor, result_entry);
-                            RESULT_SPAWNED = true;
-                            EXISTS_PUBLIC = !boss_boma.is_null();
-                            CONTROLLABLE = false;
-                            if boss_boma.is_null() {
-                                crate::boss_log!(
-                                    "[PB][Result][MasterHand] entry {}: native result item acquisition failed",
-                                    result_entry
-                                );
-                            } else {
-                                StatusModule::change_status_request_from_script(
-                                    boss_boma,
-                                    *ITEM_STATUS_KIND_FOR_BOSS_START,
-                                    true,
-                                );
-                                crate::boss_log!(
-                                    "[PB][Result][MasterHand] entry {}: spawned native result item id=0x{:x} kind={} status={}",
-                                    result_entry,
-                                    BOSS_ID[result_entry],
-                                    smash::app::utility::get_kind(&mut *boss_boma),
-                                    StatusModule::status_kind(boss_boma)
-                                );
-                            }
-                        }
-                        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
-                        return;
                     }
 
                     if sv_information::is_ready_go() == false {
@@ -3344,10 +4948,14 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 PUNCH = false;
                             }
                         }
+                        sync_hand_team_authority_from_flags(boss_boma, ENTRY_ID);
+                        let hand_team_active = hand_team_authority_active_for_boma(boss_boma);
                         if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == true {
                             CONTROLLABLE = false;
                         }
-                        if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == true
+                        if !hand_team_active
+                            && boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID)
+                                == true
                             && StatusModule::status_kind(boss_boma)
                                 == *ITEM_MASTERHAND_STATUS_KIND_DEBUG_WAIT
                         {
@@ -3358,6 +4966,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             );
                         }
                         if !FINDER
+                            && !hand_team_active
                             && boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID)
                                 == true
                         {
@@ -3703,9 +5312,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
                                     CONTROLLER_X_MASTER = 0.0;
                                 }
-                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
-                                    CONTROLLER_X_MASTER = 0.0;
-                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0
                                 && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -3759,9 +5365,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
-                                    CONTROLLER_Y_MASTER = 0.0;
-                                }
-                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
                                     CONTROLLER_Y_MASTER = 0.0;
                                 }
                             }
@@ -3976,9 +5579,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
                                     CONTROLLER_X_MASTER = 0.0;
                                 }
-                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
-                                    CONTROLLER_X_MASTER = 0.0;
-                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0
                                 && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -4032,9 +5632,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
-                                    CONTROLLER_Y_MASTER = 0.0;
-                                }
-                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
                                     CONTROLLER_Y_MASTER = 0.0;
                                 }
                             }
@@ -4144,9 +5741,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
                                     CONTROLLER_X_MASTER = 0.0;
                                 }
-                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
-                                    CONTROLLER_X_MASTER = 0.0;
-                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0
                                 && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -4200,9 +5794,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
-                                    CONTROLLER_Y_MASTER = 0.0;
-                                }
-                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
                                     CONTROLLER_Y_MASTER = 0.0;
                                 }
                             }
@@ -4273,9 +5864,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
                                     CONTROLLER_X_MASTER = 0.0;
                                 }
-                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
-                                    CONTROLLER_X_MASTER = 0.0;
-                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0
                                 && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -4329,9 +5917,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
-                                    CONTROLLER_Y_MASTER = 0.0;
-                                }
-                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
                                     CONTROLLER_Y_MASTER = 0.0;
                                 }
                             }
@@ -4420,9 +6005,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
                                     CONTROLLER_X_MASTER = 0.0;
                                 }
-                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
-                                    CONTROLLER_X_MASTER = 0.0;
-                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0
                                 && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -4476,9 +6058,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
-                                    CONTROLLER_Y_MASTER = 0.0;
-                                }
-                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
                                     CONTROLLER_Y_MASTER = 0.0;
                                 }
                             }
@@ -4551,9 +6130,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
                                     CONTROLLER_X_MASTER = 0.0;
                                 }
-                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
-                                    CONTROLLER_X_MASTER = 0.0;
-                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0
                                 && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -4607,9 +6183,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
-                                    CONTROLLER_Y_MASTER = 0.0;
-                                }
-                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
                                     CONTROLLER_Y_MASTER = 0.0;
                                 }
                             }
@@ -5801,9 +7374,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
                                     CONTROLLER_X_MASTER = 0.0;
                                 }
-                                if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
-                                    CONTROLLER_X_MASTER = 0.0;
-                                }
                             }
                             if CONTROLLER_X_MASTER > 0.0
                                 && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -5857,9 +7427,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                             if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                 if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
-                                    CONTROLLER_Y_MASTER = 0.0;
-                                }
-                                if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
                                     CONTROLLER_Y_MASTER = 0.0;
                                 }
                             }
@@ -6004,9 +7571,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X_MASTER > 0.0 && CONTROLLER_X_MASTER < 0.06 {
                                         CONTROLLER_X_MASTER = 0.0;
                                     }
-                                    if CONTROLLER_X_MASTER < 0.0 && CONTROLLER_X_MASTER > 0.06 {
-                                        CONTROLLER_X_MASTER = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X_MASTER > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -6062,9 +7626,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y_MASTER > 0.0 && CONTROLLER_Y_MASTER < 0.06 {
-                                        CONTROLLER_Y_MASTER = 0.0;
-                                    }
-                                    if CONTROLLER_Y_MASTER < 0.0 && CONTROLLER_Y_MASTER > 0.06 {
                                         CONTROLLER_Y_MASTER = 0.0;
                                     }
                                 }
@@ -6489,9 +8050,15 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
         let module_accessor = smash::app::sv_system::battle_object_module_accessor(lua_state);
+        if crate::should_quarantine_boss_frame(module_accessor) {
+            return;
+        }
         let fighter_kind = smash::app::utility::get_kind(module_accessor);
         if fighter_kind == *FIGHTER_KIND_MARIO {
             ENTRY_ID_2 = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
+            if hand_entrance_owns_entry(ENTRY_ID_2, true) {
+                return;
+            }
             let _runtime_guard = CommonRuntimeSyncGuard::new(
                 boss_runtime::slot_ptr(&raw mut boss_runtime::CRAZY_HAND_RUNTIME, ENTRY_ID_2),
                 load_crazy_hand_runtime,
@@ -6503,7 +8070,8 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                 selection::is_selected_css_boss(module_accessor, *ITEM_KIND_CRAZYHAND);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
+                let stage_id = smash::app::stage::get_stage_id();
+                if boss_helpers::is_boss_preview_stage(stage_id) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor =
                         smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -6550,21 +8118,24 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             ModelModule::rotation_order(module_accessor),
                         );
                     }
-                } else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id())
-                {
+                } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_crazy_hand_after_item_wipe(module_accessor, fighter_manager);
                     if sv_information::is_ready_go() == false {
                         let entry = boss_helpers::entry_id(module_accessor);
-                        let needs_entry_init = boss_helpers::needs_hidden_host_entry_init(
-                            module_accessor,
-                            &raw const BOSS_ID_2,
-                            entry,
-                        );
+                        let needs_entry_init = !hand_entrance_owns_entry(entry, true)
+                            && boss_helpers::needs_hidden_host_entry_init(
+                                module_accessor,
+                                &raw const BOSS_ID_2,
+                                entry,
+                            );
                         if needs_entry_init {
                             DEAD_2 = false;
                             CONTROLLABLE_2 = true;
+                            // See the Master Hand path above: resetting the
+                            // shared runtime per frame cancels a valid pair
+                            // entrance and causes request/reset thrashing.
+                            reset_crazy_runtime_for_spawn();
                         }
-                        reset_crazy_runtime_for_spawn();
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor =
                             smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -6573,11 +8144,12 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             module_accessor,
                             *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID,
                         ) as usize;
-                        let needs_entry_init = boss_helpers::needs_hidden_host_entry_init(
-                            module_accessor,
-                            &raw const BOSS_ID_2,
-                            ENTRY_ID_2,
-                        );
+                        let needs_entry_init = !hand_entrance_owns_entry(ENTRY_ID_2, true)
+                            && boss_helpers::needs_hidden_host_entry_init(
+                                module_accessor,
+                                &raw const BOSS_ID_2,
+                                ENTRY_ID_2,
+                            );
                         if needs_entry_init {
                             EXISTS_PUBLIC_2 = true;
                             RESULT_SPAWNED = false;
@@ -6586,6 +8158,12 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             let boss_boma_2 = acquire_crazy_hand_item(module_accessor, ENTRY_ID_2);
                             initialize_crazy_hand_boss(boss_boma_2, get_boss_intensity);
                             ModelModule::set_scale(module_accessor, 0.0001);
+                            let host_pos = Vector3f {
+                                x: PostureModule::pos_x(module_accessor),
+                                y: PostureModule::pos_y(module_accessor),
+                                z: PostureModule::pos_z(module_accessor),
+                            };
+                            PostureModule::set_pos(boss_boma_2, &host_pos);
                             StatusModule::change_status_request_from_script(
                                 boss_boma_2,
                                 *ITEM_STATUS_KIND_FOR_BOSS_START,
@@ -6826,6 +8404,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     if sv_information::is_ready_go() == true
                         && !DEAD_2
                         && !FINDER
+                        && !HAND_TEAM_AUTHORITY_ACTIVE
                         && BOSS_ID_2[boss_helpers::entry_id(module_accessor)] != 0
                     {
                         let boss_boma_2 = sv_battle_object::module_accessor(
@@ -6939,16 +8518,19 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         || lua_bind::PostureModule::lr(boss_boma_2) == -1.0
                                             && !MASTER_FACING_LEFT
                                     {
-                                        crate::boss_log!(
-                                            "[PB][Finder] cpu_trigger floor={:.1} crazy_status={} crazy_motion=0x{:x} master_status={} master_motion=0x{:x}",
-                                            floor_dist,
-                                            StatusModule::status_kind(boss_boma_2),
-                                            MotionModule::motion_kind(boss_boma_2),
-                                            if current_master_boma().is_null() { -1 } else { StatusModule::status_kind(current_master_boma()) },
-                                            if current_master_boma().is_null() { 0 } else { MotionModule::motion_kind(current_master_boma()) }
-                                        );
-                                        let _ =
+                                        let finder_started =
                                             start_finder_pair(fighter.lua_state_agent, boss_boma_2);
+                                        if finder_started {
+                                            let master_boma = current_master_boma();
+                                            crate::boss_log!(
+                                                "[PB][Finder] cpu_trigger started=true floor={:.1} crazy_status={} crazy_motion=0x{:x} master_status={} master_motion=0x{:x}",
+                                                floor_dist,
+                                                StatusModule::status_kind(boss_boma_2),
+                                                MotionModule::motion_kind(boss_boma_2),
+                                                if master_boma.is_null() { -1 } else { StatusModule::status_kind(master_boma) },
+                                                if master_boma.is_null() { 0 } else { MotionModule::motion_kind(master_boma) }
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -7127,38 +8709,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                         }
-                    }
-
-                    if FighterManager::is_result_mode(fighter_manager) == true {
-                        if RESULT_SPAWNED_2 == false {
-                            let result_entry = ENTRY_ID_2.min(7);
-                            let boss_boma_2 =
-                                acquire_crazy_hand_result_item(module_accessor, result_entry);
-                            RESULT_SPAWNED_2 = true;
-                            EXISTS_PUBLIC_2 = !boss_boma_2.is_null();
-                            CONTROLLABLE_2 = false;
-                            if boss_boma_2.is_null() {
-                                crate::boss_log!(
-                                    "[PB][Result][CrazyHand] entry {}: native result item acquisition failed",
-                                    result_entry
-                                );
-                            } else {
-                                StatusModule::change_status_request_from_script(
-                                    boss_boma_2,
-                                    *ITEM_STATUS_KIND_FOR_BOSS_START,
-                                    true,
-                                );
-                                crate::boss_log!(
-                                    "[PB][Result][CrazyHand] entry {}: spawned native result item id=0x{:x} kind={} status={}",
-                                    result_entry,
-                                    BOSS_ID_2[result_entry],
-                                    smash::app::utility::get_kind(&mut *boss_boma_2),
-                                    StatusModule::status_kind(boss_boma_2)
-                                );
-                            }
-                        }
-                        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
-                        return;
                     }
 
                     if sv_information::is_ready_go() == false {
@@ -7784,6 +9334,8 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    sync_hand_team_authority_from_flags(boss_boma_2, ENTRY_ID_2);
+                    let hand_team_active_2 = hand_team_authority_active_for_boma(boss_boma_2);
                     if StatusModule::status_kind(boss_boma_2)
                         == *ITEM_CRAZYHAND_STATUS_KIND_WAIT_CHASE
                         || StatusModule::status_kind(boss_boma_2)
@@ -7800,6 +9352,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         CRAZY_USABLE = false;
                     }
                     if !FINDER
+                        && !hand_team_active_2
                         && boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID_2) == true
                         && StatusModule::status_kind(boss_boma_2)
                             == *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT
@@ -7811,11 +9364,14 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         );
                     }
                     if !FINDER
+                        && !hand_team_active_2
                         && boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID_2) == true
                     {
                         maybe_recover_crazy_cpu_idle(boss_boma_2, ENTRY_ID_2);
                     }
                     update_finder_runtime(fighter.lua_state_agent);
+                    log_hand_team_status();
+                    maybe_finish_hand_team_authority("native_pair_complete");
 
                     if !FINDER {
                         if BARK
@@ -8258,9 +9814,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                        CONTROLLER_X_CRAZY = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -8316,9 +9869,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                        CONTROLLER_Y_CRAZY = 0.0;
-                                    }
-                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                         CONTROLLER_Y_CRAZY = 0.0;
                                     }
                                 }
@@ -8483,9 +10033,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                        CONTROLLER_X_CRAZY = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -8541,9 +10088,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                        CONTROLLER_Y_CRAZY = 0.0;
-                                    }
-                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                         CONTROLLER_Y_CRAZY = 0.0;
                                     }
                                 }
@@ -8629,9 +10173,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                        CONTROLLER_X_CRAZY = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -8687,9 +10228,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                        CONTROLLER_Y_CRAZY = 0.0;
-                                    }
-                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                         CONTROLLER_Y_CRAZY = 0.0;
                                     }
                                 }
@@ -8769,9 +10307,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                        CONTROLLER_X_CRAZY = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -8827,9 +10362,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                        CONTROLLER_Y_CRAZY = 0.0;
-                                    }
-                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                         CONTROLLER_Y_CRAZY = 0.0;
                                     }
                                 }
@@ -8899,9 +10431,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                        CONTROLLER_X_CRAZY = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -8957,9 +10486,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                        CONTROLLER_Y_CRAZY = 0.0;
-                                    }
-                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                         CONTROLLER_Y_CRAZY = 0.0;
                                     }
                                 }
@@ -9029,9 +10555,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                        CONTROLLER_X_CRAZY = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -9087,9 +10610,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                        CONTROLLER_Y_CRAZY = 0.0;
-                                    }
-                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                         CONTROLLER_Y_CRAZY = 0.0;
                                     }
                                 }
@@ -9164,9 +10684,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                        CONTROLLER_X_CRAZY = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -9222,9 +10739,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                        CONTROLLER_Y_CRAZY = 0.0;
-                                    }
-                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                         CONTROLLER_Y_CRAZY = 0.0;
                                     }
                                 }
@@ -9299,9 +10813,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                        CONTROLLER_X_CRAZY = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -9357,9 +10868,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                        CONTROLLER_Y_CRAZY = 0.0;
-                                    }
-                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                         CONTROLLER_Y_CRAZY = 0.0;
                                     }
                                 }
@@ -9610,9 +11118,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                         CONTROLLER_X_CRAZY = 0.0;
                                     }
-                                    if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                        CONTROLLER_X_CRAZY = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X_CRAZY > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -9668,9 +11173,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                        CONTROLLER_Y_CRAZY = 0.0;
-                                    }
-                                    if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                         CONTROLLER_Y_CRAZY = 0.0;
                                     }
                                 }
@@ -10107,9 +11609,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                             CONTROLLER_X_CRAZY = 0.0;
                                         }
-                                        if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                            CONTROLLER_X_CRAZY = 0.0;
-                                        }
                                     }
                                     if CONTROLLER_X_CRAZY > 0.0
                                         && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -10165,9 +11664,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     }
                                     if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                         if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                            CONTROLLER_Y_CRAZY = 0.0;
-                                        }
-                                        if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                             CONTROLLER_Y_CRAZY = 0.0;
                                         }
                                     }
@@ -10518,9 +12014,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         if CONTROLLER_X_CRAZY > 0.0 && CONTROLLER_X_CRAZY < 0.06 {
                                             CONTROLLER_X_CRAZY = 0.0;
                                         }
-                                        if CONTROLLER_X_CRAZY < 0.0 && CONTROLLER_X_CRAZY > 0.06 {
-                                            CONTROLLER_X_CRAZY = 0.0;
-                                        }
                                     }
                                     if CONTROLLER_X_CRAZY > 0.0
                                         && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -10576,9 +12069,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     }
                                     if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                         if CONTROLLER_Y_CRAZY > 0.0 && CONTROLLER_Y_CRAZY < 0.06 {
-                                            CONTROLLER_Y_CRAZY = 0.0;
-                                        }
-                                        if CONTROLLER_Y_CRAZY < 0.0 && CONTROLLER_Y_CRAZY > 0.06 {
                                             CONTROLLER_Y_CRAZY = 0.0;
                                         }
                                     }
@@ -10670,52 +12160,63 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         fighter.module_accessor,
                                         0,
                                     );
-                                    if !FINDER && cat1 & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_N != 0 {
+                                    let finder_entry = ENTRY_ID_2.min(7);
+                                    let finder_chord = cat1 & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_N
+                                        != 0
+                                        && ControlModule::check_button_on(
+                                            fighter.module_accessor,
+                                            *CONTROL_PAD_BUTTON_GUARD,
+                                        );
+                                    let finder_edge =
+                                        finder_chord && !FINDER_TRIGGER_LATCH[finder_entry];
+                                    FINDER_TRIGGER_LATCH[finder_entry] = finder_chord;
+                                    if finder_edge && !FINDER {
                                         let floor_dist =
                                             boss_floor_dist(module_accessor, boss_boma_2);
-                                        let same_team = MASTER_TEAM == CRAZY_TEAM;
-                                        let facing_ok = (lua_bind::PostureModule::lr(boss_boma_2)
-                                            == 1.0
-                                            && MASTER_FACING_LEFT)
-                                            || (lua_bind::PostureModule::lr(boss_boma_2) == -1.0
-                                                && !MASTER_FACING_LEFT);
+                                        let finder_started =
+                                            start_finder_pair(fighter.lua_state_agent, boss_boma_2);
                                         let (_, master_boma) = finder_master_entry_boma();
                                         crate::boss_log!(
-                                        "[PB][Finder] trigger special_n floor={:.1} master_exists={} master_usable={} same_team={} facing_ok={} crazy_status={} crazy_motion=0x{:x} crazy_frame={:.1} master_status={} master_motion=0x{:x} master_frame={:.1} ctrl_crazy={} finder={}",
-                                        floor_dist,
-                                        core::ptr::addr_of!(MASTER_EXISTS).read(),
-                                        core::ptr::addr_of!(MASTER_USABLE).read(),
-                                        same_team,
-                                        facing_ok,
-                                        StatusModule::status_kind(boss_boma_2),
-                                        MotionModule::motion_kind(boss_boma_2),
-                                        MotionModule::frame(boss_boma_2),
-                                        if master_boma.is_null() { -1 } else { StatusModule::status_kind(master_boma) },
-                                        if master_boma.is_null() { 0 } else { MotionModule::motion_kind(master_boma) },
-                                        if master_boma.is_null() { -1.0 } else { MotionModule::frame(master_boma) },
-                                        core::ptr::addr_of!(CONTROLLABLE_2).read(),
-                                        core::ptr::addr_of!(FINDER).read()
-                                    );
-                                        let finder_started = floor_dist > 0.0
-                                            && floor_dist <= 50.0
-                                            && MASTER_EXISTS
-                                            && MASTER_USABLE
-                                            && same_team
-                                            && facing_ok
-                                            && start_finder_pair(
-                                                fighter.lua_state_agent,
-                                                boss_boma_2,
-                                            );
-
+                                            "[PB][Finder] trigger_edge chord=special_n+guard started={} floor={:.1} master_status={} crazy_status={} master_motion=0x{:x} crazy_motion=0x{:x}",
+                                            finder_started,
+                                            floor_dist,
+                                            if master_boma.is_null() {
+                                                -1
+                                            } else {
+                                                StatusModule::status_kind(master_boma)
+                                            },
+                                            StatusModule::status_kind(boss_boma_2),
+                                            if master_boma.is_null() {
+                                                0
+                                            } else {
+                                                MotionModule::motion_kind(master_boma)
+                                            },
+                                            MotionModule::motion_kind(boss_boma_2)
+                                        );
+                                    }
+                                    // Finder is deliberately a B+Guard chord. Plain B must
+                                    // remain Crazy Hand's native bomb-drop opener; this status
+                                    // already has the normal movement/recovery handling below.
+                                    if cat1 & *FIGHTER_PAD_CMD_CAT1_FLAG_SPECIAL_N != 0
+                                        && ControlModule::check_button_trigger(
+                                            fighter.module_accessor,
+                                            *CONTROL_PAD_BUTTON_SPECIAL,
+                                        )
+                                        && !finder_chord
+                                        && !FINDER
+                                    {
+                                        CONTROLLABLE_2 = false;
+                                        CONTROLLER_X_CRAZY = 0.0;
+                                        CONTROLLER_Y_CRAZY = 0.0;
+                                        StatusModule::change_status_request_from_script(
+                                            boss_boma_2,
+                                            *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK_START,
+                                            true,
+                                        );
                                         crate::boss_log!(
-                                        "[PB][Finder] trigger_result started={} floor={:.1} crazy_status={} crazy_motion=0x{:x} master_status={} master_motion=0x{:x}",
-                                        finder_started,
-                                        floor_dist,
-                                        StatusModule::status_kind(boss_boma_2),
-                                        MotionModule::motion_kind(boss_boma_2),
-                                        if master_boma.is_null() { -1 } else { StatusModule::status_kind(master_boma) },
-                                        if master_boma.is_null() { 0 } else { MotionModule::motion_kind(master_boma) }
-                                    );
+                                            "[PB][CrazyHand] neutral_special action=bomb_drop status={}",
+                                            *ITEM_CRAZYHAND_STATUS_KIND_BOMB_ATTACK_START
+                                        );
                                     }
                                     if ControlModule::check_button_on(
                                         module_accessor,
@@ -10995,9 +12496,15 @@ pub fn install() {
 }
 
 pub unsafe fn master_frame(fighter: &mut L2CFighterCommon) {
+    if crate::should_quarantine_boss_frame(fighter.module_accessor) {
+        return;
+    }
     once_per_fighter_frame(fighter);
 }
 
 pub unsafe fn crazy_frame(fighter: &mut L2CFighterCommon) {
+    if crate::should_quarantine_boss_frame(fighter.module_accessor) {
+        return;
+    }
     once_per_fighter_frame_2(fighter);
 }

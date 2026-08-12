@@ -3,7 +3,6 @@
 use arcropolis_api::*;
 use prc::hash40::Hash40;
 use prc::*;
-use skyline::nn::ro::LookupSymbol;
 use smash::app::lua_bind::*;
 use smash::lib::lua_const::*;
 use smash::lua2cpp::L2CFighterCommon;
@@ -14,6 +13,7 @@ mod amiibo;
 mod amiibo_preview;
 mod boss_helpers;
 mod boss_runtime;
+mod boss_summon;
 mod config;
 mod debug;
 mod dharkon;
@@ -31,10 +31,12 @@ mod selection;
 
 use crate::config::CONFIG;
 
-pub static mut FIGHTER_MANAGER: usize = 0;
-
 const MAX_FIGHTERS: usize = 8;
 static mut BOSS_MATCH_STARTED: [bool; 8] = [false; 8];
+static mut BOSS_HAD_READY_GO: [bool; 8] = [false; 8];
+static mut POST_MATCH_PRE_RESULT: [bool; 8] = [false; 8];
+static mut RESULT_MODE_SEEN: [bool; 8] = [false; 8];
+static mut POST_MATCH_TRACKING_INVALIDATED: [bool; 8] = [false; 8];
 static mut TRANSITION_DEBUG_LAST_STAGE: [i32; 8] = [-1; 8];
 static mut TRANSITION_DEBUG_LAST_STATUS: [i32; 8] = [i32::MIN; 8];
 static mut TRANSITION_DEBUG_LAST_FLAGS: [u16; 8] = [u16::MAX; 8];
@@ -44,12 +46,221 @@ static mut TRANSITION_DEBUG_LAST_HOST_KIND: [i32; 8] = [i32::MIN; 8];
 static mut TRANSITION_DEBUG_LAST_BOSS_KIND: [i32; 8] = [i32::MIN; 8];
 static mut TRANSITION_DEBUG_LAST_SELECTED_UI_HASH: [u64; 8] = [u64::MAX; 8];
 static mut TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE: [u64; 8] = [u64::MAX; 8];
-static mut RESULT_DEBUG_LAST_MODE: [bool; 8] = [false; 8];
-static mut RESULT_DEBUG_LAST_HAVE_ITEM: [i32; 8] = [i32::MIN; 8];
-static mut RESULT_DEBUG_LAST_BOSS_STATUS: [i32; 8] = [i32::MIN; 8];
-static mut RESULT_DEBUG_LAST_BOSS_KIND: [i32; 8] = [i32::MIN; 8];
-static mut RESULT_DEBUG_LAST_SCALE_BITS: [u32; 8] = [u32::MAX; 8];
 static mut PRESENTATION_DEBUG_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
+static mut RESULT_TRANSITION_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
+static mut RESULT_BISECT_ACTIVE: [bool; 8] = [false; 8];
+static mut RESULT_BISECT_TICKS: [u16; 8] = [0; 8];
+static mut RESULT_BISECT_ALIVE_LOGGED: [bool; 8] = [false; 8];
+static mut BOSS_LIFECYCLE_GENERATION: [u32; 8] = [0; 8];
+static mut BOSS_LIFECYCLE_PHASE: [u8; 8] = [0; 8];
+static mut BOSS_LIFECYCLE_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
+
+const LIFECYCLE_PHASE_PRE_MATCH: u8 = 1;
+const LIFECYCLE_PHASE_BATTLE: u8 = 2;
+const LIFECYCLE_PHASE_POST_MATCH_PRE_RESULT: u8 = 3;
+const LIFECYCLE_PHASE_RESULT_READY: u8 = 4;
+const LIFECYCLE_PHASE_SCENE_EXIT: u8 = 5;
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum BossTransitionPhase {
+    NotApplicable,
+    Battle,
+    PostMatchPreResult,
+    ResultReady,
+    SceneExit,
+}
+
+#[inline(always)]
+fn lifecycle_phase_name(phase: u8) -> &'static str {
+    match phase {
+        LIFECYCLE_PHASE_PRE_MATCH => "pre_match",
+        LIFECYCLE_PHASE_BATTLE => "battle",
+        LIFECYCLE_PHASE_POST_MATCH_PRE_RESULT => "post_match_pre_result",
+        LIFECYCLE_PHASE_RESULT_READY => "result_ready",
+        LIFECYCLE_PHASE_SCENE_EXIT => "scene_exit",
+        _ => "unknown",
+    }
+}
+
+#[inline(always)]
+unsafe fn log_lifecycle_phase(
+    entry_id: usize,
+    phase: u8,
+    stage_id: i32,
+    ready_go: bool,
+    result_mode: bool,
+    fighter_status: i32,
+    selected_ui_hash: u64,
+    reason: &'static str,
+) {
+    if !crate::debug::enabled() {
+        return;
+    }
+
+    let entry = entry_id.min(MAX_FIGHTERS - 1);
+    let signature = (BOSS_LIFECYCLE_GENERATION[entry] as u64)
+        ^ (phase as u64).rotate_left(7)
+        ^ (stage_id as u32 as u64).rotate_left(13)
+        ^ ((ready_go as u64) << 29)
+        ^ ((result_mode as u64) << 30)
+        ^ (fighter_status as u32 as u64).rotate_left(31)
+        ^ selected_ui_hash.rotate_left(43);
+    if BOSS_LIFECYCLE_LAST_SIGNATURE[entry] == signature {
+        return;
+    }
+    BOSS_LIFECYCLE_LAST_SIGNATURE[entry] = signature;
+    crate::boss_log!(
+        "[PB][MatchLifecycle] generation={} entry={} phase={} stage=0x{:x} ready_go={} result_mode={} fighter_status={} selected_ui_hash=0x{:010x} reason={}",
+        BOSS_LIFECYCLE_GENERATION[entry],
+        entry,
+        lifecycle_phase_name(phase),
+        stage_id,
+        ready_go,
+        result_mode,
+        fighter_status,
+        selected_ui_hash,
+        reason
+    );
+}
+
+/// Clear result/quarantine state only at a real new-round entry boundary.
+/// Rebirth during an active stock match is intentionally excluded unless the
+/// previous result state is still latched, so normal respawns do not reset the
+/// boss runtime.
+#[inline(always)]
+unsafe fn reset_stale_match_generation_if_new_round(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+    entry_id: usize,
+    stage_id: i32,
+    ready_go: bool,
+    result_mode: bool,
+) -> bool {
+    if module_accessor.is_null() || ready_go || result_mode {
+        return false;
+    }
+
+    let entry = entry_id.min(MAX_FIGHTERS - 1);
+    let fighter_status = StatusModule::status_kind(module_accessor);
+    let entry_status = fighter_status == *FIGHTER_STATUS_KIND_ENTRY;
+    let rebirth_after_result =
+        RESULT_MODE_SEEN[entry] && fighter_status == *FIGHTER_STATUS_KIND_REBIRTH;
+    let stale_result_state = POST_MATCH_PRE_RESULT[entry]
+        || POST_MATCH_TRACKING_INVALIDATED[entry]
+        || RESULT_MODE_SEEN[entry];
+    if !stale_result_state || (!entry_status && !rebirth_after_result) {
+        return false;
+    }
+
+    let previous_phase = lifecycle_phase_name(BOSS_LIFECYCLE_PHASE[entry]);
+    let selected_ui_hash = selection::selected_css_boss_selector_id(module_accessor).unwrap_or(0);
+
+    // This clears only the temporary scene suppression. The selected boss UI
+    // identity remains intact and is re-consumed by the normal setup path.
+    selection::clear_boss_selection_suppression_if_ready_go(module_accessor);
+    reset_boss_runtime_for_fighter(module_accessor, entry);
+
+    BOSS_MATCH_STARTED[entry] = false;
+    BOSS_HAD_READY_GO[entry] = false;
+    POST_MATCH_PRE_RESULT[entry] = false;
+    POST_MATCH_TRACKING_INVALIDATED[entry] = false;
+    RESULT_MODE_SEEN[entry] = false;
+    RESULT_BISECT_ACTIVE[entry] = false;
+    RESULT_BISECT_TICKS[entry] = 0;
+    RESULT_BISECT_ALIVE_LOGGED[entry] = false;
+    TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE[entry] = u64::MAX;
+    RESULT_TRANSITION_LAST_SIGNATURE[entry] = u64::MAX;
+    BOSS_LIFECYCLE_GENERATION[entry] = BOSS_LIFECYCLE_GENERATION[entry].wrapping_add(1);
+    BOSS_LIFECYCLE_PHASE[entry] = LIFECYCLE_PHASE_PRE_MATCH;
+    BOSS_LIFECYCLE_LAST_SIGNATURE[entry] = u64::MAX;
+    boss_summon::reset_result_roster_diagnostics();
+
+    crate::boss_log!(
+        "[PB][MatchLifecycle] new_generation entry={} generation={} previous_phase={} reset_reason=new_round_entry stage=0x{:x} fighter_status={} selected_ui_hash=0x{:010x} selected_identity_preserved=true",
+        entry,
+        BOSS_LIFECYCLE_GENERATION[entry],
+        previous_phase,
+        stage_id,
+        fighter_status,
+        selected_ui_hash
+    );
+    log_lifecycle_phase(
+        entry,
+        LIFECYCLE_PHASE_PRE_MATCH,
+        stage_id,
+        ready_go,
+        result_mode,
+        fighter_status,
+        selected_ui_hash,
+        "new_round_entry",
+    );
+    true
+}
+
+#[inline(always)]
+unsafe fn reset_boss_runtime_bookkeeping(entry_id: usize) {
+    boss_runtime::reset_all_for_entry(entry_id);
+    playable_masterhand::reset_match_state(entry_id);
+    mastercrazy::reset_match_state(entry_id);
+    galeem::reset_match_state(entry_id);
+    dharkon::reset_match_state(entry_id);
+    marx::reset_match_state(entry_id);
+    dracula::reset_match_state(entry_id);
+    rathalos::reset_match_state(entry_id);
+    galleom::reset_match_state(entry_id);
+    ganon::reset_match_state(entry_id);
+}
+
+/// Reset only the runtime owned by the fighter that is crossing a scene
+/// boundary. Giga Bowser is a dedicated `koopag` fighter with process-local
+/// state, so it must not be reset by an unrelated hidden Mario host.
+#[inline(always)]
+unsafe fn reset_boss_runtime_for_fighter(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+    entry_id: usize,
+) {
+    if !module_accessor.is_null()
+        && smash::app::utility::get_kind(&mut *module_accessor) == *FIGHTER_KIND_KOOPAG
+    {
+        gigabowser::reset_match_state(entry_id);
+    } else {
+        reset_boss_runtime_bookkeeping(entry_id);
+    }
+}
+
+/// Invalidate plugin bookkeeping after native battle teardown has started.
+///
+/// The post-match callback already releases any temporary native ownership
+/// while the item objects are still valid. After that point this helper must
+/// not call a reset routine that can inspect an item, change its status, or
+/// restore a WorkModule flag. Native owns destruction during this window;
+/// this path only clears IDs and scalar state held by the plugin.
+#[inline(always)]
+unsafe fn invalidate_boss_tracking_during_native_teardown(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+    entry_id: usize,
+) {
+    let entry = boss_runtime::sanitize_entry_id(entry_id);
+    boss_runtime::reset_all_for_entry(entry);
+
+    if !module_accessor.is_null()
+        && smash::app::utility::get_kind(&mut *module_accessor) == *FIGHTER_KIND_KOOPAG
+    {
+        // Giga Bowser owns a dedicated fighter path and its reset is scalar
+        // bookkeeping only. The shared item-boss reset is intentionally not
+        // used here because it can inspect live Master/Crazy items.
+        gigabowser::reset_match_state(entry);
+    } else {
+        playable_masterhand::reset_match_state(entry);
+        mastercrazy::invalidate_transition_tracking(entry);
+        galeem::reset_match_state(entry);
+        dharkon::reset_match_state(entry);
+        marx::reset_match_state(entry);
+        dracula::reset_match_state(entry);
+        rathalos::reset_match_state(entry);
+        galleom::reset_match_state(entry);
+        ganon::reset_match_state(entry);
+    }
+}
 
 unsafe fn any_boss_active() -> bool {
     mastercrazy::check_status()
@@ -70,13 +281,7 @@ unsafe fn suppress_hidden_host_result_audio(
     if module_accessor.is_null() || !boss_helpers::is_hidden_host(module_accessor) {
         return;
     }
-    LookupSymbol(
-        &raw mut FIGHTER_MANAGER,
-        "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}"
-            .as_bytes()
-            .as_ptr(),
-    );
-    let fighter_manager = *(FIGHTER_MANAGER as *mut *mut smash::app::FighterManager);
+    let fighter_manager = boss_helpers::fighter_manager();
     if fighter_manager.is_null() || !FighterManager::is_result_mode(fighter_manager) {
         return;
     }
@@ -86,7 +291,7 @@ unsafe fn suppress_hidden_host_result_audio(
 unsafe fn log_hidden_host_transition_snapshot(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
 ) {
-    if module_accessor.is_null() {
+    if module_accessor.is_null() || !crate::debug::enabled() {
         return;
     }
 
@@ -171,71 +376,6 @@ unsafe fn log_hidden_host_transition_snapshot(
     );
 }
 
-unsafe fn log_result_presentation_snapshot(
-    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
-) {
-    if module_accessor.is_null() {
-        return;
-    }
-
-    let entry_id = boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1);
-    let fighter_manager = boss_helpers::fighter_manager();
-    let result_mode = !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager);
-    if !result_mode {
-        RESULT_DEBUG_LAST_MODE[entry_id] = false;
-        return;
-    }
-
-    let have_item_id = if ItemModule::is_have_item(module_accessor, 0) {
-        ItemModule::get_have_item_id(module_accessor, 0) as i32
-    } else {
-        -1
-    };
-    let (boss_kind, boss_status) =
-        if have_item_id >= 0 && smash::app::sv_battle_object::is_active(have_item_id as u32) {
-            let boss_boma = smash::app::sv_battle_object::module_accessor(have_item_id as u32);
-            if boss_boma.is_null() {
-                (-1, -1)
-            } else {
-                (
-                    smash::app::utility::get_kind(&mut *boss_boma),
-                    StatusModule::status_kind(boss_boma),
-                )
-            }
-        } else {
-            (-1, -1)
-        };
-    let scale_bits = ModelModule::scale(module_accessor).to_bits();
-    if RESULT_DEBUG_LAST_MODE[entry_id]
-        && RESULT_DEBUG_LAST_HAVE_ITEM[entry_id] == have_item_id
-        && RESULT_DEBUG_LAST_BOSS_STATUS[entry_id] == boss_status
-        && RESULT_DEBUG_LAST_BOSS_KIND[entry_id] == boss_kind
-        && RESULT_DEBUG_LAST_SCALE_BITS[entry_id] == scale_bits
-    {
-        return;
-    }
-
-    RESULT_DEBUG_LAST_MODE[entry_id] = true;
-    RESULT_DEBUG_LAST_HAVE_ITEM[entry_id] = have_item_id;
-    RESULT_DEBUG_LAST_BOSS_STATUS[entry_id] = boss_status;
-    RESULT_DEBUG_LAST_BOSS_KIND[entry_id] = boss_kind;
-    RESULT_DEBUG_LAST_SCALE_BITS[entry_id] = scale_bits;
-
-    crate::boss_log!(
-        "[PB][Result] entry={} stage=0x{:x} scene=result host_kind={} host_status={} hidden_host={} host_scale={:.4} have_item_id={} boss_kind={} boss_status={} selected_ui_hash=0x{:010x}",
-        entry_id,
-        smash::app::stage::get_stage_id(),
-        smash::app::utility::get_kind(&mut *module_accessor),
-        StatusModule::status_kind(module_accessor),
-        boss_helpers::is_hidden_host(module_accessor),
-        f32::from_bits(scale_bits),
-        have_item_id,
-        boss_kind,
-        boss_status,
-        selection::selected_css_boss_selector_id(module_accessor).unwrap_or(0)
-    );
-}
-
 unsafe fn log_boss_presentation_snapshot(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
 ) {
@@ -303,6 +443,370 @@ unsafe fn log_boss_presentation_snapshot(
     );
 }
 
+/// Observe the narrow transition between the battle ending and native result
+/// mode.  Boss frame callbacks must not run in this window: their normal
+/// recovery paths are valid during gameplay, but can race native item teardown
+/// after Ready-Go has ended.
+unsafe fn update_result_transition_state(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+) -> BossTransitionPhase {
+    if module_accessor.is_null() {
+        return BossTransitionPhase::NotApplicable;
+    }
+
+    let entry_id = boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1);
+    let fighter_manager = boss_helpers::fighter_manager();
+    let stage_id = smash::app::stage::get_stage_id();
+    let ready_go = smash::app::sv_information::is_ready_go();
+    let result_mode = !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager);
+    // A new round can reuse the same hidden host and selection identity before
+    // Ready-Go becomes true. Clear only stale result-generation state at the
+    // native ENTRY boundary; ordinary in-match REBIRTH is left untouched.
+    reset_stale_match_generation_if_new_round(
+        module_accessor,
+        entry_id,
+        stage_id,
+        ready_go,
+        result_mode,
+    );
+    // Once native result mode is active, the host/item and selection scene are
+    // already crossing ownership boundaries.  Boss-match state was latched
+    // during battle, so use that bookkeeping to identify our result context
+    // instead of reading presentation data while native teardown is running.
+    let boss_result_context = BOSS_MATCH_STARTED[entry_id]
+        || POST_MATCH_PRE_RESULT[entry_id]
+        || RESULT_MODE_SEEN[entry_id];
+    if result_mode && !boss_result_context {
+        return BossTransitionPhase::ResultReady;
+    }
+    let hidden_host = if result_mode {
+        false
+    } else {
+        boss_helpers::is_hidden_host(module_accessor)
+    };
+    let selected_ui_hash = if result_mode {
+        0
+    } else {
+        selection::selected_css_boss_selector_id(module_accessor).unwrap_or(0)
+    };
+    let had_ready_go = BOSS_HAD_READY_GO[entry_id];
+
+    if !result_mode
+        && !hidden_host
+        && selected_ui_hash == 0
+        && !BOSS_MATCH_STARTED[entry_id]
+        && !RESULT_MODE_SEEN[entry_id]
+    {
+        return BossTransitionPhase::NotApplicable;
+    }
+
+    // The quarantine is global to the result scene. A normal fighter callback
+    // must not fall through to result-camera or boss-frame work merely because
+    // that entry has no boss selection of its own.
+    if ready_go && !result_mode && (hidden_host || selected_ui_hash != 0 || any_boss_active()) {
+        BOSS_HAD_READY_GO[entry_id] = true;
+        BOSS_MATCH_STARTED[entry_id] = true;
+        POST_MATCH_PRE_RESULT[entry_id] = false;
+        POST_MATCH_TRACKING_INVALIDATED[entry_id] = false;
+        RESULT_BISECT_ACTIVE[entry_id] = false;
+        RESULT_BISECT_TICKS[entry_id] = 0;
+        RESULT_BISECT_ALIVE_LOGGED[entry_id] = false;
+        BOSS_LIFECYCLE_PHASE[entry_id] = LIFECYCLE_PHASE_BATTLE;
+        log_lifecycle_phase(
+            entry_id,
+            LIFECYCLE_PHASE_BATTLE,
+            stage_id,
+            ready_go,
+            result_mode,
+            StatusModule::status_kind(module_accessor),
+            selected_ui_hash,
+            "ready_go",
+        );
+    }
+
+    let mut transition_action = "none";
+    let phase = if result_mode {
+        if !RESULT_BISECT_ACTIVE[entry_id] {
+            RESULT_BISECT_ACTIVE[entry_id] = true;
+            RESULT_BISECT_TICKS[entry_id] = 0;
+            RESULT_BISECT_ALIVE_LOGGED[entry_id] = false;
+            if crate::debug::enabled() {
+                crate::boss_log!(
+                    "[PB][ResultBisect] stage=A native_result_quarantine_enter entry={} stage_id=0x{:x} result_pipeline={}",
+                    entry_id,
+                    stage_id,
+                    result_camera::active_result_pipeline_stage_name()
+                );
+                crate::boss_log!(
+                    "[PB][ResultBisect] stage=A step=authority_abort begin entry={}",
+                    entry_id
+                );
+            }
+            // This is an idempotent final barrier for the rare transition
+            // that reaches result mode without exposing the intermediate
+            // post-match callback. It only restores plugin-owned authority;
+            // native item destruction remains entirely native-owned.
+            // The post-match path normally restores temporary hand ownership
+            // before native result teardown. If that callback is skipped, do
+            // not dereference battle items here: native result mode owns them.
+            mastercrazy::quarantine_hand_authority_for_result("result_ready_quarantine");
+            if crate::debug::enabled() {
+                crate::boss_log!(
+                    "[PB][ResultBisect] stage=A step=authority_abort ok entry={}",
+                    entry_id
+                );
+            }
+        }
+        RESULT_MODE_SEEN[entry_id] = true;
+        POST_MATCH_PRE_RESULT[entry_id] = false;
+        BOSS_LIFECYCLE_PHASE[entry_id] = LIFECYCLE_PHASE_RESULT_READY;
+        log_lifecycle_phase(
+            entry_id,
+            LIFECYCLE_PHASE_RESULT_READY,
+            stage_id,
+            ready_go,
+            result_mode,
+            StatusModule::status_kind(module_accessor),
+            selected_ui_hash,
+            "native_result_mode",
+        );
+        BossTransitionPhase::ResultReady
+    } else if !ready_go && had_ready_go && BOSS_MATCH_STARTED[entry_id] {
+        if !POST_MATCH_PRE_RESULT[entry_id] {
+            let pair_was_active = mastercrazy::hand_team_authority_active_for_debug();
+            mastercrazy::abort_hand_team_for_transition("post_match_pre_result");
+            POST_MATCH_PRE_RESULT[entry_id] = true;
+            BOSS_LIFECYCLE_PHASE[entry_id] = LIFECYCLE_PHASE_POST_MATCH_PRE_RESULT;
+            log_lifecycle_phase(
+                entry_id,
+                LIFECYCLE_PHASE_POST_MATCH_PRE_RESULT,
+                stage_id,
+                ready_go,
+                result_mode,
+                StatusModule::status_kind(module_accessor),
+                selected_ui_hash,
+                "ready_go_ended",
+            );
+            transition_action = if pair_was_active {
+                "hand_authority_aborted_once"
+            } else {
+                "post_match_guard_armed"
+            };
+        }
+        BossTransitionPhase::PostMatchPreResult
+    } else if !result_mode && RESULT_MODE_SEEN[entry_id] {
+        transition_action = "scene_exit_observed";
+        BossTransitionPhase::SceneExit
+    } else if ready_go {
+        BossTransitionPhase::Battle
+    } else {
+        return BossTransitionPhase::NotApplicable;
+    };
+
+    // Result mode and the post-match gap are quarantine states.  Do not read
+    // the host's item slots or touch an item object here: native teardown owns
+    // those objects, and stale access is exactly what this boundary must avoid.
+    if phase != BossTransitionPhase::Battle {
+        // Capture Galeem/Dharkon's logical entry and summon state before the
+        // observational summon record is cleared below.  This call is
+        // explicitly read-only in the transition window.
+        let audit_phase = match phase {
+            BossTransitionPhase::PostMatchPreResult => "post_match_pre_result",
+            BossTransitionPhase::ResultReady => "result_ready",
+            BossTransitionPhase::SceneExit => "scene_exit",
+            _ => "quarantine",
+        };
+        galeem::audit_transition(module_accessor, audit_phase, false);
+        dharkon::audit_transition(module_accessor, audit_phase, false);
+
+        // Galeem/Dharkon summon tracing is observational only. Clear that
+        // plugin bookkeeping at the same boundary as the other transient
+        // systems, without touching the native summon or its fighter object.
+        boss_summon::cancel_for_transition(match phase {
+            BossTransitionPhase::PostMatchPreResult => "post_match_pre_result",
+            BossTransitionPhase::ResultReady => "result_ready",
+            BossTransitionPhase::SceneExit => "scene_exit",
+            _ => "quarantine",
+        });
+        boss_summon::log_result_roster_snapshot(audit_phase);
+        if phase == BossTransitionPhase::ResultReady {
+            RESULT_BISECT_TICKS[entry_id] = RESULT_BISECT_TICKS[entry_id].saturating_add(1);
+            if RESULT_BISECT_TICKS[entry_id] == 45 && !RESULT_BISECT_ALIVE_LOGGED[entry_id] {
+                RESULT_BISECT_ALIVE_LOGGED[entry_id] = true;
+                crate::boss_log!(
+                    "[PB][ResultBisect] stage=A native_result_quarantine_alive entry={} ticks={} result_pipeline={} battle_item_deref=false central_presentation_authority=enabled",
+                    entry_id,
+                    RESULT_BISECT_TICKS[entry_id],
+                    result_camera::active_result_pipeline_stage_name()
+                );
+            }
+        }
+
+        let fighter_status = StatusModule::status_kind(module_accessor);
+        let operation_cpu = boss_helpers::is_operation_cpu_entry(fighter_manager, entry_id);
+        let pair_active = false;
+        let phase_name = match phase {
+            BossTransitionPhase::PostMatchPreResult => "post_match_pre_result",
+            BossTransitionPhase::ResultReady => "result_ready",
+            BossTransitionPhase::SceneExit => "scene_exit",
+            _ => "quarantine",
+        };
+        let phase_tag = match phase {
+            BossTransitionPhase::PostMatchPreResult => 1u64,
+            BossTransitionPhase::ResultReady => 2u64,
+            BossTransitionPhase::SceneExit => 3u64,
+            _ => 0u64,
+        };
+        let signature = (stage_id as u32 as u64)
+            ^ ((ready_go as u64) << 1)
+            ^ ((result_mode as u64) << 2)
+            ^ ((had_ready_go as u64) << 3)
+            ^ ((BOSS_MATCH_STARTED[entry_id] as u64) << 4)
+            ^ phase_tag.rotate_left(9)
+            ^ selected_ui_hash.rotate_left(19)
+            ^ (fighter_status as u32 as u64).rotate_left(31);
+        if RESULT_TRANSITION_LAST_SIGNATURE[entry_id] != signature {
+            RESULT_TRANSITION_LAST_SIGNATURE[entry_id] = signature;
+            crate::boss_log!(
+                "[PB][ResultTransition] probe_begin entry={} stage=0x{:x} ready_go={} had_ready_go={} match_started={} result_mode={} selected_ui_hash=0x{:010x}",
+                entry_id,
+                stage_id,
+                ready_go,
+                had_ready_go,
+                BOSS_MATCH_STARTED[entry_id],
+                result_mode,
+                selected_ui_hash
+            );
+            crate::boss_log!(
+                "[PB][ResultTransition] probe_end entry={} phase={} fighter_status={} operation_cpu={} battle_object_id=0x0 battle_object_active=false tracked_object_id=0x0 boss_kind=-1 boss_status=-1 paired_authority_active={} temporary_ai_suppression={} recovery_enabled=false reacquisition_enabled=false result_quarantine=true custom_result_pipeline={} cleanup_action={}",
+                entry_id,
+                phase_name,
+                fighter_status,
+                operation_cpu,
+                pair_active,
+                pair_active,
+                result_camera::custom_result_pipeline_enabled(),
+                if phase == BossTransitionPhase::ResultReady {
+                    "result_presentation_authority_armed"
+                } else {
+                    transition_action
+                }
+            );
+        }
+        return phase;
+    }
+
+    boss_summon::log_result_roster_snapshot("battle");
+    let have_item_id = if ItemModule::is_have_item(module_accessor, 0) {
+        ItemModule::get_have_item_id(module_accessor, 0) as i32
+    } else {
+        -1
+    };
+    let battle_object_active =
+        have_item_id >= 0 && smash::app::sv_battle_object::is_active(have_item_id as u32);
+    let (boss_kind, boss_status) = if battle_object_active {
+        let boss_boma = smash::app::sv_battle_object::module_accessor(have_item_id as u32);
+        if boss_boma.is_null() {
+            (-1, -1)
+        } else {
+            (
+                smash::app::utility::get_kind(&mut *boss_boma),
+                StatusModule::status_kind(boss_boma),
+            )
+        }
+    } else {
+        (-1, -1)
+    };
+    let fighter_status = StatusModule::status_kind(module_accessor);
+    let operation_cpu = boss_helpers::is_operation_cpu_entry(fighter_manager, entry_id);
+    let pair_active = mastercrazy::hand_team_authority_active_for_debug();
+    let signature = (stage_id as u32 as u64)
+        ^ ((ready_go as u64) << 1)
+        ^ ((result_mode as u64) << 2)
+        ^ ((had_ready_go as u64) << 3)
+        ^ ((BOSS_MATCH_STARTED[entry_id] as u64) << 4)
+        ^ ((phase == BossTransitionPhase::PostMatchPreResult) as u64) << 5
+        ^ ((battle_object_active as u64) << 6)
+        ^ ((operation_cpu as u64) << 7)
+        ^ ((pair_active as u64) << 8)
+        ^ (have_item_id as u32 as u64).rotate_left(11)
+        ^ (selected_ui_hash.rotate_left(19))
+        ^ (fighter_status as u32 as u64).rotate_left(31)
+        ^ (boss_kind as u32 as u64).rotate_left(43)
+        ^ (boss_status as u32 as u64).rotate_left(47);
+
+    if RESULT_TRANSITION_LAST_SIGNATURE[entry_id] == signature {
+        return phase;
+    }
+    RESULT_TRANSITION_LAST_SIGNATURE[entry_id] = signature;
+
+    crate::boss_log!(
+        "[PB][ResultTransition] probe_begin entry={} stage=0x{:x} ready_go={} had_ready_go={} match_started={} result_mode={} selected_ui_hash=0x{:010x}",
+        entry_id,
+        stage_id,
+        ready_go,
+        had_ready_go,
+        BOSS_MATCH_STARTED[entry_id],
+        result_mode,
+        selected_ui_hash
+    );
+    crate::boss_log!(
+        "[PB][ResultTransition] probe_end entry={} phase={} fighter_status={} operation_cpu={} battle_object_id=0x{:x} battle_object_active={} tracked_object_id=0x{:x} boss_kind={} boss_status={} paired_authority_active={} temporary_ai_suppression={} recovery_enabled={} reacquisition_enabled={} cleanup_action={}",
+        entry_id,
+        "battle",
+        fighter_status,
+        operation_cpu,
+        have_item_id.max(0) as u32,
+        battle_object_active,
+        have_item_id.max(0) as u32,
+        boss_kind,
+        boss_status,
+        pair_active,
+        pair_active,
+        true,
+        true,
+        transition_action
+    );
+
+    phase
+}
+
+pub unsafe fn any_post_match_pre_result() -> bool {
+    let mut entry = 0;
+    while entry < MAX_FIGHTERS {
+        if POST_MATCH_PRE_RESULT[entry] {
+            return true;
+        }
+        entry += 1;
+    }
+    false
+}
+
+/// Dedicated fighter agents do not pass through the Mario-host dispatcher.
+/// Give them the same read-only result quarantine without exposing the
+/// transition implementation or allowing them to inspect native item slots.
+#[inline(always)]
+pub unsafe fn should_quarantine_boss_frame(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+) -> bool {
+    matches!(
+        update_result_transition_state(module_accessor),
+        BossTransitionPhase::PostMatchPreResult
+            | BossTransitionPhase::ResultReady
+            | BossTransitionPhase::SceneExit
+    )
+}
+
+/// Complete the shared scene-exit bookkeeping for a dedicated boss agent.
+/// This is intentionally separate from the result quarantine: native result
+/// teardown remains native-owned, and reset only occurs after result mode ends.
+#[inline(always)]
+pub unsafe fn finish_boss_transition_cleanup(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+) {
+    cleanup_hidden_host_post_match_transition(module_accessor);
+}
+
 unsafe fn cleanup_hidden_host_post_match_transition(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
 ) {
@@ -313,8 +817,63 @@ unsafe fn cleanup_hidden_host_post_match_transition(
     let entry_id = boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1);
     let fighter_manager = boss_helpers::fighter_manager();
     let result_mode = !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager);
-    let hidden_host = boss_helpers::is_hidden_host(module_accessor);
     let ready_go = smash::app::sv_information::is_ready_go();
+
+    if result_mode {
+        // Result mode is a strict quarantine. The selected UI identity is
+        // deliberately retained for the result resolver, but no selection
+        // suppression, item lookup, or battle cleanup is performed here.
+        // Native result teardown owns the battle objects and the dedicated
+        // result manager is the only code allowed to create presentation
+        // objects after its pipeline is enabled.
+        TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE[entry_id] = u64::MAX;
+        return;
+    }
+
+    let hidden_host = boss_helpers::is_hidden_host(module_accessor);
+
+    // Result mode has ended. This is the first safe point at which all
+    // result-owned objects and hidden-host bookkeeping can be discarded,
+    // including when the next scene reports Ready-Go immediately.
+    if RESULT_MODE_SEEN[entry_id] {
+        let stage_id = smash::app::stage::get_stage_id();
+        TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE[entry_id] = u64::MAX;
+        BOSS_LIFECYCLE_PHASE[entry_id] = LIFECYCLE_PHASE_SCENE_EXIT;
+        log_lifecycle_phase(
+            entry_id,
+            LIFECYCLE_PHASE_SCENE_EXIT,
+            stage_id,
+            ready_go,
+            result_mode,
+            StatusModule::status_kind(module_accessor),
+            0,
+            "result_scene_exit",
+        );
+        selection::suppress_boss_selection_until_ready_go(entry_id);
+        BOSS_MATCH_STARTED[entry_id] = false;
+        BOSS_HAD_READY_GO[entry_id] = false;
+        POST_MATCH_PRE_RESULT[entry_id] = false;
+        POST_MATCH_TRACKING_INVALIDATED[entry_id] = false;
+        RESULT_MODE_SEEN[entry_id] = false;
+        RESULT_BISECT_ACTIVE[entry_id] = false;
+        RESULT_BISECT_TICKS[entry_id] = 0;
+        RESULT_BISECT_ALIVE_LOGGED[entry_id] = false;
+        reset_boss_runtime_for_fighter(module_accessor, entry_id);
+        crate::boss_log!(
+            "[PB][ResultTransition] entry={} phase=scene_exit cleanup_action=result_bookkeeping_cleared stage=0x{:x}",
+            entry_id,
+            stage_id
+        );
+        if !fighter_manager.is_null() {
+            FighterManager::set_cursor_whole(fighter_manager, true);
+            FighterManager::set_position_lock(
+                fighter_manager,
+                smash::app::FighterEntryID(entry_id as i32),
+                false,
+            );
+        }
+        return;
+    }
 
     if ready_go {
         TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE[entry_id] = u64::MAX;
@@ -324,16 +883,24 @@ unsafe fn cleanup_hidden_host_post_match_transition(
         return;
     }
 
-    if result_mode {
+    if !BOSS_MATCH_STARTED[entry_id] {
         TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE[entry_id] = u64::MAX;
-        if BOSS_MATCH_STARTED[entry_id] {
-            selection::suppress_boss_selection_until_ready_go(entry_id);
-        }
         return;
     }
 
-    if !BOSS_MATCH_STARTED[entry_id] {
+    if POST_MATCH_PRE_RESULT[entry_id] {
         TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE[entry_id] = u64::MAX;
+        if !POST_MATCH_TRACKING_INVALIDATED[entry_id] {
+            // This only clears plugin bookkeeping. Native item teardown owns
+            // destruction; no item is removed or reacquired here.
+            invalidate_boss_tracking_during_native_teardown(module_accessor, entry_id);
+            POST_MATCH_TRACKING_INVALIDATED[entry_id] = true;
+            crate::boss_log!(
+                "[PB][ResultTransition] entry={} phase=post_match_pre_result cleanup_action=battle_tracking_invalidated_no_native_access",
+                entry_id
+            );
+            boss_summon::log_result_roster_snapshot("post_match_after_tracking_invalidation");
+        }
         return;
     }
 
@@ -361,16 +928,10 @@ unsafe fn cleanup_hidden_host_post_match_transition(
     TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE[entry_id] = u64::MAX;
     selection::suppress_boss_selection_until_ready_go(entry_id);
     BOSS_MATCH_STARTED[entry_id] = false;
-    boss_runtime::reset_all_for_entry(entry_id);
-    playable_masterhand::reset_match_state(entry_id);
-    mastercrazy::reset_match_state(entry_id);
-    galeem::reset_match_state(entry_id);
-    dharkon::reset_match_state(entry_id);
-    marx::reset_match_state(entry_id);
-    dracula::reset_match_state(entry_id);
-    rathalos::reset_match_state(entry_id);
-    galleom::reset_match_state(entry_id);
-    ganon::reset_match_state(entry_id);
+    reset_boss_runtime_for_fighter(module_accessor, entry_id);
+    BOSS_HAD_READY_GO[entry_id] = false;
+    POST_MATCH_PRE_RESULT[entry_id] = false;
+    POST_MATCH_TRACKING_INVALIDATED[entry_id] = false;
 
     crate::boss_log!(
         "[PB][TransitionCleanup] entry {}: clearing boss runtime after non-result match transition on stage=0x{:x} hidden_host={}",
@@ -443,26 +1004,60 @@ unsafe fn restore_plain_mario_after_hidden_host_cleanup(
 extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let module_accessor = fighter.module_accessor;
-        selection::clear_boss_selection_suppression_if_ready_go(module_accessor);
-        mastercrazy::master_frame(fighter);
-        mastercrazy::crazy_frame(fighter);
-        playable_masterhand::frame(fighter);
-        galeem::frame(fighter);
-        dharkon::frame(fighter);
-        marx::frame(fighter);
-        dracula::frame(fighter);
-        rathalos::frame(fighter);
-        galleom::frame(fighter);
-        ganon::frame(fighter);
+
+        // The Figure Player viewer has a real Mario host, but it is not a
+        // battle host.  Its presentation-only item must consume the callback
+        // before any boss AI, recovery, result, or match-lifecycle work sees
+        // the menu scene.
+        let stage_id = smash::app::stage::get_stage_id();
+        let amiibo_viewer = stage_id == boss_helpers::STAGE_ID_AMIIBO_PREVIEW;
+        if amiibo_preview::frame(module_accessor, stage_id) || amiibo_viewer {
+            return;
+        }
+
+        let transition_phase = update_result_transition_state(module_accessor);
+        if transition_phase == BossTransitionPhase::Battle
+            || transition_phase == BossTransitionPhase::NotApplicable
+        {
+            // Snapshot the logical boss while the battle host still owns its
+            // battle item. Result mode later consumes this immutable identity
+            // instead of querying mutable CSS/menu state during teardown.
+            result_camera::observe_battle_identity(module_accessor);
+            selection::clear_boss_selection_suppression_if_ready_go(module_accessor);
+            mastercrazy::master_frame(fighter);
+            mastercrazy::crazy_frame(fighter);
+            mastercrazy::hand_entrance_step(fighter.lua_state_agent, module_accessor);
+            playable_masterhand::frame(fighter);
+            galeem::frame(fighter);
+            dharkon::frame(fighter);
+            marx::frame(fighter);
+            dracula::frame(fighter);
+            rathalos::frame(fighter);
+            galleom::frame(fighter);
+            ganon::frame(fighter);
+            ai_diagnostics::log_item_host(module_accessor);
+            ai_diagnostics::log_fighter_control_state(module_accessor);
+            suppress_hidden_host_result_audio(module_accessor);
+        }
+
+        // Normal boss frames are quarantined in ResultReady, so retain the
+        // existing hidden-host audio suppression here rather than allowing a
+        // Mario victory voice to leak through the presentation handoff.
+        if transition_phase == BossTransitionPhase::ResultReady {
+            suppress_hidden_host_result_audio(module_accessor);
+        }
+
+        // Result presentation is a separate authority. It must keep running
+        // in ResultReady, where normal boss frames are quarantined.
         result_camera::frame(module_accessor);
-        ai_diagnostics::log_item_host(module_accessor);
-        ai_diagnostics::log_fighter_control_state(module_accessor);
-        suppress_hidden_host_result_audio(module_accessor);
         cleanup_hidden_host_post_match_transition(module_accessor);
-        restore_plain_mario_after_hidden_host_cleanup(module_accessor);
-        log_hidden_host_transition_snapshot(module_accessor);
-        log_result_presentation_snapshot(module_accessor);
-        log_boss_presentation_snapshot(module_accessor);
+        if transition_phase == BossTransitionPhase::Battle
+            || transition_phase == BossTransitionPhase::NotApplicable
+        {
+            restore_plain_mario_after_hidden_host_cleanup(module_accessor);
+            log_hidden_host_transition_snapshot(module_accessor);
+            log_boss_presentation_snapshot(module_accessor);
+        }
     }
 }
 
@@ -865,14 +1460,21 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
                 index,
                 ui_amiibo_id.0,
                 upper,
+                read_u8_field(record, nfp_character_id_lower_hash).unwrap_or(0),
+                read_u16_field(record, nfp_numbering_id_hash).unwrap_or(0),
+                read_bool_field(record, enable_unknown_numbering_id_hash).unwrap_or(false),
+                read_bool_field(record, unknown_bool_hash).unwrap_or(false),
+                read_hash40_field(record, ui_chara_id_hash)
+                    .map(|value| value.0)
+                    .unwrap_or(0),
                 read_bool_field(record, is_valid_hash).unwrap_or(false),
             ));
         }
     }
 
-    let legacy_template_present = existing_records.iter().any(|(_, ui_id, full_id)| {
-        *ui_id == 0x0361_1202 && (*full_id >> 48) == 8455
-    });
+    let legacy_template_present = existing_records
+        .iter()
+        .any(|(_, ui_id, full_id)| *ui_id == 0x0361_1202 && (*full_id >> 48) == 8455);
     if crate::debug::enabled() {
         crate::boss_log!(
             "[PB][Amiibo] runtime_db root_fields={} records={} schema_valid_records={} template_index={:?} legacy_fixture_sentinel_present={} fingerprint=0x{:016x}",
@@ -887,6 +1489,31 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             "[PB][Amiibo] runtime_db schema=ui_amiibo_id:Hash40,ui_chara_id:Hash40,is_valid:Bool,0x13a26bd6a0:Bool,nfp_numbering_id:U16,default_color:U8,enable_unknown_numbering_id:Bool,nfp_character_id_upper:U16,nfp_character_id_lower:U8 candidates={:?}",
             schema_candidates
         );
+        for (
+            index,
+            ui_amiibo_id,
+            upper,
+            lower,
+            numbering,
+            unknown_numbering,
+            unknown_bool,
+            ui_chara,
+            is_valid,
+        ) in &schema_candidates
+        {
+            crate::boss_log!(
+                "[PB][AmiiboKeyAudit] source=runtime_existing index={} ui_amiibo_id=0x{:010x} upper=0x{:04x} lower=0x{:02x} numbering=0x{:04x} unknown_numbering={} unknown_bool={} is_valid={} ui_chara=0x{:010x}",
+                index,
+                ui_amiibo_id,
+                upper,
+                lower,
+                numbering,
+                unknown_numbering,
+                unknown_bool,
+                is_valid,
+                ui_chara
+            );
+        }
     }
 
     if template.is_none() {
@@ -903,6 +1530,30 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let mut remapped_tag_ids = Vec::new();
 
     for mapping in mappings {
+        if crate::debug::enabled() {
+            if let Some(key) = mapping.nfp_match_key {
+                crate::boss_log!(
+                    "[PB][AmiiboKeyAudit] source=config boss={} figure_id=0x{:016x} ui_amiibo_id=0x{:010x} upper=0x{:04x} lower=0x{:02x} numbering=0x{:04x} unknown_numbering={} unknown_bool=template ui_chara={} match_mode=explicit_private_virtual",
+                    mapping.identity.key,
+                    mapping.tag_id,
+                    mapping.ui_amiibo_id,
+                    key.character_id_upper,
+                    key.character_id_lower,
+                    key.numbering_id,
+                    key.enable_unknown_numbering_id,
+                    mapping.identity.ui_chara_id
+                );
+            } else {
+                crate::boss_log!(
+                    "[PB][AmiiboKeyAudit] source=config boss={} figure_id=0x{:016x} ui_amiibo_id=0x{:010x} upper=0x{:04x} lower=template numbering=template unknown_numbering=template unknown_bool=template ui_chara={} match_mode=preserve_template",
+                    mapping.identity.key,
+                    mapping.tag_id,
+                    mapping.ui_amiibo_id,
+                    mapping.nfp_character_id_upper,
+                    mapping.identity.ui_chara_id
+                );
+            }
+        }
         if mapping.remap_existing {
             let matching_records: Vec<usize> = existing_records
                 .iter()
@@ -923,7 +1574,7 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
                 );
                 continue;
             }
-            if remapped_tag_ids.iter().any(|id| *id == mapping.tag_id) {
+            if remapped_tag_ids.contains(&mapping.tag_id) {
                 crate::boss_log!(
                     "[PB][Amiibo] rejected {}: full tag ID 0x{:016x} was already remapped by another boss",
                     mapping.identity.name,
@@ -1005,7 +1656,7 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         let exact_collision = existing_records
             .iter()
             .any(|(_, _, full_tag_id)| *full_tag_id == mapping.tag_id)
-            || new_tag_ids.iter().any(|id| *id == mapping.tag_id);
+            || new_tag_ids.contains(&mapping.tag_id);
         if exact_collision {
             crate::boss_log!(
                 "[PB][Amiibo] rejected {}: exact figure ID 0x{:016x} already exists; set remap_existing=true only when intentionally replacing that exact record",
@@ -1029,7 +1680,7 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             continue;
         }
 
-        if new_tag_ids.iter().any(|id| *id == mapping.tag_id) {
+        if new_tag_ids.contains(&mapping.tag_id) {
             crate::boss_log!(
                 "[PB][Amiibo] rejected {}: full tag ID 0x{:016x} collides with another configured mapping",
                 mapping.identity.name,
@@ -1051,6 +1702,7 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             to_hash40(mapping.identity.ui_chara_id),
             mapping.nfp_character_id_upper,
             mapping.default_color,
+            mapping.nfp_match_key,
         ) else {
             crate::boss_log!(
                 "[PB][Amiibo] rejected {}: selected schema-valid template could not be patched",
@@ -1065,7 +1717,7 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         added += 1;
 
         crate::boss_log!(
-            "[PB][Amiibo] added {} mode=append template_index={} tag=0x{:016x} ui_amiibo_id=0x{:010x} original_ui_chara_id=<none> result_ui_chara_id={} result_ui_chara_hash=0x{:010x} nfp_character_id_upper={} default_color={}",
+            "[PB][Amiibo] added {} mode=append template_index={} tag=0x{:016x} ui_amiibo_id=0x{:010x} original_ui_chara_id=<none> result_ui_chara_id={} result_ui_chara_hash=0x{:010x} nfp_character_id_upper={} default_color={} explicit_nfp_match={:?}",
             mapping.identity.name,
             template_index,
             mapping.tag_id,
@@ -1073,7 +1725,8 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             mapping.identity.ui_chara_id,
             to_hash40(mapping.identity.ui_chara_id).0,
             mapping.nfp_character_id_upper,
-            mapping.default_color
+            mapping.default_color,
+            mapping.nfp_match_key
         );
         amiibo_preview::log_identity_boundary(&mapping, "append", None);
         if crate::debug::enabled() {
@@ -1361,6 +2014,11 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
     });
     patch_css_selector_fields(charroot, "ui_chara_masterhand", 0x160);
+    amiibo_preview::log_ui_chara_db_boundary(
+        "ui_chara_masterhand",
+        "fighter_kind_mario",
+        "item:masterhand",
+    );
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -2220,6 +2878,10 @@ pub fn main() {
             .iter()
             .any(|mapping| mapping.identity.key == key)
     };
+    // The viewer's identity handoff is runtime behavior, not debug-only
+    // instrumentation. Populate its allowlist before any selection hook can
+    // observe a Figure Player row.
+    amiibo_preview::configure_mapping_profiles(&amiibo_mappings);
 
     if crate::debug::enabled() {
         if let Some(error) = amiibo::parse_error() {
@@ -2263,14 +2925,6 @@ pub fn main() {
     selection::install();
 
     mastercrazy::install();
-    playable_masterhand::install();
-    galeem::install();
-    dharkon::install();
-    marx::install();
-    rathalos::install();
-    dracula::install();
-    galleom::install();
-    ganon::install();
     if giga_bowser_normal || amiibo_has("giga_bowser") {
         gigabowser::install();
     }

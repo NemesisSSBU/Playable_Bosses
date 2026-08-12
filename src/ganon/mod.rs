@@ -89,6 +89,10 @@ unsafe fn restore_ganon_after_item_wipe(module_accessor: *mut BattleObjectModule
     if module_accessor.is_null() || !sv_information::is_ready_go() || DEAD {
         return;
     }
+    let fighter_manager = boss_helpers::fighter_manager();
+    if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
+        return;
+    }
 
     let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
     ENTRY_ID = entry;
@@ -167,7 +171,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 selection::is_selected_css_boss(module_accessor, *ITEM_KIND_GANONBOSS);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
+                let stage_id = smash::app::stage::get_stage_id();
+                if boss_helpers::is_boss_preview_stage(stage_id) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor =
                         smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -218,8 +223,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             ModelModule::rotation_order(module_accessor),
                         );
                     }
-                } else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id())
-                {
+                } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_ganon_after_item_wipe(module_accessor);
                     if sv_information::is_ready_go() == false {
                         let entry = boss_helpers::entry_id(module_accessor);
@@ -1199,41 +1203,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     let fighter_manager = boss_helpers::fighter_manager();
-                    if FighterManager::is_result_mode(fighter_manager) == true {
-                        if RESULT_SPAWNED == false {
-                            let result_entry = ENTRY_ID.min(7);
-                            ItemModule::remove_all(module_accessor);
-                            let result_boma = boss_helpers::acquire_boss_item(
-                                module_accessor,
-                                &raw mut BOSS_ID,
-                                *ITEM_KIND_GANONBOSS,
-                            );
-                            RESULT_SPAWNED = true;
-                            MOVING = false;
-                            EXISTS_PUBLIC = !result_boma.is_null();
-                            if result_boma.is_null() {
-                                crate::boss_log!(
-                                    "[PB][Result][GanonBoss] entry {}: native result item acquisition failed",
-                                    result_entry
-                                );
-                            } else {
-                                StatusModule::change_status_request_from_script(
-                                    result_boma,
-                                    *ITEM_STATUS_KIND_FOR_BOSS_START,
-                                    true,
-                                );
-                                crate::boss_log!(
-                                    "[PB][Result][GanonBoss] entry {}: spawned result item id=0x{:x} status={}",
-                                    result_entry,
-                                    BOSS_ID[result_entry],
-                                    StatusModule::status_kind(result_boma)
-                                );
-                            }
-                        }
-                        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
-                        return;
-                    }
-
                     //STUBS AI
 
                     if sv_information::is_ready_go() == true && !DEAD {
@@ -1965,8 +1934,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     }
 }
 
-pub fn install() {}
-
 pub unsafe fn frame(fighter: &mut L2CFighterCommon) {
+    if crate::should_quarantine_boss_frame(fighter.module_accessor) {
+        return;
+    }
     once_per_fighter_frame(fighter);
 }

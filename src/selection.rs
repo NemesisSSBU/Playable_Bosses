@@ -1,17 +1,15 @@
 use crate::config::CONFIG;
 use once_cell::sync::Lazy;
 use skyline::nn::oe::{DisplayVersion, GetDisplayVersion, Initialize};
-use skyline::nn::ro::LookupSymbol;
 use smash::app::lua_bind::*;
 use smash::app::sv_battle_object;
 use smash::app::sv_information;
-use smash::app::{BattleObjectModuleAccessor, FighterEntryID, FighterInformation, FighterManager};
+use smash::app::{BattleObjectModuleAccessor, FighterInformation};
 use smash::lib::lua_const::*;
 
 const MAX_FIGHTERS: usize = 8;
 const DETECT_CHARACTER_NAME_ENTRY_STRIDE: u64 = 0x260;
 const DETECT_CHARACTER_NAME_TEXT_OFFSET: u64 = 0x8E;
-static mut FIGHTER_MANAGER_ADDR: usize = 0;
 static mut LAST_LOGGED_SELECTOR_ID: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut LAST_LOGGED_LOG_SELECTOR_ID: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut LAST_LOGGED_NORMALIZED_SELECTOR_ID: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
@@ -21,6 +19,9 @@ static mut LAST_LOGGED_CACHE_SELECTOR_ID: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_F
 static mut LOG_INT_SELECTOR_KEY: [Option<(i32, i32, i32)>; MAX_FIGHTERS] = [None; MAX_FIGHTERS];
 static mut CACHED_BOSS_UI_HASH_GLOBAL: u64 = 0;
 static mut CACHED_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
+static mut CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY: [OpaqueSelectionCacheOrigin; MAX_FIGHTERS] =
+    [OpaqueSelectionCacheOrigin::None; MAX_FIGHTERS];
+static mut PENDING_OPAQUE_SELECTION_ENTRY: usize = usize::MAX;
 static mut LAST_LOGGED_GLOBAL_CAPTURE_HASH: u64 = 0;
 static mut LAST_LOGGED_SELECTION_INFO_HASH: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut LAST_LOGGED_CSS_SELECTION_RAW: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
@@ -29,6 +30,30 @@ static mut LAST_LOGGED_NAME_SELECTOR_HASH: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_
 static mut LAST_LOGGED_NAME_SELECTOR_RESULT: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut SUPPRESS_BOSS_SELECTION_BY_ENTRY: [bool; MAX_FIGHTERS] = [false; MAX_FIGHTERS];
 static mut SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY: [i32; MAX_FIGHTERS] = [i32::MIN; MAX_FIGHTERS];
+// Begin/end slots for the four installed selection hooks. These diagnostics are
+// state-transition based so WOL selection can be bisected without logging every
+// menu update.
+static mut LAST_SELECTION_BISECT_SIGNATURE: [u64; 8] = [u64::MAX; 8];
+
+// Raw selection callbacks run before the battle-stage subsystem is guaranteed
+// to exist.  Keep their identity handoff explicitly opaque; only a validated
+// fighter frame may classify a tentative value as a WOL preview selection.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum OpaqueSelectionCacheOrigin {
+    None,
+    TentativeUiSelection,
+    ConfirmedUiLookup,
+}
+
+impl OpaqueSelectionCacheOrigin {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::TentativeUiSelection => "tentative_ui_selection",
+            Self::ConfirmedUiLookup => "confirmed_ui_lookup",
+        }
+    }
+}
 
 static TITLE_VERSION: Lazy<(u16, u16, u16)> = Lazy::new(|| unsafe {
     Initialize();
@@ -248,9 +273,9 @@ unsafe fn selected_boss_selector_id_from_character_name(
             crate::boss_log!(
                 "[PB][SelectionName] entry {} version={}.{}.{} name=\"{}\" canonical=\"{}\" resolved=0x{:x}",
                 entry_idx,
-                (*TITLE_VERSION).0,
-                (*TITLE_VERSION).1,
-                (*TITLE_VERSION).2,
+                TITLE_VERSION.0,
+                TITLE_VERSION.1,
+                TITLE_VERSION.2,
                 detected_name,
                 canonical,
                 resolved_hash
@@ -283,7 +308,7 @@ unsafe fn selected_boss_selector_id_from_runtime_sources(
             }
         }
         if !is_known_boss_selector_value(selected) {
-            cache_selector_id = cached_css_boss_hash(idx);
+            cache_selector_id = cached_css_boss_hash(module_accessor, idx);
             if let Some(v) = cache_selector_id {
                 selected = v;
             }
@@ -326,7 +351,7 @@ unsafe fn selected_boss_selector_id_from_runtime_sources(
             }
         }
         if !is_known_boss_selector_value(selected) {
-            cache_selector_id = cached_css_boss_hash(idx);
+            cache_selector_id = cached_css_boss_hash(module_accessor, idx);
             if let Some(v) = cache_selector_id {
                 selected = v;
             }
@@ -381,97 +406,126 @@ fn normalize_ui_hash_candidate(raw: u64) -> Option<u64> {
     None
 }
 
-unsafe fn cache_boss_hash_from_selection_info(player_id: u32, new_selection_info: u64) {
-    if new_selection_info <= 0x10000 {
+#[inline(always)]
+unsafe fn log_selection_hook(
+    slot: usize,
+    hook: &'static str,
+    phase: &'static str,
+    player_id: u32,
+    raw_ui_hash: u64,
+    normalized_ui_hash: Option<u64>,
+    info_ptr: u64,
+) {
+    if !crate::debug::enabled() {
         return;
     }
 
-    let mut entry_idx: Option<usize> = None;
-    // Prefer the explicit CSS entry encoded in the callback payload when present.
-    let possible_css_entry = std::ptr::read_unaligned(new_selection_info as *const u32);
-    if possible_css_entry == u32::MAX {
-        // Empty CSS slots use the sentinel value before their selection-info
-        // payload is initialized. Do not read the later fields from that
-        // payload or retain a boss hash from the previous fighter in the slot.
-        if (player_id as usize) < MAX_FIGHTERS {
-            let idx = player_id as usize;
-            SUPPRESS_BOSS_SELECTION_BY_ENTRY[idx] = false;
-            SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[idx] = i32::MIN;
-            CACHED_BOSS_UI_HASH_BY_ENTRY[idx] = 0;
-            if crate::debug::enabled() && LAST_LOGGED_SELECTION_INFO_HASH[idx] != 0 {
-                LAST_LOGGED_SELECTION_INFO_HASH[idx] = 0;
-                crate::boss_log!(
-                    "[PB][SelectionCapture] ignored_uninitialized_entry player={} info=0x{:x}",
-                    player_id,
-                    new_selection_info
-                );
-            }
-        }
-        CACHED_BOSS_UI_HASH_GLOBAL = 0;
+    let normalized = normalized_ui_hash.unwrap_or(0);
+    let signature = ((player_id as u64) << 8)
+        ^ raw_ui_hash.rotate_left(17)
+        ^ normalized.rotate_left(31)
+        ^ info_ptr.rotate_left(47);
+    let slot = slot.min(7);
+    if LAST_SELECTION_BISECT_SIGNATURE[slot] == signature {
         return;
     }
-    if (1..=MAX_FIGHTERS as u32).contains(&possible_css_entry) {
-        entry_idx = Some((possible_css_entry - 1) as usize);
-    } else if (player_id as usize) < MAX_FIGHTERS {
-        entry_idx = Some(player_id as usize);
-    }
+    LAST_SELECTION_BISECT_SIGNATURE[slot] = signature;
 
-    if crate::debug::enabled() && entry_idx.is_some() {
-        crate::boss_log!(
-            "[PB][SelectionCapture] assign_entry player={} payload_entry={} resolved_entry={:?} info=0x{:x}",
-            player_id,
-            possible_css_entry,
-            entry_idx,
-            new_selection_info
-        );
-    }
+    crate::boss_log!(
+        "[PB][SelectionHook] hook={} phase={} source=raw_ui_callback stage=unobserved_ui_hook player={} raw_ui_hash=0x{:x} normalized_ui_hash=0x{:x} info_ptr=0x{:x} payload=opaque",
+        hook,
+        phase,
+        player_id,
+        raw_ui_hash,
+        normalized,
+        info_ptr
+    );
+}
 
-    if let Some(idx) = entry_idx {
-        SUPPRESS_BOSS_SELECTION_BY_ENTRY[idx] = false;
-        SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[idx] = i32::MIN;
-    }
-
-    // Keep this read narrow and deterministic to avoid faulting on unknown layouts.
-    let ui_chara_hash_combined = (new_selection_info + 0x18) as *const u64;
-    let raw_field_value = std::ptr::read_unaligned(ui_chara_hash_combined);
-    let css_debug_hash = normalize_css_debug_hash(raw_field_value);
-    log_css_selection_transition(player_id, entry_idx, raw_field_value, css_debug_hash);
-    let Some(ui_chara_hash) = normalize_ui_hash_candidate(raw_field_value) else {
-        CACHED_BOSS_UI_HASH_GLOBAL = 0;
-        if let Some(idx) = entry_idx {
-            CACHED_BOSS_UI_HASH_BY_ENTRY[idx] = 0;
-            if crate::debug::enabled() && LAST_LOGGED_SELECTION_INFO_HASH[idx] != 0 {
-                LAST_LOGGED_SELECTION_INFO_HASH[idx] = 0;
-                crate::boss_log!(
-                    "[PB][SelectionCapture] clear_cached_boss_hash player={} entry={:?} info=0x{:x} raw=0x{:x}",
-                    player_id,
-                    entry_idx,
-                    new_selection_info,
-                    raw_field_value
-                );
-            }
-        }
+/// Associate the latest boss lookup with the selection callback without
+/// dereferencing its payload.  CSS normally confirms this candidate through a
+/// lookup nested in the original callback; WOL retains it as tentative until a
+/// validated stage-0x139 host consumes it later.
+#[inline(always)]
+unsafe fn arm_opaque_selection_candidate(player_id: u32, payload_ptr: u64, hook: &'static str) {
+    let Some(entry_idx) = ((player_id as usize) < MAX_FIGHTERS).then_some(player_id as usize)
+    else {
         return;
     };
 
-    CACHED_BOSS_UI_HASH_GLOBAL = ui_chara_hash;
-    if let Some(idx) = entry_idx {
-        CACHED_BOSS_UI_HASH_BY_ENTRY[idx] = ui_chara_hash;
+    crate::amiibo_preview::discard_unbound_identity_from_raw_selection_callback();
+    SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] = false;
+    SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] = i32::MIN;
+    let cached_hash = CACHED_BOSS_UI_HASH_GLOBAL;
+    if is_boss_css_hash(cached_hash) {
+        CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx] = cached_hash;
+        CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] =
+            OpaqueSelectionCacheOrigin::TentativeUiSelection;
+    } else {
+        CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx] = 0;
+        CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] = OpaqueSelectionCacheOrigin::None;
+    }
+    PENDING_OPAQUE_SELECTION_ENTRY = entry_idx;
+
+    if crate::debug::enabled() && LAST_LOGGED_SELECTION_INFO_HASH[entry_idx] != cached_hash {
+        LAST_LOGGED_SELECTION_INFO_HASH[entry_idx] = cached_hash;
+        crate::boss_log!(
+            "[PB][SelectionHook] hook={} phase=opaque_candidate player={} entry={} candidate_ui_chara_hash=0x{:x} origin={} info_ptr=0x{:x}",
+            hook,
+            player_id,
+            entry_idx,
+            cached_hash,
+            CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx].name(),
+            payload_ptr
+        );
+    }
+}
+
+#[inline(always)]
+unsafe fn resolve_pending_opaque_selection_lookup(
+    raw_ui_hash: u64,
+    normalized_ui_hash: Option<u64>,
+) {
+    let entry_idx = PENDING_OPAQUE_SELECTION_ENTRY;
+    if entry_idx >= MAX_FIGHTERS {
+        return;
     }
 
-    if crate::debug::enabled() {
-        let debug_idx = entry_idx.unwrap_or(0).min(MAX_FIGHTERS - 1);
-        if LAST_LOGGED_SELECTION_INFO_HASH[debug_idx] != ui_chara_hash {
-            LAST_LOGGED_SELECTION_INFO_HASH[debug_idx] = ui_chara_hash;
-            crate::boss_log!(
-                "[PB][SelectionCapture] update_selected_fighter player={} entry={:?} info=0x{:x} field=+0x18 raw=0x{:x} ui_chara_hash=0x{:x}",
-                player_id,
-                entry_idx,
-                new_selection_info,
-                raw_field_value,
-                ui_chara_hash
-            );
+    PENDING_OPAQUE_SELECTION_ENTRY = usize::MAX;
+    match normalized_ui_hash {
+        Some(ui_hash) => {
+            CACHED_BOSS_UI_HASH_GLOBAL = ui_hash;
+            CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx] = ui_hash;
+            CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] =
+                OpaqueSelectionCacheOrigin::ConfirmedUiLookup;
+            log_css_selection_transition(entry_idx as u32, Some(entry_idx), raw_ui_hash, ui_hash);
+            if crate::debug::enabled() {
+                crate::boss_log!(
+                    "[PB][SelectionHook] hook=capture_lookup_fighter_kind_from_ui_hash phase=lookup_confirmed entry={} ui_chara_hash=0x{:x}",
+                    entry_idx,
+                    ui_hash
+                );
+            }
         }
+        None => {
+            CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx] = 0;
+            CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] = OpaqueSelectionCacheOrigin::None;
+            if crate::debug::enabled() {
+                crate::boss_log!(
+                    "[PB][SelectionHook] hook=capture_lookup_fighter_kind_from_ui_hash phase=lookup_non_boss entry={} action=clear_candidate",
+                    entry_idx
+                );
+            }
+        }
+    }
+}
+
+#[inline(always)]
+unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
+    if PENDING_OPAQUE_SELECTION_ENTRY == entry_idx {
+        // No lookup was nested in this callback. Keep a WOL-only tentative
+        // candidate, but never let it affect an ordinary battle host.
+        PENDING_OPAQUE_SELECTION_ENTRY = usize::MAX;
     }
 }
 
@@ -481,8 +535,33 @@ unsafe fn update_selected_fighter_capture_3310760(
     player_id: u32,
     new_selection_info: u64,
 ) {
-    cache_boss_hash_from_selection_info(player_id, new_selection_info);
-    original!()(unk, player_id, new_selection_info)
+    log_selection_hook(
+        0,
+        "update_selected_fighter_capture_3310760",
+        "begin",
+        player_id,
+        0,
+        None,
+        new_selection_info,
+    );
+    arm_opaque_selection_candidate(
+        player_id,
+        new_selection_info,
+        "update_selected_fighter_capture_3310760",
+    );
+    original!()(unk, player_id, new_selection_info);
+    if (player_id as usize) < MAX_FIGHTERS {
+        finish_opaque_selection_candidate(player_id as usize);
+    }
+    log_selection_hook(
+        1,
+        "update_selected_fighter_capture_3310760",
+        "end",
+        player_id,
+        0,
+        None,
+        new_selection_info,
+    );
 }
 
 // Some plugin stacks/game revisions route this callback at a nearby offset.
@@ -492,16 +571,58 @@ unsafe fn update_selected_fighter_capture_3311190(
     player_id: u32,
     new_selection_info: *const u8,
 ) {
-    cache_boss_hash_from_selection_info(player_id, new_selection_info as u64);
-    original!()(unk, player_id, new_selection_info)
+    log_selection_hook(
+        2,
+        "update_selected_fighter_capture_3311190",
+        "begin",
+        player_id,
+        0,
+        None,
+        new_selection_info as u64,
+    );
+    arm_opaque_selection_candidate(
+        player_id,
+        new_selection_info as u64,
+        "update_selected_fighter_capture_3311190",
+    );
+    original!()(unk, player_id, new_selection_info);
+    if (player_id as usize) < MAX_FIGHTERS {
+        finish_opaque_selection_candidate(player_id as usize);
+    }
+    log_selection_hook(
+        3,
+        "update_selected_fighter_capture_3311190",
+        "end",
+        player_id,
+        0,
+        None,
+        new_selection_info as u64,
+    );
 }
 
 #[skyline::hook(offset = 0x3262130)]
 unsafe fn capture_lookup_fighter_kind_from_ui_hash(database: u64, hash: u64) -> i32 {
     let normalized = normalize_ui_hash_candidate(hash);
+    log_selection_hook(
+        4,
+        "capture_lookup_fighter_kind_from_ui_hash",
+        "begin",
+        u32::MAX,
+        hash,
+        normalized,
+        database,
+    );
 
+    // A lookup nested in selected-fighter handling belongs to CSS/WOL state,
+    // not the Figure Player viewer. Preserve its boss identity for selection,
+    // but do not arm the stage-0x135 handoff from it.
+    let selection_callback_pending = PENDING_OPAQUE_SELECTION_ENTRY < MAX_FIGHTERS;
+    resolve_pending_opaque_selection_lookup(hash, normalized);
     if let Some(ui_hash) = normalized {
         CACHED_BOSS_UI_HASH_GLOBAL = ui_hash;
+        if !selection_callback_pending {
+            crate::amiibo_preview::observe_logical_identity_lookup(hash, ui_hash);
+        }
         if crate::debug::enabled() && LAST_LOGGED_GLOBAL_CAPTURE_HASH != ui_hash {
             LAST_LOGGED_GLOBAL_CAPTURE_HASH = ui_hash;
             crate::boss_log!(
@@ -512,44 +633,50 @@ unsafe fn capture_lookup_fighter_kind_from_ui_hash(database: u64, hash: u64) -> 
         }
     }
 
-    original!()(database, hash)
+    let result = original!()(database, hash);
+    log_selection_hook(
+        5,
+        "capture_lookup_fighter_kind_from_ui_hash",
+        "end",
+        u32::MAX,
+        hash,
+        normalized,
+        database,
+    );
+    result
 }
 
 #[skyline::hook(offset = SELECTION_UPDATE_CSS_13_0_1_PLUS)]
 unsafe fn update_css_cache(unk: u64) {
-    let candidate_a = *((unk + 0x238) as *const u64);
-    let candidate_b = *((unk + 0x240) as *const u64);
-
-    let mut selected_hash: Option<u64> = None;
-    for candidate in [candidate_a, candidate_b] {
-        if let Some(normalized) = normalize_ui_hash_candidate(candidate) {
-            selected_hash = Some(normalized);
-            break;
-        }
-    }
-
-    if let Some(hash) = selected_hash {
-        CACHED_BOSS_UI_HASH_GLOBAL = hash;
-        if crate::debug::enabled() {
-            crate::boss_log!(
-                "[PB][SelectionCache] css_update unk=0x{:x} a=0x{:x} b=0x{:x} cached=0x{:x}",
-                unk,
-                candidate_a,
-                candidate_b,
-                hash
-            );
-        }
-    }
-
-    original!()(unk)
+    log_selection_hook(6, "update_css_cache", "begin", u32::MAX, 0, None, unk);
+    // This callback is shared with WOL and has no stable payload contract at
+    // startup. Its pointer remains opaque; the lookup hook carries identity.
+    original!()(unk);
+    log_selection_hook(7, "update_css_cache", "end", u32::MAX, 0, None, unk);
 }
 
-unsafe fn cached_css_boss_hash(entry_idx: usize) -> Option<u64> {
-    let by_entry = CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx];
-    if is_boss_css_hash(by_entry) {
-        return Some(by_entry);
+unsafe fn cached_css_boss_hash(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    entry_idx: usize,
+) -> Option<u64> {
+    if module_accessor.is_null() || entry_idx >= MAX_FIGHTERS {
+        return None;
     }
-    None
+    let by_entry = CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx];
+    if !is_boss_css_hash(by_entry) {
+        return None;
+    }
+    match CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] {
+        OpaqueSelectionCacheOrigin::ConfirmedUiLookup => Some(by_entry),
+        // The previous lookup can be used for WOL only after a real Mario host
+        // exists.  Raw UI callbacks never query this stage value.
+        OpaqueSelectionCacheOrigin::TentativeUiSelection
+            if smash::app::stage::get_stage_id() == crate::boss_helpers::STAGE_ID_BOSS_PREVIEW =>
+        {
+            Some(by_entry)
+        }
+        OpaqueSelectionCacheOrigin::None | OpaqueSelectionCacheOrigin::TentativeUiSelection => None,
+    }
 }
 
 fn decode_tagged_selector_scalar(raw: u64) -> Option<u32> {
@@ -624,20 +751,6 @@ fn css_identity_label(value: u64) -> &'static str {
         UI_CHARA_MEWTWO_MASTERHAND_HASH => "wol_master_hand",
         _ => "unknown",
     }
-}
-
-fn normalize_css_debug_hash(raw: u64) -> u64 {
-    let masked = raw & HASH40_MASK;
-    if is_boss_css_hash(masked) || masked == UI_CHARA_MARIO_HASH {
-        return masked;
-    }
-
-    let swapped = raw.swap_bytes() & HASH40_MASK;
-    if is_boss_css_hash(swapped) || swapped == UI_CHARA_MARIO_HASH {
-        return swapped;
-    }
-
-    masked
 }
 
 unsafe fn log_css_selection_transition(
@@ -751,21 +864,6 @@ unsafe fn log_int_css_selector_id(info: *mut FighterInformation, entry_idx: usiz
     None
 }
 
-unsafe fn fighter_manager() -> *mut FighterManager {
-    if FIGHTER_MANAGER_ADDR == 0 {
-        LookupSymbol(
-            &raw mut FIGHTER_MANAGER_ADDR,
-            "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\0"
-                .as_bytes()
-                .as_ptr(),
-        );
-    }
-    if FIGHTER_MANAGER_ADDR == 0 {
-        return std::ptr::null_mut();
-    }
-    *(FIGHTER_MANAGER_ADDR as *mut *mut FighterManager)
-}
-
 unsafe fn fighter_information(
     module_accessor: *mut BattleObjectModuleAccessor,
 ) -> *mut FighterInformation {
@@ -776,11 +874,11 @@ unsafe fn fighter_information(
     if entry_id < 0 {
         return std::ptr::null_mut();
     }
-    let manager = fighter_manager();
+    let manager = crate::boss_helpers::fighter_manager();
     if manager.is_null() {
         return std::ptr::null_mut();
     }
-    smash::app::lua_bind::FighterManager::get_fighter_information(manager, FighterEntryID(entry_id))
+    crate::boss_helpers::fighter_information_entry(manager, entry_id as usize)
 }
 
 // Returns the raw CSS-selected boss selector value (from ui_chara_* row data),

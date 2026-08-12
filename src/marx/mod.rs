@@ -115,6 +115,10 @@ unsafe fn restore_marx_after_item_wipe(module_accessor: *mut BattleObjectModuleA
     if module_accessor.is_null() || !sv_information::is_ready_go() || DEAD {
         return;
     }
+    let fighter_manager = boss_helpers::fighter_manager();
+    if !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager) {
+        return;
+    }
 
     let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
     ENTRY_ID = entry;
@@ -193,7 +197,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 selection::is_selected_css_boss(module_accessor, *ITEM_KIND_MARX);
             if selected_via_slot {
                 boss_helpers::clear_hidden_host_effects(module_accessor);
-                if boss_helpers::is_boss_preview_stage(smash::app::stage::get_stage_id()) {
+                let stage_id = smash::app::stage::get_stage_id();
+                if boss_helpers::is_boss_preview_stage(stage_id) {
                     let lua_state = fighter.lua_state_agent;
                     let module_accessor =
                         smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -261,8 +266,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             },
                         );
                     }
-                } else if !boss_helpers::is_boss_passthrough_stage(smash::app::stage::get_stage_id())
-                {
+                } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_marx_after_item_wipe(module_accessor);
                     if sv_information::is_ready_go() == false {
                         let entry = boss_helpers::entry_id(module_accessor);
@@ -1382,40 +1386,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     let fighter_manager = boss_helpers::fighter_manager();
-                    if FighterManager::is_result_mode(fighter_manager) == true {
-                        if RESULT_SPAWNED == false {
-                            let result_entry = ENTRY_ID.min(7);
-                            ItemModule::remove_all(module_accessor);
-                            let result_boma = boss_helpers::acquire_boss_item(
-                                module_accessor,
-                                &raw mut BOSS_ID,
-                                *ITEM_KIND_MARX,
-                            );
-                            RESULT_SPAWNED = true;
-                            EXISTS_PUBLIC = !result_boma.is_null();
-                            if result_boma.is_null() {
-                                crate::boss_log!(
-                                    "[PB][Result][Marx] entry {}: native result item acquisition failed",
-                                    result_entry
-                                );
-                            } else {
-                                StatusModule::change_status_request_from_script(
-                                    result_boma,
-                                    *ITEM_STATUS_KIND_FOR_BOSS_START,
-                                    true,
-                                );
-                                crate::boss_log!(
-                                    "[PB][Result][Marx] entry {}: spawned result item id=0x{:x} status={}",
-                                    result_entry,
-                                    BOSS_ID[result_entry],
-                                    StatusModule::status_kind(result_boma)
-                                );
-                            }
-                        }
-                        boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
-                        return;
-                    }
-
                     if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == false {
                         if MotionModule::motion_kind(boss_boma) == smash::hash40("wait")
                             || MotionModule::motion_kind(boss_boma)
@@ -1784,9 +1754,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     if CONTROLLER_X > 0.0 && CONTROLLER_X < 0.06 {
                                         CONTROLLER_X = 0.0;
                                     }
-                                    if CONTROLLER_X < 0.0 && CONTROLLER_X > 0.06 {
-                                        CONTROLLER_X = 0.0;
-                                    }
                                 }
                                 if CONTROLLER_X > 0.0
                                     && ControlModule::get_stick_x(module_accessor) < 0.0
@@ -1838,9 +1805,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                                 if ControlModule::get_stick_y(module_accessor) == 0.0 {
                                     if CONTROLLER_Y > 0.0 && CONTROLLER_Y < 0.06 {
-                                        CONTROLLER_Y = 0.0;
-                                    }
-                                    if CONTROLLER_Y < 0.0 && CONTROLLER_Y > 0.06 {
                                         CONTROLLER_Y = 0.0;
                                     }
                                 }
@@ -2186,8 +2150,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     }
 }
 
-pub fn install() {}
-
 pub unsafe fn frame(fighter: &mut L2CFighterCommon) {
+    if crate::should_quarantine_boss_frame(fighter.module_accessor) {
+        return;
+    }
     once_per_fighter_frame(fighter);
 }
