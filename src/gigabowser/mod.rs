@@ -8,6 +8,10 @@ use smash::lua2cpp::L2CFighterCommon;
 use smash::phx::Vector3f;
 use smashline::{Agent, Main};
 
+/// Giga Bowser is built by the native amiibo viewer at full fighter size,
+/// which overfills the preview frame. Half scale is the preview-only size.
+const AMIIBO_PREVIEW_SCALE: f32 = 0.5;
+
 static mut DEAD: bool = false;
 static mut STOP: bool = false;
 static mut ENTRY_ID: usize = 0;
@@ -50,6 +54,20 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         // the fighter callback in Result mode.
         if fighter_kind == *FIGHTER_KIND_KOOPAG {
             crate::result_camera::observe_native_fighter_result_reference(module_accessor);
+        }
+
+        // Amiibo Figure Player viewer only. Giga Bowser is the one boss the
+        // native viewer builds itself, so there is no presentation item to
+        // scale — the fighter is the preview. He overfills the frame at native
+        // size, so halve him here. Nothing else on this stage is touched, and
+        // battle stages keep his real scale.
+        if fighter_kind == *FIGHTER_KIND_KOOPAG
+            && smash::app::stage::get_stage_id() == boss_helpers::STAGE_ID_AMIIBO_PREVIEW
+        {
+            if ModelModule::scale(module_accessor) != AMIIBO_PREVIEW_SCALE {
+                ModelModule::set_scale(module_accessor, AMIIBO_PREVIEW_SCALE);
+            }
+            return;
         }
 
         // Giga Bowser uses its own fighter agent instead of the Mario-host

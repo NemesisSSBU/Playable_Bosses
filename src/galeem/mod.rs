@@ -34,6 +34,15 @@ static mut CONTROL_SPEED_MUL_2: f32 = 0.05;
 static mut HIDDEN_CPU: [u32; 8] = [0; 8];
 static mut SPAWN_BISECT_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
 static mut WOL_PREVIEW_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
+/// Bounded WOL presentation motion probe, mirroring the Amiibo one. Evidence
+/// only: it never changes behavior and reports once per preview creation.
+static mut WOL_MOTION_PROBE_FRAMES: [u8; 8] = [0; 8];
+static mut WOL_MOTION_PROBE_LAST_FRAME: [f32; 8] = [-1.0; 8];
+static mut WOL_MOTION_PROBE_ADVANCED: [bool; 8] = [false; 8];
+static mut WOL_MOTION_PROBE_BEFORE: [u64; 8] = [0; 8];
+static mut WOL_MOTION_PROBE_AFTER_CHANGE: [u64; 8] = [0; 8];
+static mut WOL_MOTION_PROBE_FIRST_FRAME: [f32; 8] = [-1.0; 8];
+const WOL_MOTION_PROBE_SAMPLE_FRAMES: u8 = 30;
 
 const GALEEM_FLOOR_CLEARANCE: f32 = 0.1;
 
@@ -328,6 +337,52 @@ unsafe fn log_galeem_spawn_state(
     );
 }
 
+/// Bounded WOL presentation motion probe for Galeem. Evidence only: it reads
+/// the presentation item and never writes to it. Mirrors the Amiibo
+/// `[PB][AmiiboMotionProbe]` field set so both surfaces can be compared
+/// directly. No single field here is a verdict — an accepted motion name with
+/// a stuck frame can mean a wrong animation resource, a zero-rate or one-frame
+/// motion, missing initialization, or a core object with no animated idle.
+#[inline(always)]
+unsafe fn observe_wol_presentation_motion(
+    entry: usize,
+    boss_boma: *mut BattleObjectModuleAccessor,
+) {
+    let entry = entry.min(7);
+    if boss_boma.is_null() || WOL_MOTION_PROBE_FRAMES[entry] == 0 || !crate::debug::enabled() {
+        return;
+    }
+    WOL_MOTION_PROBE_FRAMES[entry] -= 1;
+    let motion_frame = MotionModule::frame(boss_boma);
+    if WOL_MOTION_PROBE_LAST_FRAME[entry] >= 0.0
+        && (motion_frame - WOL_MOTION_PROBE_LAST_FRAME[entry]).abs() > 0.0001
+    {
+        WOL_MOTION_PROBE_ADVANCED[entry] = true;
+    }
+    WOL_MOTION_PROBE_LAST_FRAME[entry] = motion_frame;
+    if WOL_MOTION_PROBE_FRAMES[entry] != 0 {
+        return;
+    }
+    let motion_kind = MotionModule::motion_kind(boss_boma);
+    crate::boss_log!(
+        "[PB][AmiiboMotionProbe] surface=wol entry={} logical_boss=galeem actual_item_kind={} requested_motion_name={} requested_motion_hash=0x{:x} motion_before=0x{:x} motion_immediately_after_change=0x{:x} motion_after_sample_window=0x{:x} name_accepted={} frame_before={:.2} frame_after={:.2} motion_rate={:.3} status_kind={} animation_advanced={} sample_frames={}",
+        entry,
+        smash::app::utility::get_kind(&mut *boss_boma),
+        PRESENTATION_IDLE_MOTION,
+        smash::hash40(PRESENTATION_IDLE_MOTION),
+        WOL_MOTION_PROBE_BEFORE[entry],
+        WOL_MOTION_PROBE_AFTER_CHANGE[entry],
+        motion_kind,
+        motion_kind == smash::hash40(PRESENTATION_IDLE_MOTION),
+        WOL_MOTION_PROBE_FIRST_FRAME[entry],
+        motion_frame,
+        MotionModule::rate(boss_boma),
+        StatusModule::status_kind(boss_boma),
+        WOL_MOTION_PROBE_ADVANCED[entry],
+        WOL_MOTION_PROBE_SAMPLE_FRAMES,
+    );
+}
+
 #[inline(always)]
 unsafe fn log_galeem_wol_preview(
     entry: usize,
@@ -407,6 +462,11 @@ unsafe fn ensure_wol_galeem_preview(
             return;
         }
         ModelModule::set_scale(boss_boma, 0.05);
+        WOL_MOTION_PROBE_BEFORE[entry] = MotionModule::motion_kind(boss_boma);
+        WOL_MOTION_PROBE_FIRST_FRAME[entry] = MotionModule::frame(boss_boma);
+        WOL_MOTION_PROBE_FRAMES[entry] = WOL_MOTION_PROBE_SAMPLE_FRAMES;
+        WOL_MOTION_PROBE_LAST_FRAME[entry] = -1.0;
+        WOL_MOTION_PROBE_ADVANCED[entry] = false;
         MotionModule::change_motion(
             boss_boma,
             smash::phx::Hash40::new(PRESENTATION_IDLE_MOTION),
@@ -417,7 +477,15 @@ unsafe fn ensure_wol_galeem_preview(
             false,
             false,
         );
+        WOL_MOTION_PROBE_AFTER_CHANGE[entry] = MotionModule::motion_kind(boss_boma);
         log_galeem_wol_preview(entry, 4, "create_complete", module_accessor, boss_boma);
+    }
+
+    // Read-only presentation probe on whatever item this host is holding.
+    if let Some((_, _, held_boma)) =
+        boss_helpers::held_item_by_kind(module_accessor, &[*ITEM_KIND_KIILACORE])
+    {
+        observe_wol_presentation_motion(entry, held_boma);
     }
 
     if ModelModule::scale(module_accessor) == boss_helpers::HIDDEN_HOST_SCALE {

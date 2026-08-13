@@ -32,32 +32,51 @@ const PREVIEW_TRANSFORM_STABILIZATION_FRAMES: u8 = 16;
 // stage-0x135 transform-composition diagnosis. Capture only a few stabilized
 // samples so this remains useful without becoming a per-frame log.
 const TRANSFORM_COMPARISON_SAMPLE_FRAMES: u8 = 4;
+// Motion-playback probe window. Long enough that a looping idle must advance
+// its motion frame at least once if anything is playing at all.
+const MOTION_PROBE_SAMPLE_FRAMES: u8 = 30;
+// Switch system tick rate. `nn::os::GetSystemTick` is a named, version-stable
+// symbol in the pinned bindings; the pinned bindings expose no
+// GetSystemTickFrequency, so the documented 19.2 MHz platform rate is used for
+// the millisecond conversion. Raw tick deltas are logged alongside it so the
+// measurement stays usable even if the divisor is ever wrong.
+const SYSTEM_TICK_HZ: f64 = 19_200_000.0;
+
+#[inline(always)]
+fn system_tick() -> u64 {
+    unsafe { skyline::nn::os::GetSystemTick() }
+}
+
+#[inline(always)]
+fn ticks_to_ms(ticks: u64) -> f64 {
+    ticks as f64 * 1000.0 / SYSTEM_TICK_HZ
+}
 // Proof-pair (Master Hand + Marx) interactive-transform diagnostics: once
 // stable maintenance begins (host fully native), capture a bounded number of
 // native host-posture changes so hardware can prove stick rotation while
 // plugin_host_posture_write=false and the boss-local correction stays put.
 const INTERACTIVE_TRANSFORM_CHANGE_SAMPLES: u8 = 4;
-// Debug-only stage-0x135 transform calibration harness (Master Hand + Marx
-// proof pair). All state is runtime-only and resets per viewer generation.
+// Debug-only stage-0x135 transform calibration harness, available on every
+// item preview. All state is runtime-only and resets per viewer generation.
 const CALIBRATION_INPUT_PROBE_SAMPLES: u8 = 24;
 const CALIBRATION_RESET_HOLD_FRAMES: u16 = 60;
 const CALIBRATION_COARSE_STEP_DEGREES: f32 = 15.0;
 const CALIBRATION_FINE_STEP_DEGREES: f32 = 5.0;
-// Temporary Galleom A/B probe. WOL leaves presentation items attached to
-// Mario's held-item transform; stage 0x135 normally replaces that transform
-// at once. Observe the native relationship first, then resume the anchor path.
-const NATIVE_HELD_DIAGNOSTIC_FRAMES: u8 = 16;
 const MASTER_HAND_PREVIEW_KEY: &str = "master_hand";
-const GALLEOM_PREVIEW_KEY: &str = "galleom";
 const MARX_PREVIEW_KEY: &str = "marx";
 const RATHALOS_PREVIEW_KEY: &str = "rathalos";
-// Rathalos is the only verified backing whose stage-0x135 creation was not
-// visible in the host slot synchronously. Let the native viewer finish its
-// initial host setup, then make at most two WOL-faithful requests and observe
-// each for one bounded stabilization window.
+// Rathalos's boss-only backing returns safely from `have_item` but hardware
+// proved the object never lands in a host slot: after two WOL-faithful
+// requests and both full observation windows the slots stay
+// `[0,0,0,0]`/`[-1,-1,-1,-1]`. These bounds are the proven ceiling and must
+// not be raised — a third request has nothing new to observe.
 const RATHALOS_HOST_SETTLE_FRAMES: u8 = PREVIEW_TRANSFORM_STABILIZATION_FRAMES;
 const RATHALOS_ACQUIRE_SETTLE_FRAMES: u8 = PREVIEW_TRANSFORM_STABILIZATION_FRAMES;
 const RATHALOS_MAX_ACQUIRE_REQUESTS: u8 = 2;
+// One menu-only visual fallback request after the boss backing exhausts, then
+// fail closed. Presentation-only: it changes no identity and no other path.
+const RATHALOS_FALLBACK_SETTLE_FRAMES: u8 = PREVIEW_TRANSFORM_STABILIZATION_FRAMES;
+const DRACULA_PREVIEW_KEY: &str = "dracula";
 
 // The NRO hook is a safe observation boundary for the first Switch trace. It
 // tells us which lazily loaded UI module owns the amiibo screen without
@@ -135,30 +154,6 @@ impl AmiiboPreviewOwnership {
     }
 }
 
-/// Controls whether stage 0x135 immediately owns the item transform or first
-/// observes the same host-held relationship used by the WOL preview.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum AmiiboAttachmentMode {
-    ViewerAnchor,
-    NativeHeldDiagnostic,
-}
-
-impl AmiiboAttachmentMode {
-    fn for_profile(profile: &BossAmiiboPreviewProfile) -> Self {
-        match profile.key {
-            GALLEOM_PREVIEW_KEY => Self::NativeHeldDiagnostic,
-            _ => Self::ViewerAnchor,
-        }
-    }
-
-    const fn name(self) -> &'static str {
-        match self {
-            Self::ViewerAnchor => "viewer_anchor",
-            Self::NativeHeldDiagnostic => "native_held_diagnostic",
-        }
-    }
-}
-
 impl AmiiboPreviewPhase {
     const fn name(self) -> &'static str {
         match self {
@@ -199,24 +194,16 @@ impl ViewerAnchor {
     }
 }
 
-/// Bounded state for a stage-0x135 native-held attachment experiment. This is
-/// deliberately scoped to one viewer generation and only enabled by the
-/// profile's typed attachment mode.
-#[derive(Copy, Clone)]
-struct NativeHeldAttachmentProbe {
-    observed_frames: u8,
-    observation_complete: bool,
-    detachment_logged: bool,
-}
-
-/// Rathalos's WOL backing is source-proven, but its menu acquisition has not
-/// been observed synchronously. This state bounds delayed observation and the
-/// one allowed settled-host retry without turning `have_item` into a loop.
+/// Rathalos-only acquisition state. It bounds the boss-backing requests and
+/// observation windows, then the single menu-only visual fallback request.
+/// Nothing else shares this state.
 #[derive(Copy, Clone)]
 struct RathalosAcquireProbe {
     request_count: u8,
     host_settle_frames: u8,
     frames_since_request: u8,
+    fallback_requested: bool,
+    frames_since_fallback: u8,
 }
 
 impl RathalosAcquireProbe {
@@ -225,6 +212,8 @@ impl RathalosAcquireProbe {
             request_count: 0,
             host_settle_frames: 0,
             frames_since_request: 0,
+            fallback_requested: false,
+            frames_since_fallback: 0,
         }
     }
 
@@ -239,21 +228,9 @@ impl RathalosAcquireProbe {
     const fn observation_window_elapsed(self) -> bool {
         self.frames_since_request >= RATHALOS_ACQUIRE_SETTLE_FRAMES
     }
-}
 
-impl NativeHeldAttachmentProbe {
-    const fn empty() -> Self {
-        Self {
-            observed_frames: 0,
-            observation_complete: false,
-            detachment_logged: false,
-        }
-    }
-
-    const fn preserves_native_attachment(self, slot_still_held: bool) -> bool {
-        !self.observation_complete
-            && slot_still_held
-            && self.observed_frames < NATIVE_HELD_DIAGNOSTIC_FRAMES
+    const fn fallback_window_elapsed(self) -> bool {
+        self.frames_since_fallback >= RATHALOS_FALLBACK_SETTLE_FRAMES
     }
 }
 
@@ -371,6 +348,10 @@ struct AmiiboPreviewState {
     host_object_id: u32,
     presentation_object_id: u32,
     expected_item_kind: i32,
+    // False only while a Rathalos menu-visual-fallback object is presented.
+    // The profile's status/motion pairing is proven for its own backing only,
+    // so a fallback object keeps its native status and motion instead.
+    apply_profile_idle_motion: bool,
     presentation_slot: i32,
     ownership: AmiiboPreviewOwnership,
     viewer_generation: u32,
@@ -379,11 +360,31 @@ struct AmiiboPreviewState {
     create_attempted: bool,
     stabilization_reacquire_used: bool,
     transform_stabilization_frames_remaining: u8,
-    attachment_mode: AmiiboAttachmentMode,
-    native_held_attachment_probe: NativeHeldAttachmentProbe,
     rathalos_acquire_probe: RathalosAcquireProbe,
     interactive_transform_probe: InteractiveTransformProbe,
     transform_calibration: TransformCalibrationState,
+    // Motion-playback probe. Distinguishes "the configured motion name does
+    // not exist on this item" from "this model simply has no animation":
+    // motion_kind tells us whether the request took, MotionModule::frame tells
+    // us whether anything is actually playing.
+    motion_probe_samples_remaining: u8,
+    motion_probe_motion_before: u64,
+    motion_probe_motion_after_change: u64,
+    motion_probe_first_frame: f32,
+    motion_probe_last_frame: f32,
+    motion_probe_advanced: bool,
+    // Frames from viewer_host_ready to the first fully visible frame, so the
+    // perceived spawn delay can be attributed to the plugin or to the game's
+    // own NRO/model streaming.
+    identity_tick: u64,
+    viewer_host_ready_tick: u64,
+    frames_since_viewer_host_ready: u16,
+    frames_host_ready_to_create: u16,
+    frames_create_to_engine_visible: u16,
+    frames_create_to_model_visible: u16,
+    have_item_ticks: u64,
+    created_frame_mark: u16,
+    visible_latency_logged: bool,
     transform_comparison_samples_remaining: u8,
     transform_comparison_complete: bool,
     transform_ready_logged: bool,
@@ -405,6 +406,7 @@ impl AmiiboPreviewState {
             host_object_id: 0,
             presentation_object_id: 0,
             expected_item_kind: -1,
+            apply_profile_idle_motion: true,
             presentation_slot: -1,
             ownership: AmiiboPreviewOwnership::None,
             viewer_generation: 0,
@@ -413,11 +415,24 @@ impl AmiiboPreviewState {
             create_attempted: false,
             stabilization_reacquire_used: false,
             transform_stabilization_frames_remaining: 0,
-            attachment_mode: AmiiboAttachmentMode::ViewerAnchor,
-            native_held_attachment_probe: NativeHeldAttachmentProbe::empty(),
             rathalos_acquire_probe: RathalosAcquireProbe::empty(),
             interactive_transform_probe: InteractiveTransformProbe::empty(),
             transform_calibration: TransformCalibrationState::empty(),
+            motion_probe_samples_remaining: MOTION_PROBE_SAMPLE_FRAMES,
+            motion_probe_motion_before: 0,
+            motion_probe_motion_after_change: 0,
+            motion_probe_first_frame: -1.0,
+            motion_probe_last_frame: -1.0,
+            motion_probe_advanced: false,
+            identity_tick: 0,
+            viewer_host_ready_tick: 0,
+            frames_since_viewer_host_ready: 0,
+            frames_host_ready_to_create: 0,
+            frames_create_to_engine_visible: 0,
+            frames_create_to_model_visible: 0,
+            have_item_ticks: 0,
+            created_frame_mark: 0,
+            visible_latency_logged: false,
             transform_comparison_samples_remaining: 0,
             transform_comparison_complete: false,
             transform_ready_logged: false,
@@ -616,52 +631,37 @@ pub enum BossAmiiboPreviewKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ItemPresentationAcquireRecipe {
     Direct,
-    // Hardware-proven crash boundary, tested twice on stage 0x135: BOTH
-    // `ItemModule::have_item(ITEM_KIND_DRACULA)` (phase 1) and
-    // `ItemModule::have_item(ITEM_KIND_DRACULA2)` (phase 2) crash inside the
-    // call before it returns — with empty slots, tiny host scale 0.0001, and
-    // the WOL preview ordering faithfully reproduced. The `src/dracula/mod.rs`
-    // preview source proves that lifecycle can create DRACULA2, but not that
-    // this Amiibo-stage Mario frame handoff can; some unobserved context
-    // difference exists. Dracula therefore fails closed before any host
-    // mutation or `have_item` call, once per viewer generation.
-    DraculaAllBackingsBlocked,
-    WolRathalosStaged,
+    // Rathalos alone: `have_item(ITEM_KIND_LIOLEUSBOSS)` returns safely but
+    // hardware proved the object never reaches a host slot. After that bounded
+    // primary exhausts, one menu-only visual fallback request for
+    // ITEM_KIND_LIOLEUS is made, accepted only on an exact kind match. This
+    // shares no state or assumption with the Dracula block.
+    RathalosBossThenVisualFallback,
 }
 
 impl ItemPresentationAcquireRecipe {
     const fn name(self) -> &'static str {
         match self {
             Self::Direct => "direct",
-            Self::DraculaAllBackingsBlocked => "dracula_all_known_item_backings_blocked",
-            Self::WolRathalosStaged => "wol_rathalos_staged",
+            Self::RathalosBossThenVisualFallback => "rathalos_boss_then_visual_fallback",
         }
     }
 
-    // Dracula never acquires, so its recipe must not clear slots or mutate
-    // the host in preparation for a call that will never happen.
     const fn requires_empty_host_slots(self) -> bool {
-        matches!(self, Self::WolRathalosStaged)
+        matches!(self, Self::RathalosBossThenVisualFallback)
     }
 
     const fn uses_tiny_host_before_request(self) -> bool {
-        matches!(self, Self::WolRathalosStaged)
+        matches!(self, Self::RathalosBossThenVisualFallback)
     }
 
     const fn uses_deferred_observation(self) -> bool {
-        matches!(self, Self::WolRathalosStaged)
+        matches!(self, Self::RathalosBossThenVisualFallback)
     }
 
-    // Dracula must never reach `ItemModule::have_item` from stage 0x135.
-    // Both known Dracula item kinds crash inside that call on hardware.
-    const fn reaches_have_item(self) -> bool {
-        !matches!(self, Self::DraculaAllBackingsBlocked)
-    }
-
-    // A native viewer reclaim must also fail closed instead of issuing
-    // another acquisition attempt for a blocked recipe.
-    const fn allows_native_reacquire(self) -> bool {
-        !matches!(self, Self::DraculaAllBackingsBlocked)
+    // The menu-only visual fallback belongs to Rathalos and nothing else.
+    const fn uses_menu_visual_fallback(self) -> bool {
+        matches!(self, Self::RathalosBossThenVisualFallback)
     }
 }
 
@@ -674,14 +674,14 @@ impl ItemPresentationAcquireRecipe {
 //   posture/root composition does not reproduce the correct static
 //   orientation through the stage-0x135 held-item chain — both Euler
 //   re-encodings were hardware-disproven. The host root is therefore no
-//   longer used as the boss static-orientation channel for the proof pair.
+//   longer used as the boss static-orientation channel by any preview.
 // - Boss-specific STATIC orientation is plugin-owned and must live on the
 //   presentation item itself: item posture rotation (proven stable and
 //   plugin-owned) and/or the item's own `root` joint (audited by the
 //   [PB][AmiiboLocalTransform] diagnostic and the debug calibration harness).
-// Galeem/Dharkon still mirror their WOL host-posture recipes and are
-// intentionally untouched until the proof-pair architecture is
-// hardware-verified.
+// Every item-backed boss now uses this architecture: the WOL host-posture and
+// host-root recipes composed wrongly through the stage-0x135 held-item chain
+// and left every boss other than Master Hand and Marx lying on its side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AmiiboHostOrientationRecipe {
     // Fully native Mario host: the plugin writes neither the host
@@ -701,8 +701,6 @@ enum AmiiboHostOrientationRecipe {
     //   map onto the stage-0x135 held-item visual chain, so no further Euler
     //   reconstruction of it may be attempted.
     NativeHost,
-    RootOnly,
-    GaleemDharkon,
     NativeFighter,
 }
 
@@ -710,35 +708,24 @@ impl AmiiboHostOrientationRecipe {
     const fn name(self) -> &'static str {
         match self {
             Self::NativeHost => "stage135_native_host",
-            Self::RootOnly => "wol_root_only",
-            Self::GaleemDharkon => "wol_galeem_dharkon",
             Self::NativeFighter => "native_fighter",
         }
     }
 
+    // No plugin-owned host channel remains: the WOL posture/root pair was
+    // hardware-disproven on stage 0x135 for the proof pair and is what kept
+    // every other boss mis-oriented. Static correction is item-local only.
     const fn posture_rotation(self) -> Option<[f32; 3]> {
-        match self {
-            // Galeem/Dharkon still mirror their WOL posture recipe. Hardware
-            // has proven this channel conflicts with native stick rotation
-            // (it froze Marx), but they stay unchanged until the proof-pair
-            // architecture is hardware-verified and migrated deliberately.
-            Self::GaleemDharkon => Some([-180.0, 90.0, 0.0]),
-            Self::NativeHost | Self::RootOnly | Self::NativeFighter => None,
-        }
+        None
     }
 
     const fn root_rotation(self) -> Option<[f32; 3]> {
-        match self {
-            Self::NativeHost | Self::NativeFighter => None,
-            Self::RootOnly => Some([-270.0, 180.0, -90.0]),
-            Self::GaleemDharkon => Some([90.0, 50.0, 0.0]),
-        }
+        None
     }
 
     const fn posture_rotation_name(self) -> &'static str {
         match self {
-            Self::NativeHost | Self::RootOnly => "native",
-            Self::GaleemDharkon => "(-180.0,90.0,0.0)",
+            Self::NativeHost => "native",
             Self::NativeFighter => "not_applied",
         }
     }
@@ -803,9 +790,9 @@ pub const BOSS_AMIIBO_PREVIEW_PROFILES: [BossAmiiboPreviewProfile; 11] = [
         preview_source: "item:crazyhand",
         idle_motion: "wait",
         preview_scale: Some(0.45),
-        presentation_rotation: Some([0.0, 0.0, 270.0]),
+        presentation_rotation: Some([0.0, 0.0, -90.0]),
         item_root_rotation: None,
-        host_orientation_recipe: AmiiboHostOrientationRecipe::RootOnly,
+        host_orientation_recipe: AmiiboHostOrientationRecipe::NativeHost,
         item_acquire_recipe: ItemPresentationAcquireRecipe::Direct,
         position_offset: [0.36, 0.17, 0.0],
     },
@@ -816,9 +803,9 @@ pub const BOSS_AMIIBO_PREVIEW_PROFILES: [BossAmiiboPreviewProfile; 11] = [
         preview_source: "item:masterhand_wol_preview",
         idle_motion: "wait",
         preview_scale: Some(0.45),
-        presentation_rotation: Some([270.0, 180.0, 90.0]),
+        presentation_rotation: Some([0.0, 0.0, -90.0]),
         item_root_rotation: None,
-        host_orientation_recipe: AmiiboHostOrientationRecipe::RootOnly,
+        host_orientation_recipe: AmiiboHostOrientationRecipe::NativeHost,
         item_acquire_recipe: ItemPresentationAcquireRecipe::Direct,
         position_offset: [0.36, 0.17, 0.0],
     },
@@ -826,44 +813,49 @@ pub const BOSS_AMIIBO_PREVIEW_PROFILES: [BossAmiiboPreviewProfile; 11] = [
         key: "galeem",
         ui_chara_id: "ui_chara_kiila",
         preview_kind: BossAmiiboPreviewKind::ItemPresentation,
-        preview_source: "item:kiilacore",
-        idle_motion: crate::galeem::PRESENTATION_IDLE_MOTION,
+        preview_source: "item:kiila",
+        idle_motion: "wait",
         preview_scale: Some(0.28125),
         presentation_rotation: Some([0.0, 0.0, -90.0]),
         item_root_rotation: None,
-        host_orientation_recipe: AmiiboHostOrientationRecipe::GaleemDharkon,
+        host_orientation_recipe: AmiiboHostOrientationRecipe::NativeHost,
         item_acquire_recipe: ItemPresentationAcquireRecipe::Direct,
-        position_offset: [0.0, 0.075, 0.0],
+        // Was [0.36, 0.17, 0.0], the only offset that differed from the
+        // working bosses. The native viewer camera frames the anchor plus
+        // [0.36, 0.17, 0.0], so the old value put them out of shot.
+        position_offset: [0.36, 0.17, 0.0],
     },
     BossAmiiboPreviewProfile {
         key: "dharkon",
         ui_chara_id: "ui_chara_darz",
         preview_kind: BossAmiiboPreviewKind::ItemPresentation,
-        preview_source: "item:darzcentipede",
-        idle_motion: crate::dharkon::PRESENTATION_IDLE_MOTION,
+        preview_source: "item:darz",
+        idle_motion: "wait",
         preview_scale: Some(0.28125),
         presentation_rotation: Some([0.0, 0.0, -90.0]),
         item_root_rotation: None,
-        host_orientation_recipe: AmiiboHostOrientationRecipe::GaleemDharkon,
+        host_orientation_recipe: AmiiboHostOrientationRecipe::NativeHost,
         item_acquire_recipe: ItemPresentationAcquireRecipe::Direct,
-        position_offset: [0.0, 0.075, 0.0],
+        // Was [0.36, 0.17, 0.0], the only offset that differed from the
+        // working bosses. The native viewer camera frames the anchor plus
+        // [0.36, 0.17, 0.0], so the old value put them out of shot.
+        position_offset: [0.36, 0.17, 0.0],
     },
     BossAmiiboPreviewProfile {
         key: "dracula",
         ui_chara_id: "ui_chara_dracula",
         preview_kind: BossAmiiboPreviewKind::ItemPresentation,
-        // Hardware proved BOTH Dracula item kinds (phase 1 kind 373 and
-        // phase 2 ITEM_KIND_DRACULA2) crash inside `ItemModule::have_item`
-        // when called from the stage-0x135 Amiibo host path, even with the
-        // WOL preview preconditions faithfully reproduced. No known item
-        // backing is safe, so the viewer stays native and the preview defers.
-        preview_source: "item:dracula_blocked",
+        // Phase 1, the backing his working battle path acquires. Every
+        // prepared or settled stage-0x135 test so far used phase 2.
+        preview_source: "item:dracula",
         idle_motion: "wait",
         preview_scale: Some(0.45),
         presentation_rotation: Some([0.0, 0.0, -90.0]),
         item_root_rotation: None,
-        host_orientation_recipe: AmiiboHostOrientationRecipe::RootOnly,
-        item_acquire_recipe: ItemPresentationAcquireRecipe::DraculaAllBackingsBlocked,
+        host_orientation_recipe: AmiiboHostOrientationRecipe::NativeHost,
+        // Exactly Master Hand's path: a plain `have_item` on the
+        // viewer-host-ready frame, no slot clearing and no host shrink.
+        item_acquire_recipe: ItemPresentationAcquireRecipe::Direct,
         position_offset: [0.36, 0.17, 0.0],
     },
     BossAmiiboPreviewProfile {
@@ -871,11 +863,11 @@ pub const BOSS_AMIIBO_PREVIEW_PROFILES: [BossAmiiboPreviewProfile; 11] = [
         ui_chara_id: "ui_chara_ganonboss",
         preview_kind: BossAmiiboPreviewKind::ItemPresentation,
         preview_source: "item:ganonboss",
-        idle_motion: "body_attack_start",
+        idle_motion: "wait",
         preview_scale: Some(0.365625),
-        presentation_rotation: Some([180.0, 0.0, 90.0]),
+        presentation_rotation: Some([0.0, 0.0, -90.0]),
         item_root_rotation: None,
-        host_orientation_recipe: AmiiboHostOrientationRecipe::RootOnly,
+        host_orientation_recipe: AmiiboHostOrientationRecipe::NativeHost,
         item_acquire_recipe: ItemPresentationAcquireRecipe::Direct,
         position_offset: [0.36, 0.17, 0.0],
     },
@@ -888,7 +880,7 @@ pub const BOSS_AMIIBO_PREVIEW_PROFILES: [BossAmiiboPreviewProfile; 11] = [
         preview_scale: Some(0.225),
         presentation_rotation: Some([0.0, 0.0, -90.0]),
         item_root_rotation: None,
-        host_orientation_recipe: AmiiboHostOrientationRecipe::RootOnly,
+        host_orientation_recipe: AmiiboHostOrientationRecipe::NativeHost,
         item_acquire_recipe: ItemPresentationAcquireRecipe::Direct,
         position_offset: [0.36, 0.17, 0.0],
     },
@@ -897,12 +889,17 @@ pub const BOSS_AMIIBO_PREVIEW_PROFILES: [BossAmiiboPreviewProfile; 11] = [
         ui_chara_id: "ui_chara_lioleus",
         preview_kind: BossAmiiboPreviewKind::ItemPresentation,
         preview_source: "item:lioleusboss",
+        // Matches the WOL preview block in `src/rathalos/mod.rs`, which is the
+        // presentation that renders correctly. (`hovering` belongs to the
+        // separate item-wipe recovery path and is not the preview motion.)
+        // Belongs to the LIOLEUSBOSS path only; the menu visual fallback
+        // object keeps its own native motion instead.
         idle_motion: "hovering_move",
         preview_scale: Some(0.225),
         presentation_rotation: Some([0.0, 0.0, -90.0]),
         item_root_rotation: None,
-        host_orientation_recipe: AmiiboHostOrientationRecipe::RootOnly,
-        item_acquire_recipe: ItemPresentationAcquireRecipe::WolRathalosStaged,
+        host_orientation_recipe: AmiiboHostOrientationRecipe::NativeHost,
+        item_acquire_recipe: ItemPresentationAcquireRecipe::RathalosBossThenVisualFallback,
         position_offset: [0.36, 0.17, 0.0],
     },
     BossAmiiboPreviewProfile {
@@ -973,8 +970,9 @@ fn is_direct_amiibo_identity_lookup(raw_ui_hash: u64) -> bool {
 #[inline(always)]
 fn profile_rollout_enabled(profile: &BossAmiiboPreviewProfile) -> bool {
     // Every item backing below is already used by the corresponding WOL
-    // preview. Giga Bowser is intentionally excluded until the separate
-    // native-fighter viewer path has a safe creation boundary.
+    // preview. Giga Bowser is excluded because it needs no plugin
+    // presentation at all: it is a real fighter, so once `ui_chara_koopag`
+    // carries `fighter_kind_koopag` the native viewer builds it directly.
     matches!(
         profile.preview_kind,
         BossAmiiboPreviewKind::ItemPresentation
@@ -1004,21 +1002,29 @@ unsafe fn verified_presentation_backing(
         }),
         // These are the presentation backings used by the current WOL paths,
         // not the regular-smash parent items with summon lifecycles.
+        // Presentation-only backing change. Hardware proved `"wait"` is
+        // accepted and advancing on the CORE objects (motion_rate=1,
+        // frame 0 -> 30, animation_advanced=true) yet the complete animated
+        // boss never appeared, so the core items are the wrong visual objects
+        // rather than the motion being wrong. These are the full boss objects.
+        // Logical Amiibo identity (`ui_chara_kiila` / `ui_chara_darz`) is
+        // unchanged, and no boss status is forced — see
+        // `[PB][AmiiboBossBackingProbe]` for the native initial state.
         "galeem" => Some(VerifiedPreviewBacking::Item {
-            kind: *ITEM_KIND_KIILACORE,
-            source: "ITEM_KIND_KIILACORE",
+            kind: *ITEM_KIND_KIILA,
+            source: "ITEM_KIND_KIILA",
         }),
         "dharkon" => Some(VerifiedPreviewBacking::Item {
-            kind: *ITEM_KIND_DARZCENTIPEDE,
-            source: "ITEM_KIND_DARZCENTIPEDE",
+            kind: *ITEM_KIND_DARZ,
+            source: "ITEM_KIND_DARZ",
         }),
         "dracula" => Some(VerifiedPreviewBacking::Item {
-            // Reported for identity/diagnostics only. The acquisition recipe
-            // blocks every `have_item` call for Dracula: hardware proved both
-            // this kind and phase-1 ITEM_KIND_DRACULA crash inside `have_item`
-            // on stage 0x135.
-            kind: *ITEM_KIND_DRACULA2,
-            source: "ITEM_KIND_DRACULA2 (blocked: stage 0x135 have_item crash)",
+            // Phase 1, matching `src/dracula/mod.rs`'s battle acquisition —
+            // the Dracula backing this plugin actually spawns successfully.
+            // Phase 2 (DRACULA2) is his transformed form and is what every
+            // crashed prepared/settled stage-0x135 attempt requested.
+            kind: *ITEM_KIND_DRACULA,
+            source: "ITEM_KIND_DRACULA (battle-proven phase 1)",
         }),
         "ganon_boss" => Some(VerifiedPreviewBacking::Item {
             kind: *ITEM_KIND_GANONBOSS,
@@ -1062,15 +1068,16 @@ pub fn configure_mapping_profiles(mappings: &[crate::amiibo::ConfiguredBossAmiib
     }
 }
 
-/// Truthful startup status for a configured mapping. A blocked acquisition
-/// recipe (Dracula: every known item backing crashes inside `have_item` on
-/// stage 0x135) must never be reported as a normally runtime-enabled preview.
+/// Truthful startup status for a configured mapping. Dracula is reported as
+/// permanently blocked: every known `have_item` path for both of his backings
+/// crashes on stage 0x135, so the preview never attempts acquisition and there
+/// is no configuration option that can re-arm it.
 fn mapping_runtime_status(
     profile: &BossAmiiboPreviewProfile,
     backing: Option<VerifiedPreviewBacking>,
 ) -> &'static str {
-    if !profile.item_acquire_recipe.reaches_have_item() {
-        return "acquisition_blocked_all_known_item_backings_crash_fail_closed";
+    if profile.key == DRACULA_PREVIEW_KEY {
+        return "acquisition_blocked_all_known_have_item_paths_crash_fail_closed";
     }
     match backing {
         Some(VerifiedPreviewBacking::Item { .. }) if profile_rollout_enabled(profile) => {
@@ -1080,7 +1087,7 @@ fn mapping_runtime_status(
             "typed_item_backing_hardware_verification_required"
         }
         Some(VerifiedPreviewBacking::NativeFighter { .. }) => {
-            "native_fighter_presentation_hardware_verification_required"
+            "native_fighter_viewer_owned_no_plugin_presentation"
         }
         None => "verified_presentation_backing_missing",
     }
@@ -1234,13 +1241,26 @@ unsafe fn lock_preview_identity(ui_chara_hash: u64) {
 
     state.logical_ui_hash = ui_chara_hash;
     state.identity_source = source;
+    state.identity_tick = system_tick();
     state.phase = AmiiboPreviewPhase::IdentityCaptured;
     state.create_attempted = false;
     state.stabilization_reacquire_used = false;
     state.transform_stabilization_frames_remaining = 0;
-    state.attachment_mode = AmiiboAttachmentMode::ViewerAnchor;
-    state.native_held_attachment_probe = NativeHeldAttachmentProbe::empty();
+    state.apply_profile_idle_motion = true;
     state.rathalos_acquire_probe = RathalosAcquireProbe::empty();
+    state.motion_probe_samples_remaining = MOTION_PROBE_SAMPLE_FRAMES;
+    state.motion_probe_motion_before = 0;
+    state.motion_probe_motion_after_change = 0;
+    state.motion_probe_first_frame = -1.0;
+    state.motion_probe_last_frame = -1.0;
+    state.motion_probe_advanced = false;
+    state.frames_since_viewer_host_ready = 0;
+    state.frames_host_ready_to_create = 0;
+    state.frames_create_to_engine_visible = 0;
+    state.frames_create_to_model_visible = 0;
+    state.have_item_ticks = 0;
+    state.created_frame_mark = 0;
+    state.visible_latency_logged = false;
     state.transform_comparison_samples_remaining = 0;
     state.transform_comparison_complete = false;
     state.interactive_transform_probe = InteractiveTransformProbe::empty();
@@ -1364,9 +1384,21 @@ pub unsafe fn discard_unbound_identity_from_raw_selection_callback() {
     state.create_attempted = false;
     state.stabilization_reacquire_used = false;
     state.transform_stabilization_frames_remaining = 0;
-    state.attachment_mode = AmiiboAttachmentMode::ViewerAnchor;
-    state.native_held_attachment_probe = NativeHeldAttachmentProbe::empty();
+    state.apply_profile_idle_motion = true;
     state.rathalos_acquire_probe = RathalosAcquireProbe::empty();
+    state.motion_probe_samples_remaining = MOTION_PROBE_SAMPLE_FRAMES;
+    state.motion_probe_motion_before = 0;
+    state.motion_probe_motion_after_change = 0;
+    state.motion_probe_first_frame = -1.0;
+    state.motion_probe_last_frame = -1.0;
+    state.motion_probe_advanced = false;
+    state.frames_since_viewer_host_ready = 0;
+    state.frames_host_ready_to_create = 0;
+    state.frames_create_to_engine_visible = 0;
+    state.frames_create_to_model_visible = 0;
+    state.have_item_ticks = 0;
+    state.created_frame_mark = 0;
+    state.visible_latency_logged = false;
     state.transform_comparison_samples_remaining = 0;
     state.transform_comparison_complete = false;
     state.interactive_transform_probe = InteractiveTransformProbe::empty();
@@ -1568,7 +1600,7 @@ unsafe fn initialize_viewer_host_presentation_recipe(
 }
 
 /// Stable Ready-frame host maintenance: tiny host scale, motion none, any
-/// recipe-owned host corrections, hit/jostle off. The proof pair's NativeHost
+/// recipe-owned host corrections, hit/jostle off. The NativeHost
 /// recipe owns no host channel, so this writes neither host posture nor host
 /// root there and the native Amiibo viewer keeps interactive rotation.
 #[inline(always)]
@@ -1579,14 +1611,16 @@ unsafe fn maintain_viewer_host_presentation(
     apply_viewer_host_presentation_writes(module_accessor, profile)
 }
 
-/// Master Hand + Marx are the hardware proof pair for the stage-0x135
-/// transform-ownership architecture (fully native host, boss-local static
-/// correction). The interactive-transform diagnostics, the debug calibration
-/// harness, and the stable framing maintenance are all scoped to this pair
-/// until hardware verifies the architecture for migration to other bosses.
+/// Every item-backed preview owns its boss-local transform channels (framing
+/// position, item root, calibration overrides) and nothing on the native host.
+/// Master Hand and Marx proved the architecture; the rest were migrated onto
+/// it because the WOL host recipes left them mis-oriented and drifting.
 #[inline(always)]
-fn is_transform_proof_pair_profile(profile: &BossAmiiboPreviewProfile) -> bool {
-    profile.key == MASTER_HAND_PREVIEW_KEY || profile.key == MARX_PREVIEW_KEY
+fn owns_boss_local_transform(profile: &BossAmiiboPreviewProfile) -> bool {
+    matches!(
+        profile.preview_kind,
+        BossAmiiboPreviewKind::ItemPresentation
+    )
 }
 
 #[inline(always)]
@@ -1752,7 +1786,9 @@ struct ItemPresentationApplyResult {
     native_lr_after_motion: f32,
     desired_presentation_rotation: Option<[f32; 3]>,
     final_presentation_rotation: [f32; 3],
-    position_written: bool,
+    motion_before: u64,
+    motion_after_change: u64,
+    frame_before: f32,
 }
 
 #[inline(always)]
@@ -1781,7 +1817,6 @@ unsafe fn apply_item_presentation(
     item_boma: *mut BattleObjectModuleAccessor,
     state: &AmiiboPreviewState,
     profile: &BossAmiiboPreviewProfile,
-    write_viewer_position: bool,
 ) -> ItemPresentationApplyResult {
     // Match the WOL preview ordering: establish the presentation scale before
     // selecting the boss's native idle motion. Position remains viewer-owned
@@ -1789,8 +1824,19 @@ unsafe fn apply_item_presentation(
     if let Some(scale) = profile.preview_scale {
         ModelModule::set_scale(item_boma, scale);
     }
+    // The profile's idle motion is proven for that profile's own backing only.
+    // A menu-visual-fallback object is a different item, so it keeps whatever
+    // motion the game gave it rather than being forced into a boss animation.
+    //
+    // No status request is issued here. Hardware disproved that: the working
+    // WOL previews (Ganon, Galleom, Rathalos, Master Hand) only ever call
+    // `change_motion`, and requesting a boss status made the item leave the
+    // host slot (`ownership=detached_native_owned`), which stopped it
+    // following the native turntable.
     let expected_motion = smash::hash40(profile.idle_motion);
-    if MotionModule::motion_kind(item_boma) != expected_motion {
+    let motion_before = MotionModule::motion_kind(item_boma);
+    let frame_before = MotionModule::frame(item_boma);
+    if state.apply_profile_idle_motion && MotionModule::motion_kind(item_boma) != expected_motion {
         MotionModule::change_motion(
             item_boma,
             Hash40::new(profile.idle_motion),
@@ -1809,13 +1855,8 @@ unsafe fn apply_item_presentation(
     // correction after its native motion has initialized.
     let native_rotation_after_motion = presentation_rotation(item_boma);
     let native_lr_after_motion = PostureModule::lr(item_boma);
-    let position_written = if write_viewer_position {
-        let position = desired_preview_position(state, profile);
-        PostureModule::set_pos(item_boma, &position);
-        true
-    } else {
-        false
-    };
+    let position = desired_preview_position(state, profile);
+    PostureModule::set_pos(item_boma, &position);
     if let Some(rotation) = profile.presentation_rotation {
         PostureModule::set_rot(
             item_boma,
@@ -1841,7 +1882,9 @@ unsafe fn apply_item_presentation(
         native_lr_after_motion,
         desired_presentation_rotation: profile.presentation_rotation,
         final_presentation_rotation: presentation_rotation(item_boma),
-        position_written,
+        motion_before,
+        motion_after_change: MotionModule::motion_kind(item_boma),
+        frame_before,
     }
 }
 
@@ -1851,129 +1894,6 @@ unsafe fn maintain_item_presentation_safety(item_boma: *mut BattleObjectModuleAc
     HitModule::set_whole(item_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
     DamageModule::set_damage_lock(item_boma, true);
     JostleModule::set_status(item_boma, false);
-}
-
-#[inline(always)]
-fn observing_native_held_attachment(state: &AmiiboPreviewState, slot_still_held: bool) -> bool {
-    state.attachment_mode == AmiiboAttachmentMode::NativeHeldDiagnostic
-        && state
-            .native_held_attachment_probe
-            .preserves_native_attachment(slot_still_held)
-}
-
-/// Logs only the bounded Galleom A/B window. The probe observes the WOL-style
-/// host-held transform before viewer-owned anchor writes resume.
-#[inline(always)]
-unsafe fn observe_native_held_attachment_probe(
-    state: &mut AmiiboPreviewState,
-    profile: &BossAmiiboPreviewProfile,
-    item_boma: *mut BattleObjectModuleAccessor,
-    host_boma: *mut BattleObjectModuleAccessor,
-    slot_still_held: bool,
-    slot: i32,
-    observing_native_attachment: bool,
-    position_written: bool,
-    host_presentation: ViewerHostPresentationApplyResult,
-    creation_frame: bool,
-) {
-    if state.attachment_mode != AmiiboAttachmentMode::NativeHeldDiagnostic {
-        return;
-    }
-
-    let generation = state.viewer_generation;
-    let presentation_id = state.presentation_object_id;
-    let ownership = state.ownership.name();
-    let probe = &mut state.native_held_attachment_probe;
-
-    if !slot_still_held && !probe.observation_complete {
-        probe.observation_complete = true;
-        if !probe.detachment_logged {
-            probe.detachment_logged = true;
-            if crate::debug::enabled() {
-                crate::boss_log!(
-                    "[PB][AmiiboAttachmentProbe] generation={} logical_boss={} phase=detached_native_owned observed_frames={} presentation_object_id=0x{:x} slot={} slot_still_held=false slot0_held=false ownership={} forced_boss_position_write={} action=resume_viewer_anchor",
-                    generation,
-                    profile.key,
-                    probe.observed_frames,
-                    presentation_id,
-                    slot,
-                    ownership,
-                    position_written,
-                );
-            }
-        }
-        return;
-    }
-
-    if !observing_native_attachment {
-        return;
-    }
-
-    let observed_frame = if creation_frame {
-        0
-    } else {
-        probe.observed_frames.saturating_add(1)
-    };
-    let boss_position = [
-        PostureModule::pos_x(item_boma),
-        PostureModule::pos_y(item_boma),
-        PostureModule::pos_z(item_boma),
-    ];
-    let boss_rotation = presentation_rotation(item_boma);
-    let host_rotation = viewer_host_rotation(host_boma);
-    let host_root_rotation = host_presentation.root_rotation_set.unwrap_or([0.0; 3]);
-    if crate::debug::enabled() {
-        crate::boss_log!(
-            "[PB][AmiiboAttachmentProbe] generation={} logical_boss={} phase={} observation_frame={}/{} presentation_object_id=0x{:x} slot={} slot_still_held={} slot0_held={} ownership={} boss_position=({:.3},{:.3},{:.3}) boss_rotation=({:.1},{:.1},{:.1}) boss_lr={:.3} host_position=({:.3},{:.3},{:.3}) host_posture_rotation=({:.1},{:.1},{:.1}) host_root_recipe=({:.1},{:.1},{:.1}) forced_boss_position_write={}",
-            generation,
-            profile.key,
-            if creation_frame {
-                "native_held_created"
-            } else {
-                "native_held_observe"
-            },
-            observed_frame,
-            NATIVE_HELD_DIAGNOSTIC_FRAMES,
-            presentation_id,
-            slot,
-            slot_still_held,
-            slot_still_held && slot == 0,
-            ownership,
-            boss_position[0],
-            boss_position[1],
-            boss_position[2],
-            boss_rotation[0],
-            boss_rotation[1],
-            boss_rotation[2],
-            PostureModule::lr(item_boma),
-            PostureModule::pos_x(host_boma),
-            PostureModule::pos_y(host_boma),
-            PostureModule::pos_z(host_boma),
-            host_rotation[0],
-            host_rotation[1],
-            host_rotation[2],
-            host_root_rotation[0],
-            host_root_rotation[1],
-            host_root_rotation[2],
-            position_written,
-        );
-    }
-    if creation_frame {
-        return;
-    }
-
-    probe.observed_frames = observed_frame;
-    if probe.observed_frames >= NATIVE_HELD_DIAGNOSTIC_FRAMES {
-        probe.observation_complete = true;
-        if crate::debug::enabled() {
-            crate::boss_log!(
-                "[PB][AmiiboAttachmentProbe] generation={} logical_boss={} phase=native_attachment_window_complete observed_frames={} action=resume_viewer_anchor_next_callback",
-                generation,
-                profile.key,
-                probe.observed_frames,
-            );
-        }
-    }
 }
 
 #[inline(always)]
@@ -2018,7 +1938,7 @@ fn effective_item_root_rotation(
 }
 
 /// Stable Ready-frame item maintenance. Keeps the item inert everywhere; for
-/// the proof pair it additionally owns the boss-local channels:
+/// every item-backed boss it additionally owns the boss-local channels:
 /// - framing position (anchor + profile offset): hardware showed the
 ///   host-held item follows native host movement once stabilization ends and
 ///   drifts low/off-frame, so the plugin keeps the ITEM position pinned
@@ -2031,8 +1951,8 @@ unsafe fn maintain_stable_item_presentation(
     profile: &BossAmiiboPreviewProfile,
     item_boma: *mut BattleObjectModuleAccessor,
 ) -> StableItemMaintenanceResult {
-    let proof_pair = is_transform_proof_pair_profile(profile);
-    let item_root_before = if proof_pair {
+    let boss_local = owns_boss_local_transform(profile);
+    let item_root_before = if boss_local {
         root_joint_rotation(item_boma)
     } else {
         None
@@ -2042,7 +1962,7 @@ unsafe fn maintain_stable_item_presentation(
     let mut item_position_written = false;
     let mut item_root_written = false;
     let mut item_posture_written = false;
-    if proof_pair {
+    if boss_local {
         let position = desired_preview_position(state, profile);
         PostureModule::set_pos(item_boma, &position);
         item_position_written = true;
@@ -2072,7 +1992,7 @@ unsafe fn maintain_stable_item_presentation(
     StableItemMaintenanceResult {
         motion: MotionModule::motion_kind(item_boma),
         item_root_before,
-        item_root_after: if proof_pair {
+        item_root_after: if boss_local {
             root_joint_rotation(item_boma)
         } else {
             None
@@ -2192,7 +2112,7 @@ unsafe fn log_transform_calibration(
     );
 }
 
-/// Debug-only, stage-0x135-only, proof-pair-only calibration input handler.
+/// Debug-only, stage-0x135-only, item-preview-only calibration input handler.
 ///
 /// Chord: hold SHIELD (GUARD) + GRAB (CATCH) together on the viewer pad.
 /// While the chord is held:
@@ -2216,7 +2136,7 @@ unsafe fn process_transform_calibration_input(
     item_boma: *mut BattleObjectModuleAccessor,
     slot_still_held: bool,
 ) {
-    if !crate::debug::enabled() || !is_transform_proof_pair_profile(profile) {
+    if !crate::debug::enabled() || !owns_boss_local_transform(profile) {
         return;
     }
     if host_boma.is_null() || item_boma.is_null() {
@@ -2375,7 +2295,7 @@ unsafe fn observe_interactive_transform_probe(
     host_presentation: &ViewerHostPresentationApplyResult,
     stable_item: &StableItemMaintenanceResult,
 ) {
-    if !is_transform_proof_pair_profile(profile) || !crate::debug::enabled() {
+    if !owns_boss_local_transform(profile) || !crate::debug::enabled() {
         return;
     }
     if item_boma.is_null() || host_boma.is_null() {
@@ -2687,7 +2607,7 @@ unsafe fn log_rathalos_acquire_probe(
     module_accessor: *mut BattleObjectModuleAccessor,
     requested_item_kind: i32,
     phase: &str,
-    verified_lioleusboss: bool,
+    acquired: bool,
     action: &str,
 ) {
     if !crate::debug::enabled() {
@@ -2696,7 +2616,7 @@ unsafe fn log_rathalos_acquire_probe(
 
     let (slot_ids, slot_kinds) = viewer_held_item_slot_snapshot(module_accessor);
     crate::boss_log!(
-        "[PB][AmiiboRathalosAcquire] generation={} logical_boss={} phase={} host_settle_frames={} frame_since_request={} request_count={} host_object_id=0x{:x} host_scale={:.4} host_status={} host_motion=0x{:x} requested_kind={} slot_ids={:?} slot_kinds={:?} verified_lioleusboss={} action={}",
+        "[PB][AmiiboRathalosAcquire] generation={} logical_boss={} phase={} host_settle_frames={} frame_since_request={} request_count={} host_object_id=0x{:x} host_scale={:.4} host_status={} host_motion=0x{:x} requested_kind={} slot_ids={:?} slot_kinds={:?} acquired={} action={}",
         state.viewer_generation,
         profile.key,
         phase,
@@ -2710,14 +2630,27 @@ unsafe fn log_rathalos_acquire_probe(
         requested_item_kind,
         slot_ids,
         slot_kinds,
-        verified_lioleusboss,
+        acquired,
         action,
     );
 }
 
-/// Replays Rathalos's source-proven WOL preconditions once per bounded request:
+/// Acquisition is only ever accepted on an exact kind match. Provenance —
+/// "the slot was empty before our own request" — does not establish semantic
+/// identity, and hardware shows Rathalos's boss backing leaves no held object
+/// at all, so there is nothing an adopt-anything fallback could correctly
+/// claim.
+#[inline(always)]
+unsafe fn exact_kind_acquired_item(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    requested_item_kind: i32,
+) -> Option<(i32, u32, *mut BattleObjectModuleAccessor)> {
+    crate::boss_helpers::held_item_by_kind(module_accessor, &[requested_item_kind])
+}
+
+/// Replays the source-proven WOL preconditions once per bounded request:
 /// clear host slots, scale Mario to the hidden-host scale, then request the
-/// native LIOLEUSBOSS item. This function never retries on its own.
+/// native boss item. This function never retries on its own.
 #[inline(always)]
 unsafe fn request_rathalos_presentation_item(
     state: &mut AmiiboPreviewState,
@@ -2726,7 +2659,6 @@ unsafe fn request_rathalos_presentation_item(
     requested_item_kind: i32,
     request_source: &str,
 ) -> Option<(i32, u32, *mut BattleObjectModuleAccessor)> {
-    debug_assert_eq!(profile.key, RATHALOS_PREVIEW_KEY);
     debug_assert!(profile.item_acquire_recipe.uses_deferred_observation());
 
     let host_scale_before = ModelModule::scale(module_accessor);
@@ -2751,11 +2683,11 @@ unsafe fn request_rathalos_presentation_item(
     );
     SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
 
-    let acquired = crate::boss_helpers::held_item_by_kind(module_accessor, &[requested_item_kind]);
+    let acquired = exact_kind_acquired_item(module_accessor, requested_item_kind);
     if crate::debug::enabled() {
         let (slot_ids, slot_kinds) = viewer_held_item_slot_snapshot(module_accessor);
         crate::boss_log!(
-            "[PB][AmiiboRathalosAcquire] generation={} logical_boss={} phase=request_issued source={} host_settle_frames={} frame_since_request=0 request_count={} host_object_id=0x{:x} host_scale_before={:.4} host_scale_at_have_item={:.4} host_status_before={} host_motion_before=0x{:x} before_slot_ids={:?} before_slot_kinds={:?} cleared_slot_ids={:?} cleared_slot_kinds={:?} requested_kind={} item_have_called=true slot_ids_immediately_after={:?} slot_kinds_immediately_after={:?} verified_lioleusboss={}",
+            "[PB][AmiiboRathalosAcquire] generation={} logical_boss={} phase=request_issued source={} host_settle_frames={} frame_since_request=0 request_count={} host_object_id=0x{:x} host_scale_before={:.4} host_scale_at_have_item={:.4} host_status_before={} host_motion_before=0x{:x} before_slot_ids={:?} before_slot_kinds={:?} cleared_slot_ids={:?} cleared_slot_kinds={:?} requested_kind={} item_have_called=true slot_ids_immediately_after={:?} slot_kinds_immediately_after={:?} acquired={}",
             state.viewer_generation,
             profile.key,
             request_source,
@@ -2777,6 +2709,89 @@ unsafe fn request_rathalos_presentation_item(
         );
     }
     acquired
+}
+
+/// One menu-only visual fallback request, made once, after the boss backing
+/// has exhausted its proven bound. This is presentation-only: it does not
+/// touch `ui_chara_lioleus` identity, the WOL Rathalos backing, the gameplay
+/// Rathalos backing, or regular Smash behavior. The host is restored to a
+/// normal fighter state first, because the hidden-host precondition belongs to
+/// the boss-only backing and is not known to be required for a normal item.
+#[inline(always)]
+unsafe fn request_rathalos_menu_visual_fallback(
+    state: &mut AmiiboPreviewState,
+    profile: &BossAmiiboPreviewProfile,
+    module_accessor: *mut BattleObjectModuleAccessor,
+    primary_item_kind: i32,
+) -> Option<(i32, u32, *mut BattleObjectModuleAccessor)> {
+    debug_assert!(profile.item_acquire_recipe.uses_menu_visual_fallback());
+
+    let fallback_item_kind = *ITEM_KIND_LIOLEUS;
+    ItemModule::remove_all(module_accessor);
+    restore_viewer_host(module_accessor);
+    state.host_hidden = false;
+
+    state.rathalos_acquire_probe.fallback_requested = true;
+    state.rathalos_acquire_probe.frames_since_fallback = 0;
+
+    ItemModule::have_item(
+        module_accessor,
+        ItemKind(fallback_item_kind),
+        0,
+        0,
+        false,
+        false,
+    );
+    SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
+
+    let acquired = exact_kind_acquired_item(module_accessor, fallback_item_kind);
+    if crate::debug::enabled() {
+        let (slot_ids, slot_kinds) = viewer_held_item_slot_snapshot(module_accessor);
+        crate::boss_log!(
+            "[PB][AmiiboRathalosAcquire] generation={} logical_boss={} phase=menu_visual_fallback_request requested_kind={} primary_kind={} exact_kind_acquired={} host_object_id=0x{:x} host_scale={:.4} slot_ids={:?} slot_kinds={:?} presentation_only=true identity_unchanged=true",
+            state.viewer_generation,
+            profile.key,
+            fallback_item_kind,
+            primary_item_kind,
+            acquired.is_some(),
+            host_object_id(module_accessor),
+            ModelModule::scale(module_accessor),
+            slot_ids,
+            slot_kinds,
+        );
+    }
+    acquired
+}
+
+/// Presents a menu-visual-fallback object. It gets the hardware-good stage-135
+/// presentation ownership (native host, item-local orientation, anchor pin,
+/// scale, inert state) but keeps its own native motion.
+#[inline(always)]
+unsafe fn activate_rathalos_menu_visual_fallback(
+    state: &mut AmiiboPreviewState,
+    profile: &BossAmiiboPreviewProfile,
+    module_accessor: *mut BattleObjectModuleAccessor,
+    host_id: u32,
+    slot: i32,
+    presentation_id: u32,
+    presentation_boma: *mut BattleObjectModuleAccessor,
+) -> bool {
+    state.apply_profile_idle_motion = false;
+    let activated = activate_verified_item_presentation(
+        state,
+        profile,
+        module_accessor,
+        host_id,
+        *ITEM_KIND_LIOLEUS,
+        "ITEM_KIND_LIOLEUS (menu visual fallback)",
+        slot,
+        presentation_id,
+        presentation_boma,
+    );
+    if !activated {
+        state.apply_profile_idle_motion = true;
+    }
+    activated
 }
 
 #[inline(always)]
@@ -2803,9 +2818,53 @@ unsafe fn defer_rathalos_presentation(
     false
 }
 
+/// The two bosses whose Amiibo visual backing is the full boss object rather
+/// than the core prop. Scopes the backing probe only; it grants no behavior.
+#[inline(always)]
+fn uses_full_boss_backing(profile: &BossAmiiboPreviewProfile) -> bool {
+    profile.key == "galeem" || profile.key == "dharkon"
+}
+
+/// Bounded presentation-backing probe. Reads the acquired object's state so
+/// hardware can show whether the full boss object initializes on its own or
+/// would need its manager-wait status. Read-only, debug-gated, and emitted
+/// only at activation boundaries — never per frame.
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+unsafe fn log_boss_backing_probe(
+    state: &AmiiboPreviewState,
+    profile: &BossAmiiboPreviewProfile,
+    presentation_boma: *mut BattleObjectModuleAccessor,
+    acquired_kind: i32,
+    requested_backing: &str,
+    slot: i32,
+    slot_still_held: bool,
+    stage: &str,
+) {
+    if !crate::debug::enabled() || !uses_full_boss_backing(profile) || presentation_boma.is_null() {
+        return;
+    }
+    crate::boss_log!(
+        "[PB][AmiiboBossBackingProbe] generation={} logical_boss={} backing={} actual_kind={} stage={} initial_status={} initial_motion=0x{:x} frame={:.2} rate={:.3} scale={:.4} slot={} slot_still_held={} ownership={} presentation_object_id=0x{:x}",
+        state.viewer_generation,
+        profile.key,
+        requested_backing,
+        acquired_kind,
+        stage,
+        StatusModule::status_kind(presentation_boma),
+        MotionModule::motion_kind(presentation_boma),
+        MotionModule::frame(presentation_boma),
+        MotionModule::rate(presentation_boma),
+        ModelModule::scale(presentation_boma),
+        slot,
+        slot_still_held,
+        state.ownership.name(),
+        state.presentation_object_id,
+    );
+}
+
 /// Activates a kind-verified item using the existing viewer presentation path.
-/// Both synchronous creation and Rathalos's deferred observation use this one
-/// ownership/visibility initialization path.
+/// A mismatched kind is never adopted: it is removed and the preview defers.
 #[inline(always)]
 unsafe fn activate_verified_item_presentation(
     state: &mut AmiiboPreviewState,
@@ -2839,6 +2898,7 @@ unsafe fn activate_verified_item_presentation(
     }
 
     state.presentation_object_id = presentation_id;
+    state.created_frame_mark = state.frames_since_viewer_host_ready;
     state.expected_item_kind = requested_item_kind;
     state.presentation_slot = slot;
     state.ownership = AmiiboPreviewOwnership::HostSlot;
@@ -2848,34 +2908,49 @@ unsafe fn activate_verified_item_presentation(
     state.last_item_visible = None;
     state.last_item_model_visible = None;
     state.rathalos_acquire_probe = RathalosAcquireProbe::empty();
+    state.motion_probe_samples_remaining = MOTION_PROBE_SAMPLE_FRAMES;
+    state.motion_probe_motion_before = 0;
+    state.motion_probe_motion_after_change = 0;
+    state.motion_probe_first_frame = -1.0;
+    state.motion_probe_last_frame = -1.0;
+    state.motion_probe_advanced = false;
+    state.frames_since_viewer_host_ready = 0;
+    state.frames_host_ready_to_create = 0;
+    state.frames_create_to_engine_visible = 0;
+    state.frames_create_to_model_visible = 0;
+    state.have_item_ticks = 0;
+    state.created_frame_mark = 0;
+    state.visible_latency_logged = false;
     state.transform_comparison_samples_remaining = 0;
     state.transform_comparison_complete = false;
     state.interactive_transform_probe = InteractiveTransformProbe::empty();
     state.transform_calibration = TransformCalibrationState::empty();
     let native_rotation_after_create = presentation_rotation(presentation_boma);
-    let observe_native_attachment = observing_native_held_attachment(state, true);
-    let presentation = apply_item_presentation(
-        presentation_boma,
-        state,
-        profile,
-        !observe_native_attachment,
-    );
+    let presentation = apply_item_presentation(presentation_boma, state, profile);
+    if state.motion_probe_motion_after_change == 0 {
+        state.motion_probe_motion_before = presentation.motion_before;
+        state.motion_probe_motion_after_change = presentation.motion_after_change;
+        state.motion_probe_first_frame = presentation.frame_before;
+    }
     state.transform_stabilization_frames_remaining = PREVIEW_TRANSFORM_STABILIZATION_FRAMES;
     let host_presentation = initialize_viewer_host_presentation_recipe(module_accessor, profile);
     state.host_hidden = true;
     initialize_presentation_visibility(state, profile, presentation_boma, module_accessor);
     state.phase = AmiiboPreviewPhase::Ready;
-    observe_native_held_attachment_probe(
+    // Same object after the plugin's scale + `"wait"` motion, with NO status
+    // forced. If the object stays inert here while its native state looked
+    // uninitialized, that is the evidence for a status dependency — report it
+    // rather than forcing one, because a forced status previously detached
+    // presentation items from the host slot and killed native rotation.
+    log_boss_backing_probe(
         state,
         profile,
         presentation_boma,
-        module_accessor,
-        true,
+        acquired_kind,
+        requested_backing,
         slot,
-        observe_native_attachment,
-        presentation.position_written,
-        host_presentation,
-        true,
+        host_slot_for_presentation(module_accessor, presentation_id).is_some(),
+        "after_wait_motion_no_status_forced",
     );
     let desired_position = desired_preview_position(state, profile);
     if crate::debug::enabled() {
@@ -2884,7 +2959,7 @@ unsafe fn activate_verified_item_presentation(
         let desired_presentation_rotation =
             desired_item_presentation_rotation(profile, presentation.native_rotation_after_motion);
         crate::boss_log!(
-            "[PB][AmiiboPreviewRuntime] presentation_created generation={} logical_boss={} host_object_id=0x{:x} presentation_object_id=0x{:x} slot={} requested_kind={} acquired_kind={} backing={} initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) desired_position=({:.3},{:.3},{:.3}) actual_position=({:.3},{:.3},{:.3}) native_rotation_after_create=({:.1},{:.1},{:.1}) native_rotation_after_motion=({:.1},{:.1},{:.1}) native_lr={:.3} presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) final_presentation_rotation=({:.1},{:.1},{:.1}) desired_scale={:.4} actual_scale={:.4} stabilization_frames={} ownership=host_slot attachment_mode={} forced_boss_position_write={} presentation_only=true",
+            "[PB][AmiiboPreviewRuntime] presentation_created generation={} logical_boss={} host_object_id=0x{:x} presentation_object_id=0x{:x} slot={} requested_kind={} acquired_kind={} backing={} initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) desired_position=({:.3},{:.3},{:.3}) actual_position=({:.3},{:.3},{:.3}) native_rotation_after_create=({:.1},{:.1},{:.1}) native_rotation_after_motion=({:.1},{:.1},{:.1}) native_lr={:.3} presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) final_presentation_rotation=({:.1},{:.1},{:.1}) desired_scale={:.4} actual_scale={:.4} stabilization_frames={} ownership=host_slot presentation_only=true",
             state.viewer_generation,
             profile.key,
             host_id,
@@ -2922,11 +2997,11 @@ unsafe fn activate_verified_item_presentation(
             presentation.final_presentation_rotation[0],
             presentation.final_presentation_rotation[1],
             presentation.final_presentation_rotation[2],
-            profile.preview_scale.unwrap_or(ModelModule::scale(presentation_boma)),
+            profile
+                .preview_scale
+                .unwrap_or_else(|| ModelModule::scale(presentation_boma)),
             ModelModule::scale(presentation_boma),
             state.transform_stabilization_frames_remaining,
-            state.attachment_mode.name(),
-            presentation.position_written,
         );
         crate::boss_log!(
             "[PB][AmiiboPreviewRuntime] host_orientation_applied generation={} logical_boss={} boss_motion={} host_recipe={} host_posture_rotation={} host_root_rotation=({:.1},{:.1},{:.1}) host_rotation_before=({:.1},{:.1},{:.1}) host_rotation_after=({:.1},{:.1},{:.1}) host_scale={:.4} frozen_viewer_position=({:.3},{:.3},{:.3}) host_position=({:.3},{:.3},{:.3}) boss_rotation_after_create=({:.1},{:.1},{:.1}) boss_native_rotation_after_motion=({:.1},{:.1},{:.1}) presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) final_presentation_rotation=({:.1},{:.1},{:.1}) boss_lr={:.3} boss_scale={:.4} boss_position=({:.3},{:.3},{:.3})",
@@ -2992,6 +3067,8 @@ unsafe fn activate_verified_item_presentation(
 /// Lets the menu host settle before the first Rathalos request, then observes
 /// that request and at most one WOL-prepared retry. No request occurs from a
 /// regular Ready-frame path, so an unavailable item cannot become a spawn loop.
+/// Once the boss backing exhausts that proven bound, exactly one menu-only
+/// visual fallback request follows, and then the preview fails closed.
 #[inline(always)]
 unsafe fn poll_rathalos_presentation_acquisition(
     state: &mut AmiiboPreviewState,
@@ -3002,6 +3079,16 @@ unsafe fn poll_rathalos_presentation_acquisition(
     requested_backing: &str,
 ) -> bool {
     debug_assert_eq!(profile.key, RATHALOS_PREVIEW_KEY);
+
+    if state.rathalos_acquire_probe.fallback_requested {
+        return observe_rathalos_menu_visual_fallback(
+            state,
+            profile,
+            module_accessor,
+            host_id,
+            requested_item_kind,
+        );
+    }
 
     if state.rathalos_acquire_probe.request_count == 0 {
         state.rathalos_acquire_probe.host_settle_frames = state
@@ -3078,7 +3165,7 @@ unsafe fn poll_rathalos_presentation_acquisition(
     }
 
     if let Some((slot, presentation_id, presentation_boma)) =
-        crate::boss_helpers::held_item_by_kind(module_accessor, &[requested_item_kind])
+        exact_kind_acquired_item(module_accessor, requested_item_kind)
     {
         log_rathalos_acquire_probe(
             state,
@@ -3163,12 +3250,94 @@ unsafe fn poll_rathalos_presentation_acquisition(
         return true;
     }
 
-    defer_rathalos_presentation(
+    // Both bounded requests completed with every host slot empty. That
+    // boundary is unavailable for the boss-only backing; raising the retry or
+    // settle counts would observe nothing new, so move to the single
+    // menu-only visual fallback instead.
+    log_rathalos_acquire_probe(
         state,
         profile,
         module_accessor,
         requested_item_kind,
-        "item_acquisition_unverified_after_two_bounded_requests",
+        "boss_backing_exhausted",
+        false,
+        "issue_single_menu_visual_fallback_request",
+    );
+
+    if host_has_foreign_item(module_accessor, 0) {
+        return defer_rathalos_presentation(
+            state,
+            profile,
+            module_accessor,
+            requested_item_kind,
+            "foreign_host_item_before_menu_visual_fallback",
+        );
+    }
+
+    if let Some((slot, presentation_id, presentation_boma)) =
+        request_rathalos_menu_visual_fallback(state, profile, module_accessor, requested_item_kind)
+    {
+        return activate_rathalos_menu_visual_fallback(
+            state,
+            profile,
+            module_accessor,
+            host_id,
+            slot,
+            presentation_id,
+            presentation_boma,
+        );
+    }
+    true
+}
+
+/// Observes the one menu-visual-fallback request for a single bounded window,
+/// accepting it only on an exact `ITEM_KIND_LIOLEUS` match. No further
+/// alternate kinds are ever tried.
+#[inline(always)]
+unsafe fn observe_rathalos_menu_visual_fallback(
+    state: &mut AmiiboPreviewState,
+    profile: &BossAmiiboPreviewProfile,
+    module_accessor: *mut BattleObjectModuleAccessor,
+    host_id: u32,
+    primary_item_kind: i32,
+) -> bool {
+    if let Some((slot, presentation_id, presentation_boma)) =
+        exact_kind_acquired_item(module_accessor, *ITEM_KIND_LIOLEUS)
+    {
+        log_rathalos_acquire_probe(
+            state,
+            profile,
+            module_accessor,
+            *ITEM_KIND_LIOLEUS,
+            "menu_visual_fallback_verified",
+            true,
+            "activate_presentation",
+        );
+        return activate_rathalos_menu_visual_fallback(
+            state,
+            profile,
+            module_accessor,
+            host_id,
+            slot,
+            presentation_id,
+            presentation_boma,
+        );
+    }
+
+    state.rathalos_acquire_probe.frames_since_fallback = state
+        .rathalos_acquire_probe
+        .frames_since_fallback
+        .saturating_add(1);
+    if !state.rathalos_acquire_probe.fallback_window_elapsed() {
+        return true;
+    }
+
+    defer_rathalos_presentation(
+        state,
+        profile,
+        module_accessor,
+        primary_item_kind,
+        "menu_visual_fallback_unverified_after_one_bounded_request",
     )
 }
 
@@ -3249,9 +3418,20 @@ unsafe fn destroy_presentation_item(
     state.viewer_anchor = ViewerAnchor::empty();
     state.host_hidden = false;
     state.transform_stabilization_frames_remaining = 0;
-    state.attachment_mode = AmiiboAttachmentMode::ViewerAnchor;
-    state.native_held_attachment_probe = NativeHeldAttachmentProbe::empty();
     state.rathalos_acquire_probe = RathalosAcquireProbe::empty();
+    state.motion_probe_samples_remaining = MOTION_PROBE_SAMPLE_FRAMES;
+    state.motion_probe_motion_before = 0;
+    state.motion_probe_motion_after_change = 0;
+    state.motion_probe_first_frame = -1.0;
+    state.motion_probe_last_frame = -1.0;
+    state.motion_probe_advanced = false;
+    state.frames_since_viewer_host_ready = 0;
+    state.frames_host_ready_to_create = 0;
+    state.frames_create_to_engine_visible = 0;
+    state.frames_create_to_model_visible = 0;
+    state.have_item_ticks = 0;
+    state.created_frame_mark = 0;
+    state.visible_latency_logged = false;
     state.transform_comparison_samples_remaining = 0;
     state.transform_comparison_complete = false;
     state.interactive_transform_probe = InteractiveTransformProbe::empty();
@@ -3288,6 +3468,7 @@ unsafe fn reset_preview_state(module_accessor: *mut BattleObjectModuleAccessor, 
     state.identity_source = AmiiboPreviewIdentitySource::None;
     state.create_attempted = false;
     state.stabilization_reacquire_used = false;
+    state.apply_profile_idle_motion = true;
     state.ready_visual_logged = false;
     state.ignored_lookup_mask = 0;
 }
@@ -3326,6 +3507,10 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
     if host_id == 0 || !sv_battle_object::is_active(host_id) {
         return false;
     }
+    // Counts only frames where a live viewer host already exists, so it
+    // measures this plugin's contribution to the spawn delay and excludes the
+    // game's own fighter NRO load.
+    state.frames_since_viewer_host_ready = state.frames_since_viewer_host_ready.saturating_add(1);
 
     let Some(profile) = profile_for_ui_chara_hash(state.logical_ui_hash) else {
         reset_preview_state(module_accessor, "logical_profile_missing");
@@ -3354,7 +3539,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                 state.phase = AmiiboPreviewPhase::DeferredUntilSupported;
                 if crate::debug::enabled() {
                     crate::boss_log!(
-                        "[PB][AmiiboPreviewRuntime] viewer_enter generation={} logical_boss={} stage=0x{:x} action=deferred_native_fighter_presentation backing={} fighter_kind={}",
+                        "[PB][AmiiboPreviewRuntime] viewer_enter generation={} logical_boss={} stage=0x{:x} action=native_fighter_viewer_owned_no_plugin_presentation backing={} fighter_kind={}",
                         state.viewer_generation,
                         profile.key,
                         stage_id,
@@ -3409,6 +3594,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
         }
         state.viewer_generation = state.viewer_generation.wrapping_add(1);
         state.host_object_id = host_id;
+        state.viewer_host_ready_tick = system_tick();
         let current_host_position = viewer_host_position(module_accessor);
         let current_host_rotation = viewer_host_rotation(module_accessor);
         let anchor_captured = capture_viewer_anchor(state, module_accessor);
@@ -3416,9 +3602,21 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
         state.presentation_slot = -1;
         state.ownership = AmiiboPreviewOwnership::None;
         state.transform_stabilization_frames_remaining = 0;
-        state.attachment_mode = AmiiboAttachmentMode::for_profile(profile);
-        state.native_held_attachment_probe = NativeHeldAttachmentProbe::empty();
+        state.apply_profile_idle_motion = true;
         state.rathalos_acquire_probe = RathalosAcquireProbe::empty();
+        state.motion_probe_samples_remaining = MOTION_PROBE_SAMPLE_FRAMES;
+        state.motion_probe_motion_before = 0;
+        state.motion_probe_motion_after_change = 0;
+        state.motion_probe_first_frame = -1.0;
+        state.motion_probe_last_frame = -1.0;
+        state.motion_probe_advanced = false;
+        state.frames_since_viewer_host_ready = 0;
+        state.frames_host_ready_to_create = 0;
+        state.frames_create_to_engine_visible = 0;
+        state.frames_create_to_model_visible = 0;
+        state.have_item_ticks = 0;
+        state.created_frame_mark = 0;
+        state.visible_latency_logged = false;
         state.transform_comparison_samples_remaining = 0;
         state.transform_comparison_complete = false;
         state.interactive_transform_probe = InteractiveTransformProbe::empty();
@@ -3525,67 +3723,77 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                 state.ownership = new_ownership;
             }
             state.presentation_slot = slot;
-            let observe_native_attachment =
-                observing_native_held_attachment(state, slot_still_held);
 
             let desired_position = desired_preview_position(state, profile);
+            // `unwrap_or_else`: every item profile carries an explicit scale,
+            // so the eager `unwrap_or` argument was an FFI read discarded on
+            // every frame. Same value, only queried when there is no profile
+            // scale to use.
             let desired_scale = profile
                 .preview_scale
-                .unwrap_or(ModelModule::scale(presentation_boma));
-            let current_host_position = viewer_host_position(module_accessor);
-            let before_position = Vector3f {
-                x: PostureModule::pos_x(presentation_boma),
-                y: PostureModule::pos_y(presentation_boma),
-                z: PostureModule::pos_z(presentation_boma),
-            };
-            let before_rotation = presentation_rotation(presentation_boma);
-            let before_scale = ModelModule::scale(presentation_boma);
-            let desired_presentation_rotation =
-                desired_item_presentation_rotation(profile, before_rotation);
-            let rotation_needs_stabilization = profile
-                .presentation_rotation
-                .map(|rotation| !rotation_matches(before_rotation, rotation))
-                .unwrap_or(false);
-            if !state.native_transform_reset_logged
-                && (!transform_matches(before_position.x, desired_position.x)
+                .unwrap_or_else(|| ModelModule::scale(presentation_boma));
+
+            // One-shot native-transform-reset observation. The whole snapshot
+            // (host position, item position/rotation/scale) exists only to
+            // detect and report that first reset, and the latch below fires at
+            // most once per viewer generation — so it is taken inside the latch
+            // rather than on every Ready frame. Behavior is unchanged: nothing
+            // outside this block reads these values.
+            if !state.native_transform_reset_logged {
+                let before_position = Vector3f {
+                    x: PostureModule::pos_x(presentation_boma),
+                    y: PostureModule::pos_y(presentation_boma),
+                    z: PostureModule::pos_z(presentation_boma),
+                };
+                let before_rotation = presentation_rotation(presentation_boma);
+                let before_scale = ModelModule::scale(presentation_boma);
+                let rotation_needs_stabilization = profile
+                    .presentation_rotation
+                    .map(|rotation| !rotation_matches(before_rotation, rotation))
+                    .unwrap_or(false);
+                if !transform_matches(before_position.x, desired_position.x)
                     || !transform_matches(before_position.y, desired_position.y)
                     || !transform_matches(before_position.z, desired_position.z)
                     || !transform_matches(before_scale, desired_scale)
-                    || rotation_needs_stabilization)
-            {
-                state.native_transform_reset_logged = true;
-                if crate::debug::enabled() {
-                    crate::boss_log!(
-                        "[PB][AmiiboPreviewRuntime] native_transform_reset_observed generation={} logical_boss={} presentation_object_id=0x{:x} initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) desired_position=({:.3},{:.3},{:.3}) observed_position=({:.3},{:.3},{:.3}) observed_presentation_rotation=({:.1},{:.1},{:.1}) presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) desired_scale={:.4} observed_scale={:.4} stabilization_frames_remaining={}",
-                        state.viewer_generation,
-                        profile.key,
-                        presentation_id,
-                        state.viewer_anchor.initial_position[0],
-                        state.viewer_anchor.initial_position[1],
-                        state.viewer_anchor.initial_position[2],
-                        current_host_position[0],
-                        current_host_position[1],
-                        current_host_position[2],
-                        state.viewer_anchor.position[0],
-                        state.viewer_anchor.position[1],
-                        state.viewer_anchor.position[2],
-                        desired_position.x,
-                        desired_position.y,
-                        desired_position.z,
-                        before_position.x,
-                        before_position.y,
-                        before_position.z,
-                        before_rotation[0],
-                        before_rotation[1],
-                        before_rotation[2],
-                        profile.presentation_rotation.is_some(),
-                        desired_presentation_rotation[0],
-                        desired_presentation_rotation[1],
-                        desired_presentation_rotation[2],
-                        desired_scale,
-                        before_scale,
-                        state.transform_stabilization_frames_remaining
-                    );
+                    || rotation_needs_stabilization
+                {
+                    state.native_transform_reset_logged = true;
+                    if crate::debug::enabled() {
+                        let current_host_position = viewer_host_position(module_accessor);
+                        let desired_presentation_rotation =
+                            desired_item_presentation_rotation(profile, before_rotation);
+                        crate::boss_log!(
+                            "[PB][AmiiboPreviewRuntime] native_transform_reset_observed generation={} logical_boss={} presentation_object_id=0x{:x} initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) desired_position=({:.3},{:.3},{:.3}) observed_position=({:.3},{:.3},{:.3}) observed_presentation_rotation=({:.1},{:.1},{:.1}) presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) desired_scale={:.4} observed_scale={:.4} stabilization_frames_remaining={}",
+                            state.viewer_generation,
+                            profile.key,
+                            presentation_id,
+                            state.viewer_anchor.initial_position[0],
+                            state.viewer_anchor.initial_position[1],
+                            state.viewer_anchor.initial_position[2],
+                            current_host_position[0],
+                            current_host_position[1],
+                            current_host_position[2],
+                            state.viewer_anchor.position[0],
+                            state.viewer_anchor.position[1],
+                            state.viewer_anchor.position[2],
+                            desired_position.x,
+                            desired_position.y,
+                            desired_position.z,
+                            before_position.x,
+                            before_position.y,
+                            before_position.z,
+                            before_rotation[0],
+                            before_rotation[1],
+                            before_rotation[2],
+                            profile.presentation_rotation.is_some(),
+                            desired_presentation_rotation[0],
+                            desired_presentation_rotation[1],
+                            desired_presentation_rotation[2],
+                            desired_scale,
+                            before_scale,
+                            state.transform_stabilization_frames_remaining
+                        );
+                    }
                 }
             }
 
@@ -3597,42 +3805,39 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                 "before_presentation_maintenance",
             );
             let within_transform_stabilization = state.transform_stabilization_frames_remaining > 0;
-            let (motion, forced_boss_position_write, stable_item) =
-                if within_transform_stabilization {
-                    let presentation = apply_item_presentation(
-                        presentation_boma,
-                        state,
-                        profile,
-                        !observe_native_attachment,
-                    );
-                    if !observe_native_attachment {
-                        state.transform_stabilization_frames_remaining -= 1;
-                    }
-                    (
-                        presentation.motion,
-                        presentation.position_written,
-                        StableItemMaintenanceResult::empty(),
-                    )
-                } else {
-                    // Stable maintenance keeps the item inert. For the proof pair
-                    // the plugin additionally owns the boss-local channels
-                    // (framing position, item-root static correction, calibration
-                    // overrides) without touching any native host channel.
-                    process_transform_calibration_input(
-                        state,
-                        profile,
-                        module_accessor,
-                        presentation_boma,
-                        slot_still_held,
-                    );
-                    let stable_item =
-                        maintain_stable_item_presentation(state, profile, presentation_boma);
-                    (
-                        stable_item.motion,
-                        stable_item.item_position_written,
-                        stable_item,
-                    )
-                };
+            let (motion, stable_item) = if within_transform_stabilization {
+                let presentation = apply_item_presentation(presentation_boma, state, profile);
+                if state.motion_probe_motion_after_change == 0 {
+                    state.motion_probe_motion_before = presentation.motion_before;
+                    state.motion_probe_motion_after_change = presentation.motion_after_change;
+                    state.motion_probe_first_frame = presentation.frame_before;
+                }
+                state.transform_stabilization_frames_remaining -= 1;
+                (presentation.motion, StableItemMaintenanceResult::empty())
+            } else {
+                // Reaching stable maintenance means this presentation was
+                // fully built, so a later loss is a real teardown (entering
+                // Level Up / Smash / Send on a Journey and coming back), not
+                // the native viewer's construction race. Refresh the one-shot
+                // reacquire budget so the boss rebuilds instead of being
+                // permanently replaced by Mario. A construction race can never
+                // reach this branch, so the anti-spawn-loop bound still holds.
+                state.stabilization_reacquire_used = false;
+                // Stable maintenance keeps the item inert and additionally
+                // owns the boss-local channels (framing position, item-root
+                // static correction, calibration overrides) without touching
+                // any native host channel.
+                process_transform_calibration_input(
+                    state,
+                    profile,
+                    module_accessor,
+                    presentation_boma,
+                    slot_still_held,
+                );
+                let stable_item =
+                    maintain_stable_item_presentation(state, profile, presentation_boma);
+                (stable_item.motion, stable_item)
+            };
             observe_presentation_visibility(
                 state,
                 profile,
@@ -3640,11 +3845,10 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                 module_accessor,
                 "after_item_presentation",
             );
-            // Transform ownership is recipe-driven: recipes without a posture
-            // correction never write the host PostureModule, so the native
-            // Amiibo viewer keeps interactive stick rotation. The proof pair
-            // (NativeHost recipe) writes no host channel at all; a host-root
-            // calibration override is the debug harness's only host write.
+            // No recipe writes the host PostureModule, so the native Amiibo
+            // viewer keeps interactive stick rotation, and the NativeHost
+            // recipe writes no host channel at all; a host-root calibration
+            // override is the debug harness's only host write.
             let mut host_presentation = if within_transform_stabilization {
                 initialize_viewer_host_presentation_recipe(module_accessor, profile)
             } else {
@@ -3679,24 +3883,97 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                 module_accessor,
                 "after_host_recipe",
             );
-            observe_native_held_attachment_probe(
-                state,
-                profile,
-                presentation_boma,
-                module_accessor,
-                slot_still_held,
-                slot,
-                observe_native_attachment,
-                forced_boss_position_write,
-                host_presentation,
-                false,
-            );
             let (item_visible, item_model_visible) = ensure_presentation_visibility_once(
                 state,
                 profile,
                 presentation_boma,
                 module_accessor,
             );
+
+            // Full latency breakdown across the user-perceived path.
+            // identity -> viewer_host_ready is wall time (the native viewer
+            // builds its own Mario host there, which this plugin cannot
+            // start); everything after is frame-counted.
+            if !state.visible_latency_logged && item_visible && item_model_visible {
+                state.visible_latency_logged = true;
+                if state.frames_create_to_engine_visible == 0 {
+                    state.frames_create_to_engine_visible = state
+                        .frames_since_viewer_host_ready
+                        .saturating_sub(state.created_frame_mark);
+                }
+                state.frames_create_to_model_visible = state
+                    .frames_since_viewer_host_ready
+                    .saturating_sub(state.created_frame_mark);
+                if crate::debug::enabled() {
+                    let identity_to_host_ticks = state
+                        .viewer_host_ready_tick
+                        .saturating_sub(state.identity_tick);
+                    let identity_to_visible_ticks =
+                        system_tick().saturating_sub(state.identity_tick);
+                    crate::boss_log!(
+                        "[PB][AmiiboPreviewLatency] generation={} logical_boss={} identity_to_host_ms={:.1} identity_to_host_ticks={} host_to_create_frames={} have_item_ticks={} have_item_ms={:.3} create_to_engine_visible_frames={} create_to_model_visible_frames={} host_to_visible_frames={} host_to_visible_ms_approx={:.1} total_identity_to_visible_ms={:.1} tick_hz={:.0} presentation_object_id=0x{:x}",
+                        state.viewer_generation,
+                        profile.key,
+                        ticks_to_ms(identity_to_host_ticks),
+                        identity_to_host_ticks,
+                        state.frames_host_ready_to_create,
+                        state.have_item_ticks,
+                        ticks_to_ms(state.have_item_ticks),
+                        state.frames_create_to_engine_visible,
+                        state.frames_create_to_model_visible,
+                        state.frames_since_viewer_host_ready,
+                        state.frames_since_viewer_host_ready as f32 / 60.0 * 1000.0,
+                        ticks_to_ms(identity_to_visible_ticks),
+                        SYSTEM_TICK_HZ,
+                        presentation_id,
+                    );
+                }
+            }
+            if state.frames_create_to_engine_visible == 0 && item_visible {
+                state.frames_create_to_engine_visible = state
+                    .frames_since_viewer_host_ready
+                    .saturating_sub(state.created_frame_mark);
+            }
+
+            // Motion-playback probe. Evidence only — no field here alone is
+            // a verdict. `name_accepted` says whether the engine took the
+            // requested motion; `animation_advanced` says whether anything is
+            // actually playing. A stuck frame with an accepted name is NOT
+            // proof of a static model: it can equally be a wrong animation
+            // resource, a zero-rate motion, a one-frame motion, missing
+            // initialization, or a core object with no animated idle.
+            if state.motion_probe_samples_remaining > 0 {
+                state.motion_probe_samples_remaining -= 1;
+                let motion_frame = MotionModule::frame(presentation_boma);
+                let motion_kind = MotionModule::motion_kind(presentation_boma);
+                if state.motion_probe_last_frame >= 0.0
+                    && (motion_frame - state.motion_probe_last_frame).abs() > 0.0001
+                {
+                    state.motion_probe_advanced = true;
+                }
+                state.motion_probe_last_frame = motion_frame;
+                if state.motion_probe_samples_remaining == 0 && crate::debug::enabled() {
+                    crate::boss_log!(
+                        "[PB][AmiiboMotionProbe] surface=amiibo generation={} logical_boss={} actual_item_kind={} requested_motion_name={} requested_motion_hash=0x{:x} motion_before=0x{:x} motion_immediately_after_change=0x{:x} motion_after_sample_window=0x{:x} name_accepted={} frame_before={:.2} frame_after={:.2} motion_rate={:.3} status_kind={} animation_advanced={} sample_frames={} presentation_object_id=0x{:x}",
+                        state.viewer_generation,
+                        profile.key,
+                        actual_kind,
+                        profile.idle_motion,
+                        smash::hash40(profile.idle_motion),
+                        state.motion_probe_motion_before,
+                        state.motion_probe_motion_after_change,
+                        motion_kind,
+                        motion_kind == smash::hash40(profile.idle_motion),
+                        state.motion_probe_first_frame,
+                        motion_frame,
+                        MotionModule::rate(presentation_boma),
+                        StatusModule::status_kind(presentation_boma),
+                        state.motion_probe_advanced,
+                        MOTION_PROBE_SAMPLE_FRAMES,
+                        presentation_id,
+                    );
+                }
+            }
             let actual_position = Vector3f {
                 x: PostureModule::pos_x(presentation_boma),
                 y: PostureModule::pos_y(presentation_boma),
@@ -3835,8 +4112,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
         // inactive, inaccessible, or changes kind. A cleared host slot alone
         // is a normal detached-item transition and is handled above.
         let native_reclaim = !object_active || presentation_boma.is_null();
-        let native_reacquire_allowed = profile.item_acquire_recipe.allows_native_reacquire();
-        if native_reclaim && native_reacquire_allowed && !state.stabilization_reacquire_used {
+        if native_reclaim && !state.stabilization_reacquire_used {
             if crate::debug::enabled() {
                 crate::boss_log!(
                     "[PB][AmiiboPreviewRuntime] presentation_reacquire_scheduled generation={} logical_boss={} host_object_id=0x{:x} presentation_object_id=0x{:x} expected_kind={} object_active={} ownership={} attempt=1 initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) reason=native_viewer_initialization_reclaim",
@@ -3873,7 +4149,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
 
         if crate::debug::enabled() {
             crate::boss_log!(
-                "[PB][AmiiboPreviewRuntime] presentation_lost generation={} logical_boss={} host_object_id=0x{:x} presentation_object_id=0x{:x} object_active={} expected_kind={} actual_kind={} ownership={} stabilization_reacquire_used={} native_reacquire_allowed={} action=restore_native_viewer_no_more_reacquire",
+                "[PB][AmiiboPreviewRuntime] presentation_lost generation={} logical_boss={} host_object_id=0x{:x} presentation_object_id=0x{:x} object_active={} expected_kind={} actual_kind={} ownership={} stabilization_reacquire_used={} action=restore_native_viewer_no_more_reacquire",
                 state.viewer_generation,
                 profile.key,
                 state.host_object_id,
@@ -3882,8 +4158,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                 state.expected_item_kind,
                 actual_kind,
                 state.ownership.name(),
-                state.stabilization_reacquire_used,
-                native_reacquire_allowed
+                state.stabilization_reacquire_used
             );
         }
         defer_current_viewer_presentation(
@@ -3913,24 +4188,32 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
 
     state.phase = AmiiboPreviewPhase::CreatingPresentation;
     state.create_attempted = true;
-    // Hardware-proven crash boundary (two independent tests): stage 0x135
-    // crashes inside `ItemModule::have_item` for BOTH Dracula kinds — phase 1
-    // (ITEM_KIND_DRACULA) and phase 2 (ITEM_KIND_DRACULA2) — before the call
-    // returns, even with empty slots, tiny host scale 0.0001, and the WOL
-    // preview order reproduced. Fail closed before ANY host mutation: no slot
-    // clearing, no host shrink, no acquisition, no retry this generation. The
-    // native viewer is preserved untouched rather than restored.
-    if !profile.item_acquire_recipe.reaches_have_item() {
+    state.frames_host_ready_to_create = state.frames_since_viewer_host_ready;
+    // Dracula is unconditionally fail-closed. Hardware crashed inside
+    // `ItemModule::have_item` on stage 0x135 for every backing and every
+    // preparation tried:
+    //   ITEM_KIND_DRACULA  immediate / WOL-prepared / tiny-host / 16-frame settle
+    //   ITEM_KIND_DRACULA2 immediate / WOL-prepared / tiny-host / 16-frame settle
+    // The last run reached `phase=host_settled host_settle_frames=16
+    // request_issued=true requested_kind=373` and never returned. The problem
+    // is therefore neither timing nor which Dracula kind is passed, so no
+    // further `have_item` experiment may be run from this stage and there is
+    // deliberately no configuration option that can re-arm one. Fail closed
+    // before ANY host mutation: no slot clearing, no host shrink, no
+    // `have_item`, no retry. The native viewer is preserved untouched.
+    //
+    // His presentation profile below is kept intact so that a future safe
+    // Dracula BattleObject factory needs no transform work.
+    if profile.key == DRACULA_PREVIEW_KEY {
         if crate::debug::enabled() {
             crate::boss_log!(
-                "[PB][AmiiboDraculaAcquire] generation={} logical_boss={} phase=blocked_all_known_item_backings_crash stage=0x{:x} host_object_id=0x{:x} phase1_kind={} phase2_kind={} acquisition_recipe={} action=preserve_native_viewer_no_have_item",
+                "[PB][AmiiboDraculaAcquire] generation={} logical_boss={} phase=blocked_all_known_have_item_paths_crash stage=0x{:x} host_object_id=0x{:x} phase1_kind={} phase2_kind={} action=preserve_native_viewer_no_have_item",
                 state.viewer_generation,
                 profile.key,
                 stage_id,
                 host_id,
                 *ITEM_KIND_DRACULA,
                 *ITEM_KIND_DRACULA2,
-                profile.item_acquire_recipe.name(),
             );
         }
         state.phase = AmiiboPreviewPhase::DeferredUntilSupported;
@@ -3965,9 +4248,10 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
     }
 
     if profile.item_acquire_recipe.uses_deferred_observation() {
-        // Rathalos's backing is WOL-proven but can fail while the menu host is
-        // still constructing. Keep the native Mario viewer intact until that
-        // host has settled, then use the bounded WOL-faithful request path.
+        // Both deferred recipes keep the native Mario viewer intact until the
+        // menu host has finished constructing, then issue their own bounded
+        // request. They route to separate polls so neither boss can inherit
+        // the other's probe, retry budget, or fallback.
         state.rathalos_acquire_probe = RathalosAcquireProbe::empty();
         state.host_hidden = false;
         state.phase = AmiiboPreviewPhase::AwaitingRathalosAcquire;
@@ -3996,6 +4280,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
     }
 
     prepare_viewer_host_for_item_acquisition(module_accessor, profile.item_acquire_recipe);
+    let have_item_begin_tick = system_tick();
     ItemModule::have_item(
         module_accessor,
         ItemKind(requested_item_kind),
@@ -4004,6 +4289,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
         false,
         false,
     );
+    state.have_item_ticks = system_tick().saturating_sub(have_item_begin_tick);
     SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
 
     let Some((slot, presentation_id, presentation_boma)) =
@@ -4051,6 +4337,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
     }
 
     state.presentation_object_id = presentation_id;
+    state.created_frame_mark = state.frames_since_viewer_host_ready;
     state.expected_item_kind = requested_item_kind;
     state.presentation_slot = slot;
     state.ownership = AmiiboPreviewOwnership::HostSlot;
@@ -4059,34 +4346,49 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
     state.visibility_reassertion_used = false;
     state.last_item_visible = None;
     state.last_item_model_visible = None;
+    state.motion_probe_samples_remaining = MOTION_PROBE_SAMPLE_FRAMES;
+    state.motion_probe_motion_before = 0;
+    state.motion_probe_motion_after_change = 0;
+    state.motion_probe_first_frame = -1.0;
+    state.motion_probe_last_frame = -1.0;
+    state.motion_probe_advanced = false;
+    state.frames_since_viewer_host_ready = 0;
+    state.frames_host_ready_to_create = 0;
+    state.frames_create_to_engine_visible = 0;
+    state.frames_create_to_model_visible = 0;
+    state.have_item_ticks = 0;
+    state.created_frame_mark = 0;
+    state.visible_latency_logged = false;
     state.transform_comparison_samples_remaining = 0;
     state.transform_comparison_complete = false;
     state.interactive_transform_probe = InteractiveTransformProbe::empty();
     state.transform_calibration = TransformCalibrationState::empty();
     let native_rotation_after_create = presentation_rotation(presentation_boma);
-    let observe_native_attachment = observing_native_held_attachment(state, true);
-    let presentation = apply_item_presentation(
-        presentation_boma,
-        state,
-        profile,
-        !observe_native_attachment,
-    );
+    let presentation = apply_item_presentation(presentation_boma, state, profile);
+    if state.motion_probe_motion_after_change == 0 {
+        state.motion_probe_motion_before = presentation.motion_before;
+        state.motion_probe_motion_after_change = presentation.motion_after_change;
+        state.motion_probe_first_frame = presentation.frame_before;
+    }
     state.transform_stabilization_frames_remaining = PREVIEW_TRANSFORM_STABILIZATION_FRAMES;
     let host_presentation = initialize_viewer_host_presentation_recipe(module_accessor, profile);
     state.host_hidden = true;
     initialize_presentation_visibility(state, profile, presentation_boma, module_accessor);
     state.phase = AmiiboPreviewPhase::Ready;
-    observe_native_held_attachment_probe(
+    // Same object after the plugin's scale + `"wait"` motion, with NO status
+    // forced. If the object stays inert here while its native state looked
+    // uninitialized, that is the evidence for a status dependency — report it
+    // rather than forcing one, because a forced status previously detached
+    // presentation items from the host slot and killed native rotation.
+    log_boss_backing_probe(
         state,
         profile,
         presentation_boma,
-        module_accessor,
-        true,
+        acquired_kind,
+        requested_backing,
         slot,
-        observe_native_attachment,
-        presentation.position_written,
-        host_presentation,
-        true,
+        host_slot_for_presentation(module_accessor, presentation_id).is_some(),
+        "after_wait_motion_no_status_forced",
     );
     let desired_position = desired_preview_position(state, profile);
     if crate::debug::enabled() {
@@ -4095,7 +4397,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
         let desired_presentation_rotation =
             desired_item_presentation_rotation(profile, presentation.native_rotation_after_motion);
         crate::boss_log!(
-            "[PB][AmiiboPreviewRuntime] presentation_created generation={} logical_boss={} host_object_id=0x{:x} presentation_object_id=0x{:x} slot={} requested_kind={} acquired_kind={} backing={} initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) desired_position=({:.3},{:.3},{:.3}) actual_position=({:.3},{:.3},{:.3}) native_rotation_after_create=({:.1},{:.1},{:.1}) native_rotation_after_motion=({:.1},{:.1},{:.1}) native_lr={:.3} presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) final_presentation_rotation=({:.1},{:.1},{:.1}) desired_scale={:.4} actual_scale={:.4} stabilization_frames={} ownership=host_slot attachment_mode={} forced_boss_position_write={} presentation_only=true",
+            "[PB][AmiiboPreviewRuntime] presentation_created generation={} logical_boss={} host_object_id=0x{:x} presentation_object_id=0x{:x} slot={} requested_kind={} acquired_kind={} backing={} initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) desired_position=({:.3},{:.3},{:.3}) actual_position=({:.3},{:.3},{:.3}) native_rotation_after_create=({:.1},{:.1},{:.1}) native_rotation_after_motion=({:.1},{:.1},{:.1}) native_lr={:.3} presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) final_presentation_rotation=({:.1},{:.1},{:.1}) desired_scale={:.4} actual_scale={:.4} stabilization_frames={} ownership=host_slot presentation_only=true",
             state.viewer_generation,
             profile.key,
             host_id,
@@ -4133,11 +4435,11 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
             presentation.final_presentation_rotation[0],
             presentation.final_presentation_rotation[1],
             presentation.final_presentation_rotation[2],
-            profile.preview_scale.unwrap_or(ModelModule::scale(presentation_boma)),
+            profile
+                .preview_scale
+                .unwrap_or_else(|| ModelModule::scale(presentation_boma)),
             ModelModule::scale(presentation_boma),
             state.transform_stabilization_frames_remaining,
-            state.attachment_mode.name(),
-            presentation.position_written,
         );
         crate::boss_log!(
             "[PB][AmiiboPreviewRuntime] host_orientation_applied generation={} logical_boss={} boss_motion={} host_recipe={} host_posture_rotation={} host_root_rotation=({:.1},{:.1},{:.1}) host_rotation_before=({:.1},{:.1},{:.1}) host_rotation_after=({:.1},{:.1},{:.1}) host_scale={:.4} frozen_viewer_position=({:.3},{:.3},{:.3}) host_position=({:.3},{:.3},{:.3}) boss_rotation_after_create=({:.1},{:.1},{:.1}) boss_native_rotation_after_motion=({:.1},{:.1},{:.1}) presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) final_presentation_rotation=({:.1},{:.1},{:.1}) boss_lr={:.3} boss_scale={:.4} boss_position=({:.3},{:.3},{:.3})",
@@ -4253,7 +4555,7 @@ mod tests {
         let rathalos = profile_for_ui_chara_id("ui_chara_lioleus").unwrap();
         assert_eq!(
             rathalos.item_acquire_recipe,
-            ItemPresentationAcquireRecipe::WolRathalosStaged
+            ItemPresentationAcquireRecipe::RathalosBossThenVisualFallback
         );
         assert!(rathalos.item_acquire_recipe.uses_deferred_observation());
 
@@ -4274,12 +4576,73 @@ mod tests {
         assert!(!profile_rollout_enabled(giga_bowser));
     }
 
+    /// Giga Bowser is the one boss that needs no plugin presentation: it is a
+    /// real fighter, so the native viewer builds it once `ui_chara_koopag`
+    /// carries `fighter_kind_koopag`. The CSS row is cloned from Bowser purely
+    /// for a complete selectable row, and `callback_koopag` restores
+    /// `fighter_kind` afterwards — without that restore every consumer of the
+    /// row builds koopa, which is what made the preview show plain Bowser.
+    #[test]
+    fn giga_bowser_is_viewer_owned_with_no_item_backing() {
+        let giga_bowser = profile_for_ui_chara_id("ui_chara_koopag").unwrap();
+        assert_eq!(giga_bowser.preview_source, "fighter:koopag");
+        assert_eq!(
+            giga_bowser.host_orientation_recipe,
+            AmiiboHostOrientationRecipe::NativeFighter
+        );
+        // No plugin-owned presentation item at all: the viewer builds the
+        // fighter, and `src/gigabowser/mod.rs` applies the preview-only scale
+        // directly to it, so this profile carries no item scale.
+        assert_eq!(giga_bowser.preview_scale, None);
+        assert_eq!(giga_bowser.position_offset, [0.0, 0.0, 0.0]);
+
+        // Its backing is a fighter kind, not an item kind — it is the only
+        // profile for which that is true.
+        match unsafe { verified_presentation_backing(giga_bowser) } {
+            Some(VerifiedPreviewBacking::NativeFighter { kind, source }) => {
+                assert_eq!(kind, *FIGHTER_KIND_KOOPAG);
+                assert_eq!(source, "FIGHTER_KIND_KOOPAG");
+            }
+            _ => panic!("Giga Bowser must keep its native fighter backing"),
+        }
+        for profile in profiles() {
+            let native_fighter = matches!(
+                unsafe { verified_presentation_backing(profile) },
+                Some(VerifiedPreviewBacking::NativeFighter { .. })
+            );
+            assert_eq!(
+                native_fighter,
+                profile.key == "giga_bowser",
+                "boss {} must not be a native-fighter presentation",
+                profile.key
+            );
+        }
+
+        // Startup diagnostics must say the viewer owns it, not that the
+        // plugin is waiting to verify a presentation it never creates.
+        let backing = unsafe { verified_presentation_backing(giga_bowser) };
+        assert_eq!(
+            mapping_runtime_status(giga_bowser, backing),
+            "native_fighter_viewer_owned_no_plugin_presentation"
+        );
+        assert_eq!(
+            crate::amiibo::BOSS_IDENTITIES
+                .iter()
+                .find(|identity| identity.key == "giga_bowser")
+                .expect("missing Giga Bowser identity")
+                .backing_fighter,
+            "fighter_kind_koopag"
+        );
+    }
+
     #[test]
     fn rathalos_acquisition_probe_is_bounded() {
         let mut probe = RathalosAcquireProbe::empty();
         assert!(probe.can_retry());
         assert!(!probe.host_settled());
         assert!(!probe.observation_window_elapsed());
+        assert!(!probe.fallback_requested);
+        assert!(!probe.fallback_window_elapsed());
 
         probe.host_settle_frames = RATHALOS_HOST_SETTLE_FRAMES - 1;
         assert!(!probe.host_settled());
@@ -4295,6 +4658,43 @@ mod tests {
         assert!(probe.observation_window_elapsed());
         probe.request_count = RATHALOS_MAX_ACQUIRE_REQUESTS;
         assert!(!probe.can_retry());
+
+        // The proven ceiling stays where hardware put it: two boss-backing
+        // requests, each observed for one stabilization window.
+        assert_eq!(RATHALOS_MAX_ACQUIRE_REQUESTS, 2);
+        assert_eq!(
+            RATHALOS_HOST_SETTLE_FRAMES,
+            PREVIEW_TRANSFORM_STABILIZATION_FRAMES
+        );
+        assert_eq!(
+            RATHALOS_ACQUIRE_SETTLE_FRAMES,
+            PREVIEW_TRANSFORM_STABILIZATION_FRAMES
+        );
+    }
+
+    /// The menu-only visual fallback happens once and is observed for exactly
+    /// one bounded window. `fallback_requested` latches, so nothing can issue
+    /// a second alternate-kind request.
+    #[test]
+    fn rathalos_menu_visual_fallback_is_bounded_to_one_request() {
+        let mut probe = RathalosAcquireProbe::empty();
+        assert!(!probe.fallback_requested);
+
+        probe.fallback_requested = true;
+        probe.frames_since_fallback = RATHALOS_FALLBACK_SETTLE_FRAMES - 1;
+        assert!(!probe.fallback_window_elapsed());
+        probe.frames_since_fallback = RATHALOS_FALLBACK_SETTLE_FRAMES;
+        assert!(probe.fallback_window_elapsed());
+
+        assert_eq!(
+            RATHALOS_FALLBACK_SETTLE_FRAMES,
+            PREVIEW_TRANSFORM_STABILIZATION_FRAMES
+        );
+        // A generation reset clears the latch and restores profile-motion
+        // ownership, so the fallback can never leak across viewer generations.
+        assert!(!RathalosAcquireProbe::empty().fallback_requested);
+        assert_eq!(RathalosAcquireProbe::empty().frames_since_fallback, 0);
+        assert!(AmiiboPreviewState::new().apply_profile_idle_motion);
     }
 
     /// Replaces the disproven "Marx stays static" assumption. Hardware proved
@@ -4329,58 +4729,303 @@ mod tests {
             marx.item_acquire_recipe,
             ItemPresentationAcquireRecipe::Direct
         );
-        assert_eq!(
-            AmiiboAttachmentMode::for_profile(marx),
-            AmiiboAttachmentMode::ViewerAnchor
-        );
         assert_eq!(marx.position_offset, [0.36, 0.17, 0.0]);
-        // The stage-0x135 change must not leak into WOL: Marx's WOL module
-        // keeps its own posture/root composition (asserted by reference
-        // constants here, not by reading the module).
-        assert!(is_transform_proof_pair_profile(marx));
+        assert!(owns_boss_local_transform(marx));
     }
 
+    /// Dracula now uses Master Hand's exact acquisition path — a plain
+    /// `have_item` on the viewer-host-ready frame — with his own phase-1 item.
+    /// It is config-gated because that call has crashed on hardware for every
+    /// backing and preparation tried so far, so a normal install never reaches
+    /// it and the viewer shows native Mario.
     #[test]
-    fn dracula_stage_135_acquisition_fails_closed_before_have_item() {
+    fn dracula_uses_master_hands_direct_path_behind_a_config_gate() {
         let dracula = profile_for_ui_chara_id("ui_chara_dracula").unwrap();
-        assert_eq!(dracula.preview_source, "item:dracula_blocked");
+        let master_hand = profile_for_ui_chara_id("ui_chara_masterhand").unwrap();
+
+        // Byte-for-byte the same acquisition shape as Master Hand.
         assert_eq!(
             dracula.item_acquire_recipe,
-            ItemPresentationAcquireRecipe::DraculaAllBackingsBlocked
+            ItemPresentationAcquireRecipe::Direct
         );
-
-        // Hardware proved BOTH Dracula kinds (phase 1 ITEM_KIND_DRACULA and
-        // phase 2 ITEM_KIND_DRACULA2) crash inside `ItemModule::have_item` on
-        // stage 0x135. The recipe blocks the acquisition path before any
-        // `have_item` call can be issued, which covers every kind, and the
-        // create path defers the preview (DeferredUntilSupported) exactly
-        // once per viewer generation without retry.
-        assert!(!dracula.item_acquire_recipe.reaches_have_item());
-        assert!(!dracula.item_acquire_recipe.allows_native_reacquire());
-        // No host mutation may happen in preparation for a call that never
-        // occurs: the native viewer is preserved, not restored.
+        assert_eq!(dracula.item_acquire_recipe, master_hand.item_acquire_recipe);
         assert!(!dracula.item_acquire_recipe.requires_empty_host_slots());
         assert!(!dracula.item_acquire_recipe.uses_tiny_host_before_request());
         assert!(!dracula.item_acquire_recipe.uses_deferred_observation());
+        assert!(!dracula.item_acquire_recipe.uses_menu_visual_fallback());
 
-        // Both known kinds are distinct real backings and both are unsafe
-        // through this acquisition boundary.
+        // His own item, phase 1 — the kind `src/dracula/mod.rs` acquires in a
+        // real match, not the transformed phase 2.
         assert_ne!(*ITEM_KIND_DRACULA, *ITEM_KIND_DRACULA2);
-
-        // Other recipes must not inherit the Dracula block.
-        assert!(ItemPresentationAcquireRecipe::Direct.reaches_have_item());
-        assert!(ItemPresentationAcquireRecipe::WolRathalosStaged.reaches_have_item());
-
-        // The backing table entry remains for identity/diagnostics only.
         match unsafe { verified_presentation_backing(dracula) } {
             Some(VerifiedPreviewBacking::Item { kind, source }) => {
-                assert_eq!(kind, *ITEM_KIND_DRACULA2);
-                assert_eq!(
-                    source,
-                    "ITEM_KIND_DRACULA2 (blocked: stage 0x135 have_item crash)"
-                );
+                assert_eq!(kind, *ITEM_KIND_DRACULA);
+                assert_eq!(source, "ITEM_KIND_DRACULA (battle-proven phase 1)");
             }
-            _ => panic!("Dracula must keep a typed item backing entry for diagnostics"),
+            _ => panic!("Dracula must use his phase 1 backing"),
+        }
+
+        // The gate is keyed on the boss, so no other profile can be blocked by
+        // it and Dracula cannot silently inherit a different recipe's policy.
+        assert_eq!(dracula.key, DRACULA_PREVIEW_KEY);
+        for profile in profiles() {
+            let gated = profile.key == DRACULA_PREVIEW_KEY;
+            assert_eq!(
+                mapping_runtime_status(profile, unsafe { verified_presentation_backing(profile) })
+                    == "acquisition_blocked_all_known_have_item_paths_crash_fail_closed",
+                gated,
+                "boss {} has the wrong runtime status",
+                profile.key
+            );
+        }
+
+        // Transform ownership is untouched and matches the working bosses.
+        assert_eq!(
+            dracula.host_orientation_recipe,
+            master_hand.host_orientation_recipe
+        );
+        assert_eq!(
+            dracula.presentation_rotation,
+            master_hand.presentation_rotation
+        );
+        assert_eq!(dracula.position_offset, master_hand.position_offset);
+        assert_eq!(dracula.idle_motion, "wait");
+    }
+
+    /// Rathalos keeps its source-backed boss primary and gains exactly one
+    /// menu-only visual fallback. Neither shares state or assumptions with
+    /// Dracula, and the fallback changes no identity or gameplay backing.
+    #[test]
+    fn rathalos_keeps_boss_primary_with_one_exact_kind_menu_fallback() {
+        let rathalos = profile_for_ui_chara_id("ui_chara_lioleus").unwrap();
+        assert_eq!(rathalos.ui_chara_id, "ui_chara_lioleus");
+        assert_eq!(rathalos.preview_source, "item:lioleusboss");
+        assert_eq!(
+            rathalos.item_acquire_recipe,
+            ItemPresentationAcquireRecipe::RathalosBossThenVisualFallback
+        );
+        assert!(rathalos.item_acquire_recipe.requires_empty_host_slots());
+        assert!(rathalos.item_acquire_recipe.uses_tiny_host_before_request());
+        assert!(rathalos.item_acquire_recipe.uses_deferred_observation());
+        assert!(rathalos.item_acquire_recipe.uses_menu_visual_fallback());
+
+        // Primary backing is unchanged: the boss item, not the fallback.
+        match unsafe { verified_presentation_backing(rathalos) } {
+            Some(VerifiedPreviewBacking::Item { kind, source }) => {
+                assert_eq!(kind, *ITEM_KIND_LIOLEUSBOSS);
+                assert_eq!(source, "ITEM_KIND_LIOLEUSBOSS");
+            }
+            _ => panic!("Rathalos must keep the boss item as its primary backing"),
+        }
+        // The fallback is a different, distinct kind and is menu-visual only.
+        assert_ne!(*ITEM_KIND_LIOLEUS, *ITEM_KIND_LIOLEUSBOSS);
+
+        // No other profile may pick up the fallback path.
+        for profile in profiles() {
+            assert_eq!(
+                profile.item_acquire_recipe.uses_menu_visual_fallback(),
+                profile.key == RATHALOS_PREVIEW_KEY,
+                "boss {} must not use the Rathalos menu visual fallback",
+                profile.key
+            );
+        }
+
+        // The direct recipe stays synchronous and untouched.
+        assert!(!ItemPresentationAcquireRecipe::Direct.requires_empty_host_slots());
+        assert!(!ItemPresentationAcquireRecipe::Direct.uses_deferred_observation());
+        assert!(!ItemPresentationAcquireRecipe::Direct.uses_menu_visual_fallback());
+    }
+
+    /// `exact_kind_acquired_item` is the only acquisition verifier left, for
+    /// both the boss primary and the fallback. Provenance never substitutes
+    /// for identity, so a mismatched or unknown held item is never adopted.
+    #[test]
+    fn acquisition_never_adopts_a_mismatched_kind() {
+        // `held_item_by_kind` matches only the kinds it is given, so an
+        // unknown kind can never satisfy either request.
+        let primary_kinds = [*ITEM_KIND_LIOLEUSBOSS];
+        let fallback_kinds = [*ITEM_KIND_LIOLEUS];
+        assert!(!primary_kinds.contains(&*ITEM_KIND_LIOLEUS));
+        assert!(!fallback_kinds.contains(&*ITEM_KIND_LIOLEUSBOSS));
+        assert!(!fallback_kinds.contains(&*ITEM_KIND_MASTERHAND));
+        assert!(!fallback_kinds.contains(&*ITEM_KIND_DRACULA2));
+    }
+
+    /// FREEZE. Every profile below is hardware-proven on stage 0x135:
+    /// correctly oriented, correctly framed, and rotatable with the native
+    /// right-stick turntable. Galleom and Rathalos in particular proved
+    /// `ownership=host_slot`, `slot_still_held=true`, host posture changing
+    /// with the stick, host root zero, item posture [0,0,-90], item root
+    /// [0,0,0] and item position [0.36,0.18,0] with the plugin writing only
+    /// the item position. Nothing here may drift without new hardware
+    /// evidence.
+    #[test]
+    fn hardware_proven_boss_profiles_are_frozen() {
+        let frozen = [
+            ("ui_chara_masterhand", 0.45, "wait"),
+            ("ui_chara_mewtwo_masterhand", 0.45, "wait"),
+            ("ui_chara_crazyhand", 0.45, "wait"),
+            ("ui_chara_marx", 0.28125, "wait"),
+            ("ui_chara_ganonboss", 0.365625, "wait"),
+            ("ui_chara_galleom", 0.225, "wait"),
+            ("ui_chara_lioleus", 0.225, "hovering_move"),
+        ];
+
+        for (ui_chara_id, scale, motion) in frozen {
+            let profile = profile_for_ui_chara_id(ui_chara_id).expect("missing frozen profile");
+            assert_eq!(
+                profile.host_orientation_recipe,
+                AmiiboHostOrientationRecipe::NativeHost,
+                "{} lost NativeHost ownership",
+                profile.key
+            );
+            // Nintendo owns host posture (the turntable) and the host root
+            // stays untouched: the recipe carries no host correction at all.
+            assert_eq!(profile.host_orientation_recipe.posture_rotation(), None);
+            assert_eq!(profile.host_orientation_recipe.root_rotation(), None);
+            assert_eq!(
+                profile.presentation_rotation,
+                Some([0.0, 0.0, -90.0]),
+                "{} lost its proven item posture",
+                profile.key
+            );
+            assert_eq!(profile.item_root_rotation, None, "{}", profile.key);
+            assert_eq!(
+                profile.position_offset,
+                [0.36, 0.17, 0.0],
+                "{} lost its proven framing",
+                profile.key
+            );
+            assert_eq!(profile.preview_scale, Some(scale), "{}", profile.key);
+            assert_eq!(profile.idle_motion, motion, "{}", profile.key);
+            // Continuous viewer-anchor position pinning stays on.
+            assert!(owns_boss_local_transform(profile), "{}", profile.key);
+        }
+
+        // Rathalos keeps its own acquisition; everything else stays Direct.
+        assert_eq!(
+            profile_for_ui_chara_id("ui_chara_lioleus")
+                .unwrap()
+                .item_acquire_recipe,
+            ItemPresentationAcquireRecipe::RathalosBossThenVisualFallback
+        );
+        for ui_chara_id in [
+            "ui_chara_masterhand",
+            "ui_chara_mewtwo_masterhand",
+            "ui_chara_crazyhand",
+            "ui_chara_marx",
+            "ui_chara_ganonboss",
+            "ui_chara_galleom",
+        ] {
+            assert_eq!(
+                profile_for_ui_chara_id(ui_chara_id)
+                    .unwrap()
+                    .item_acquire_recipe,
+                ItemPresentationAcquireRecipe::Direct
+            );
+        }
+    }
+
+    /// Dracula is unconditionally fail-closed. Every known `have_item` path
+    /// for both backings crashed on hardware, so nothing — including any
+    /// configuration option — may reach that boundary from stage 0x135.
+    #[test]
+    fn dracula_is_permanently_blocked_with_no_config_escape() {
+        let dracula = profile_for_ui_chara_id("ui_chara_dracula").unwrap();
+        assert_eq!(dracula.key, DRACULA_PREVIEW_KEY);
+        assert_eq!(
+            mapping_runtime_status(dracula, unsafe { verified_presentation_backing(dracula) }),
+            "acquisition_blocked_all_known_have_item_paths_crash_fail_closed"
+        );
+        // Only Dracula is blocked; nothing else inherits it.
+        for profile in profiles() {
+            let blocked =
+                mapping_runtime_status(profile, unsafe { verified_presentation_backing(profile) })
+                    == "acquisition_blocked_all_known_have_item_paths_crash_fail_closed";
+            assert_eq!(
+                blocked,
+                profile.key == DRACULA_PREVIEW_KEY,
+                "{}",
+                profile.key
+            );
+        }
+        // The presentation profile survives for a future safe factory.
+        assert_eq!(
+            dracula.host_orientation_recipe,
+            AmiiboHostOrientationRecipe::NativeHost
+        );
+        assert_eq!(dracula.presentation_rotation, Some([0.0, 0.0, -90.0]));
+        assert_eq!(dracula.position_offset, [0.36, 0.17, 0.0]);
+        assert_eq!(dracula.preview_scale, Some(0.45));
+        assert_eq!(dracula.idle_motion, "wait");
+    }
+
+    /// Presentation-only backing swap. Hardware proved `"wait"` was accepted
+    /// and advancing on the CORE objects (rate 1.0, frame 0 -> 30,
+    /// `animation_advanced=true`) while the complete animated boss still never
+    /// appeared, so the core props were the wrong visual objects. The full
+    /// boss objects replace them for the Amiibo viewer only; identity,
+    /// orientation, framing and host ownership are untouched.
+    #[test]
+    fn galeem_and_dharkon_use_full_boss_amiibo_backings() {
+        let galeem = profile_for_ui_chara_id("ui_chara_kiila").unwrap();
+        let dharkon = profile_for_ui_chara_id("ui_chara_darz").unwrap();
+
+        // Logical Amiibo identity is unchanged by a visual backing swap.
+        assert_eq!(galeem.key, "galeem");
+        assert_eq!(dharkon.key, "dharkon");
+        assert_eq!(galeem.ui_chara_id, "ui_chara_kiila");
+        assert_eq!(dharkon.ui_chara_id, "ui_chara_darz");
+
+        // Full boss objects, not the core props.
+        match unsafe { verified_presentation_backing(galeem) } {
+            Some(VerifiedPreviewBacking::Item { kind, source }) => {
+                assert_eq!(kind, *ITEM_KIND_KIILA);
+                assert_eq!(source, "ITEM_KIND_KIILA");
+            }
+            _ => panic!("Galeem must use the full boss backing"),
+        }
+        match unsafe { verified_presentation_backing(dharkon) } {
+            Some(VerifiedPreviewBacking::Item { kind, source }) => {
+                assert_eq!(kind, *ITEM_KIND_DARZ);
+                assert_eq!(source, "ITEM_KIND_DARZ");
+            }
+            _ => panic!("Dharkon must use the full boss backing"),
+        }
+        assert_ne!(*ITEM_KIND_KIILA, *ITEM_KIND_KIILACORE);
+        assert_ne!(*ITEM_KIND_DARZ, *ITEM_KIND_DARZCENTIPEDE);
+
+        // The hardware-proven stage-0x135 architecture is untouched.
+        for profile in [galeem, dharkon] {
+            assert_eq!(
+                profile.host_orientation_recipe,
+                AmiiboHostOrientationRecipe::NativeHost
+            );
+            assert_eq!(profile.host_orientation_recipe.posture_rotation(), None);
+            assert_eq!(profile.host_orientation_recipe.root_rotation(), None);
+            assert_eq!(profile.presentation_rotation, Some([0.0, 0.0, -90.0]));
+            assert_eq!(profile.item_root_rotation, None);
+            assert_eq!(profile.position_offset, [0.36, 0.17, 0.0]);
+            assert_eq!(profile.idle_motion, "wait");
+            assert!(owns_boss_local_transform(profile));
+            // Exact-kind acquisition on the plain Direct path — no staged
+            // acquisition and no menu-visual fallback adoption.
+            assert_eq!(
+                profile.item_acquire_recipe,
+                ItemPresentationAcquireRecipe::Direct
+            );
+            assert!(!profile.item_acquire_recipe.uses_menu_visual_fallback());
+            assert!(uses_full_boss_backing(profile));
+        }
+
+        // Only these two carry the full-boss backing probe.
+        for profile in profiles() {
+            assert_eq!(
+                uses_full_boss_backing(profile),
+                profile.key == "galeem" || profile.key == "dharkon",
+                "boss {} must not be treated as a full-boss backing",
+                profile.key
+            );
         }
     }
 
@@ -4409,27 +5054,27 @@ mod tests {
                 "crazy_hand",
                 0.45,
                 [0.36, 0.17, 0.0],
-                Some([0.0, 0.0, 270.0]),
+                Some([0.0, 0.0, -90.0]),
                 "wait",
             ),
             (
                 "wol_master_hand",
                 0.45,
                 [0.36, 0.17, 0.0],
-                Some([270.0, 180.0, 90.0]),
+                Some([0.0, 0.0, -90.0]),
                 "wait",
             ),
             (
                 "galeem",
                 0.28125,
-                [0.0, 0.075, 0.0],
+                [0.36, 0.17, 0.0],
                 Some([0.0, 0.0, -90.0]),
                 "wait",
             ),
             (
                 "dharkon",
                 0.28125,
-                [0.0, 0.075, 0.0],
+                [0.36, 0.17, 0.0],
                 Some([0.0, 0.0, -90.0]),
                 "wait",
             ),
@@ -4444,8 +5089,8 @@ mod tests {
                 "ganon_boss",
                 0.365625,
                 [0.36, 0.17, 0.0],
-                Some([180.0, 0.0, 90.0]),
-                "body_attack_start",
+                Some([0.0, 0.0, -90.0]),
+                "wait",
             ),
             (
                 "galleom",
@@ -4480,72 +5125,81 @@ mod tests {
             assert_eq!(profile.presentation_rotation, presentation_rotation);
             assert_eq!(profile.idle_motion, idle_motion);
         }
+
+        // Ganon's production idle motion is deliberately "wait"; the preview
+        // must not drift back to the attack animation.
+        assert_eq!(
+            profile_for_ui_chara_id("ui_chara_ganonboss")
+                .unwrap()
+                .idle_motion,
+            "wait"
+        );
     }
 
-    /// Locks every boss's host recipe so migrations to the proof-pair
-    /// architecture stay deliberate. The proof pair (Master Hand + Marx) uses
-    /// the fully native host; every other recipe keeps its previously shipped
-    /// values unchanged.
+    /// Every item-backed boss uses the Master Hand / Marx architecture: a
+    /// fully native host and one item-local posture correction. A boss that
+    /// drifts back onto a WOL host recipe lies on its side, which is what this
+    /// locks against.
     #[test]
-    fn amiibo_host_orientation_recipes_are_not_silently_changed() {
-        let expected = [
-            ("master_hand", AmiiboHostOrientationRecipe::NativeHost),
-            ("crazy_hand", AmiiboHostOrientationRecipe::RootOnly),
-            ("wol_master_hand", AmiiboHostOrientationRecipe::RootOnly),
-            ("galeem", AmiiboHostOrientationRecipe::GaleemDharkon),
-            ("dharkon", AmiiboHostOrientationRecipe::GaleemDharkon),
-            ("dracula", AmiiboHostOrientationRecipe::RootOnly),
-            ("ganon_boss", AmiiboHostOrientationRecipe::RootOnly),
-            ("galleom", AmiiboHostOrientationRecipe::RootOnly),
-            ("rathalos", AmiiboHostOrientationRecipe::RootOnly),
-            ("marx", AmiiboHostOrientationRecipe::NativeHost),
-        ];
+    fn every_item_preview_uses_the_native_host_architecture() {
+        for profile in profiles() {
+            let expected = match profile.preview_kind {
+                BossAmiiboPreviewKind::ItemPresentation => AmiiboHostOrientationRecipe::NativeHost,
+                BossAmiiboPreviewKind::NativeFighterPresentation => {
+                    AmiiboHostOrientationRecipe::NativeFighter
+                }
+            };
+            assert_eq!(
+                profile.host_orientation_recipe, expected,
+                "boss {} must not use a WOL host recipe",
+                profile.key
+            );
+            assert_eq!(profile.host_orientation_recipe.posture_rotation(), None);
+            assert_eq!(profile.host_orientation_recipe.root_rotation(), None);
 
-        for (key, recipe) in expected {
-            let profile = profiles()
-                .iter()
-                .find(|profile| profile.key == key)
-                .expect("missing item-backed preview profile");
-            assert_eq!(profile.host_orientation_recipe, recipe);
+            if profile.preview_kind == BossAmiiboPreviewKind::ItemPresentation {
+                assert_eq!(
+                    profile.presentation_rotation,
+                    Some([0.0, 0.0, -90.0]),
+                    "boss {} must use the proven upright item correction",
+                    profile.key
+                );
+                assert!(owns_boss_local_transform(profile));
+            }
         }
 
-        // The proof-pair recipe owns no host channel at all.
-        assert_eq!(
-            AmiiboHostOrientationRecipe::NativeHost.posture_rotation(),
-            None
-        );
-        assert_eq!(
-            AmiiboHostOrientationRecipe::NativeHost.root_rotation(),
-            None
-        );
         assert_eq!(
             AmiiboHostOrientationRecipe::NativeHost.posture_rotation_name(),
             "native"
         );
-        // Non-migrated recipes keep their exact shipped values.
         assert_eq!(
-            AmiiboHostOrientationRecipe::RootOnly.posture_rotation(),
-            None
+            AmiiboHostOrientationRecipe::NativeFighter.posture_rotation_name(),
+            "not_applied"
+        );
+
+        // The acquisition-only correction must not have disturbed the two
+        // bosses whose recipes changed.
+        for key in ["ui_chara_dracula", "ui_chara_lioleus"] {
+            let profile = profile_for_ui_chara_id(key).unwrap();
+            assert_eq!(
+                profile.host_orientation_recipe,
+                AmiiboHostOrientationRecipe::NativeHost
+            );
+            assert_eq!(profile.presentation_rotation, Some([0.0, 0.0, -90.0]));
+            assert_eq!(profile.item_root_rotation, None);
+            assert!(owns_boss_local_transform(profile));
+        }
+        assert_eq!(
+            profile_for_ui_chara_id("ui_chara_dracula")
+                .unwrap()
+                .preview_scale,
+            Some(0.45)
         );
         assert_eq!(
-            AmiiboHostOrientationRecipe::RootOnly.root_rotation(),
-            Some([-270.0, 180.0, -90.0])
-        );
-        assert_eq!(
-            AmiiboHostOrientationRecipe::GaleemDharkon.posture_rotation(),
-            Some([-180.0, 90.0, 0.0])
-        );
-        assert_eq!(
-            AmiiboHostOrientationRecipe::GaleemDharkon.root_rotation(),
-            Some([90.0, 50.0, 0.0])
-        );
-        assert_eq!(
-            AmiiboHostOrientationRecipe::NativeFighter.posture_rotation(),
-            None
-        );
-        assert_eq!(
-            AmiiboHostOrientationRecipe::NativeFighter.root_rotation(),
-            None
+            profile_for_ui_chara_id("ui_chara_lioleus")
+                .unwrap()
+                .preview_scale,
+            Some(0.225)
         );
     }
 
@@ -4599,10 +5253,6 @@ mod tests {
             "native"
         );
         assert_eq!(master_hand.item_root_rotation, None);
-        assert_eq!(
-            AmiiboAttachmentMode::for_profile(master_hand),
-            AmiiboAttachmentMode::ViewerAnchor
-        );
 
         match unsafe { verified_presentation_backing(master_hand) } {
             Some(VerifiedPreviewBacking::Item { kind, source }) => {
@@ -4640,34 +5290,20 @@ mod tests {
     }
 
     #[test]
-    fn proof_pair_stable_maintenance_never_owns_host_posture() {
-        let master_hand = profile_for_ui_chara_id("ui_chara_masterhand").unwrap();
-        let marx = profile_for_ui_chara_id("ui_chara_marx").unwrap();
-        let crazy_hand = profile_for_ui_chara_id("ui_chara_crazyhand").unwrap();
-
-        // The interactive-transform diagnostics, calibration harness, and
-        // stable framing maintenance are scoped to the proof pair.
-        assert!(is_transform_proof_pair_profile(master_hand));
-        assert!(is_transform_proof_pair_profile(marx));
-        assert!(!is_transform_proof_pair_profile(crazy_hand));
+    fn stable_maintenance_never_owns_host_posture() {
+        // Stable framing maintenance and the boss-local channels belong to
+        // every item preview; the native fighter route owns none of them.
+        for profile in profiles() {
+            let item = profile.preview_kind == BossAmiiboPreviewKind::ItemPresentation;
+            assert_eq!(owns_boss_local_transform(profile), item);
+            // The write helper can never touch a host channel: no recipe
+            // carries a host posture or host root correction.
+            assert_eq!(profile.host_orientation_recipe.posture_rotation(), None);
+            assert_eq!(profile.host_orientation_recipe.root_rotation(), None);
+        }
         assert_eq!(
             INTERACTIVE_TRANSFORM_CHANGE_SAMPLES,
             TRANSFORM_COMPARISON_SAMPLE_FRAMES
-        );
-
-        // Neither initialization nor stable maintenance may write the proof
-        // pair's host posture or host root: the recipe carries no correction
-        // at all, so the write helper can never touch a host channel.
-        assert_eq!(master_hand.host_orientation_recipe.posture_rotation(), None);
-        assert_eq!(master_hand.host_orientation_recipe.root_rotation(), None);
-        assert_eq!(marx.host_orientation_recipe.posture_rotation(), None);
-        assert_eq!(marx.host_orientation_recipe.root_rotation(), None);
-        // RootOnly bosses keep their own proven root value and must not be
-        // migrated implicitly.
-        assert_eq!(crazy_hand.host_orientation_recipe.posture_rotation(), None);
-        assert_eq!(
-            crazy_hand.host_orientation_recipe.root_rotation(),
-            Some([-270.0, 180.0, -90.0])
         );
 
         let probe = InteractiveTransformProbe::empty();
@@ -4678,23 +5314,19 @@ mod tests {
     }
 
     /// The calibration harness must be debug-only (enforced by the
-    /// `crate::debug::enabled()` gate in its input handler), scoped to the
-    /// proof pair, never bound to the right stick, and runtime-only: its
-    /// state starts empty and is reset to empty on every viewer generation
-    /// change alongside the other per-generation probes.
+    /// `crate::debug::enabled()` gate in its input handler), scoped to item
+    /// previews, never bound to the right stick, and runtime-only: its state
+    /// starts empty and is reset to empty on every viewer generation change
+    /// alongside the other per-generation probes.
     #[test]
     fn calibration_harness_is_scoped_and_resets_between_generations() {
-        let master_hand = profile_for_ui_chara_id("ui_chara_masterhand").unwrap();
-        let marx = profile_for_ui_chara_id("ui_chara_marx").unwrap();
-        let galleom = profile_for_ui_chara_id("ui_chara_galleom").unwrap();
-        let dracula = profile_for_ui_chara_id("ui_chara_dracula").unwrap();
+        for key in ["ui_chara_masterhand", "ui_chara_marx", "ui_chara_galleom"] {
+            assert!(owns_boss_local_transform(
+                profile_for_ui_chara_id(key).unwrap()
+            ));
+        }
         let giga_bowser = profile_for_ui_chara_id("ui_chara_koopag").unwrap();
-
-        assert!(is_transform_proof_pair_profile(master_hand));
-        assert!(is_transform_proof_pair_profile(marx));
-        assert!(!is_transform_proof_pair_profile(galleom));
-        assert!(!is_transform_proof_pair_profile(dracula));
-        assert!(!is_transform_proof_pair_profile(giga_bowser));
+        assert!(!owns_boss_local_transform(giga_bowser));
 
         // Fresh state: no overrides, item_root target, x axis, full input
         // probe budget. Generation resets assign exactly this value.
@@ -4759,27 +5391,82 @@ mod tests {
         assert_eq!(wrap_calibration_degrees(-190.0), 170.0);
     }
 
-    /// Startup diagnostics must not describe Dracula as a normally
-    /// runtime-enabled preview while its acquisition recipe intentionally
-    /// fails closed before `ItemModule::have_item`.
+    /// Startup diagnostics must report Dracula as a config-gated single
+    /// attempt against a known crash boundary, not as a plainly enabled
+    /// preview. Every other item backing stays enabled and Giga Bowser stays
+    /// on the viewer-owned native-fighter route.
     #[test]
-    fn mapping_runtime_status_reports_dracula_blocked() {
+    fn mapping_runtime_status_reports_dracula_config_gated() {
         let dracula = profile_for_ui_chara_id("ui_chara_dracula").unwrap();
-        let backing = unsafe { verified_presentation_backing(dracula) };
-        assert!(backing.is_some());
+        let dracula_backing = unsafe { verified_presentation_backing(dracula) };
+        assert!(dracula_backing.is_some());
         assert_eq!(
-            mapping_runtime_status(dracula, backing),
-            "acquisition_blocked_all_known_item_backings_crash_fail_closed"
+            mapping_runtime_status(dracula, dracula_backing),
+            "acquisition_blocked_all_known_have_item_paths_crash_fail_closed"
         );
 
-        let galleom = profile_for_ui_chara_id("ui_chara_galleom").unwrap();
-        let galleom_backing = unsafe { verified_presentation_backing(galleom) };
+        for profile in profiles() {
+            let backing = unsafe { verified_presentation_backing(profile) };
+            assert!(backing.is_some(), "boss {} lost its backing", profile.key);
+            let expected = if profile.key == DRACULA_PREVIEW_KEY {
+                "acquisition_blocked_all_known_have_item_paths_crash_fail_closed"
+            } else {
+                match profile.preview_kind {
+                    BossAmiiboPreviewKind::ItemPresentation => "stage_135_runtime_enabled",
+                    BossAmiiboPreviewKind::NativeFighterPresentation => {
+                        "native_fighter_viewer_owned_no_plugin_presentation"
+                    }
+                }
+            };
+            assert_eq!(mapping_runtime_status(profile, backing), expected);
+        }
+
+        // Rathalos still reports enabled: its `have_item` returns safely, it
+        // simply may not produce a held object.
+        let rathalos = profile_for_ui_chara_id("ui_chara_lioleus").unwrap();
+        let rathalos_backing = unsafe { verified_presentation_backing(rathalos) };
         assert_eq!(
-            mapping_runtime_status(galleom, galleom_backing),
+            mapping_runtime_status(rathalos, rathalos_backing),
             "stage_135_runtime_enabled"
         );
     }
 
+    /// A boss item renders its default pose until its own status script runs.
+    /// Galleom and Rathalos stood sideways and Galeem/Dharkon played no idle
+    /// because the preview issued a motion with no status behind it. Each
+    /// Presentation is motion-only, and each motion is the one its WOL
+    /// *preview* block uses. Hardware disproved requesting a boss status here:
+    /// the working WOL previews (Ganon, Galleom, Rathalos, Master Hand) only
+    /// call `change_motion`, and adding a status made the item leave the host
+    /// slot, so it stopped following the native turntable.
+    #[test]
+    fn preview_motions_match_their_wol_preview_blocks() {
+        let expected = [
+            ("master_hand", "wait"),
+            ("crazy_hand", "wait"),
+            ("wol_master_hand", "wait"),
+            ("galeem", "wait"),
+            ("dharkon", "wait"),
+            ("dracula", "wait"),
+            ("ganon_boss", "wait"),
+            ("galleom", "wait"),
+            // `src/rathalos/mod.rs`'s preview block, not its recovery path.
+            ("rathalos", "hovering_move"),
+            ("marx", "wait"),
+        ];
+
+        for (key, motion) in expected {
+            let profile = profiles()
+                .iter()
+                .find(|profile| profile.key == key)
+                .expect("missing preview profile");
+            assert_eq!(
+                profile.idle_motion, motion,
+                "boss {} lost its WOL preview motion",
+                profile.key
+            );
+        }
+    }
     #[test]
     fn transform_comparison_is_scoped_to_master_hand_and_marx() {
         let master_hand = profile_for_ui_chara_id("ui_chara_masterhand").unwrap();
@@ -4790,29 +5477,5 @@ mod tests {
         assert!(is_transform_comparison_profile(marx));
         assert!(!is_transform_comparison_profile(galleom));
         assert_eq!(TRANSFORM_COMPARISON_SAMPLE_FRAMES, 4);
-    }
-
-    #[test]
-    fn native_held_attachment_probe_is_bounded_and_scoped_to_galleom() {
-        let galleom = profile_for_ui_chara_id("ui_chara_galleom").unwrap();
-        let master_hand = profile_for_ui_chara_id("ui_chara_masterhand").unwrap();
-        let crazy_hand = profile_for_ui_chara_id("ui_chara_crazyhand").unwrap();
-        let probe = NativeHeldAttachmentProbe::empty();
-
-        assert_eq!(
-            AmiiboAttachmentMode::for_profile(master_hand),
-            AmiiboAttachmentMode::ViewerAnchor
-        );
-        assert_eq!(
-            AmiiboAttachmentMode::for_profile(galleom),
-            AmiiboAttachmentMode::NativeHeldDiagnostic
-        );
-        assert_eq!(
-            AmiiboAttachmentMode::for_profile(crazy_hand),
-            AmiiboAttachmentMode::ViewerAnchor
-        );
-        assert!(probe.preserves_native_attachment(true));
-        assert!(!probe.preserves_native_attachment(false));
-        assert_eq!(NATIVE_HELD_DIAGNOSTIC_FRAMES, 16);
     }
 }

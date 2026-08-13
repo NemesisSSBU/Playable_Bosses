@@ -1914,6 +1914,24 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let _ = copy_field_from_struct(&target_row, &mut cloned_row, to_hash40("result_pf0"));
     let _ = copy_field_from_struct(&target_row, &mut cloned_row, to_hash40("result_pf1"));
     let _ = copy_field_from_struct(&target_row, &mut cloned_row, to_hash40("result_pf2"));
+    // Bowser is cloned only to inherit a complete, selectable CSS row. Giga
+    // Bowser is a real fighter of its own, so `fighter_kind` must come back
+    // from the genuine ui_chara_koopag row instead of staying Bowser's —
+    // otherwise every consumer of this row builds koopa. That is why the
+    // amiibo viewer logged `Loaded koopa` and showed plain Bowser. Prefer the
+    // game's own value; fall back to the explicit label if the row lacks it.
+    let mut fighter_kind_source = "target_row";
+    if !copy_field_from_struct(&target_row, &mut cloned_row, to_hash40("fighter_kind")) {
+        fighter_kind_source = if patch_hash40_field(
+            &mut cloned_row,
+            to_hash40("fighter_kind"),
+            to_hash40("fighter_kind_koopag"),
+        ) {
+            "explicit_fighter_kind_koopag"
+        } else {
+            "unresolved"
+        };
+    }
 
     patch_bool_field(&mut cloned_row, to_hash40("can_select"), true);
     patch_bool_field(&mut cloned_row, to_hash40("is_boss"), true);
@@ -1946,11 +1964,19 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 
     db_root_list.0[target_index] = ParamKind::Struct(cloned_row);
     crate::boss_log!(
-        "[PB][CSSChara] rebuilt ui_chara_koopag from Bowser template patched_ui_chara_id={} copied_name_id={} copied_color_num={} original_ui_chara_hash=ui_chara_koopa color_start_index={} save_no=-1",
+        "[PB][CSSChara] rebuilt ui_chara_koopag from Bowser template patched_ui_chara_id={} copied_name_id={} copied_color_num={} fighter_kind_source={} original_ui_chara_hash=ui_chara_koopa color_start_index={} save_no=-1",
         patched_ui_chara_id,
         copied_name_id,
         copied_color_num,
+        fighter_kind_source,
         source_color_num
+    );
+    // Giga Bowser is the one boss the native viewer can build directly: it is
+    // a real fighter, so there is no Mario host and no presentation item.
+    amiibo_preview::log_ui_chara_db_boundary(
+        "ui_chara_koopag",
+        "fighter_kind_koopag",
+        "fighter:koopag",
     );
 
     let mut writer = std::io::Cursor::new(data);
