@@ -9,7 +9,7 @@ CUSTOM_CSS = false
 # true = one BOSSES slot using the existing Master Hand carrier
 # If true: Galleom: choose variant 4 (Ganon) and hold Shield through match load.
 # If true: WOL Master Hand: choose variant 1 (Master Hand) and hold Shield through match load.
-CONDENSE_BOSSES_INTO_SINGLE_SLOT = true
+CONDENSE_BOSSES_INTO_SINGLE_SLOT = false
 
 BOSS_RESPAWN = false
 BOSS_DIFFICULTY = 10.0
