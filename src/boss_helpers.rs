@@ -223,75 +223,6 @@ pub unsafe fn acquire_boss_item(
     boss_boma
 }
 
-pub unsafe fn acquire_boss_item_excluding(
-    module_accessor: *mut BattleObjectModuleAccessor,
-    slot_ids: *mut [u32; 8],
-    item_kind: i32,
-    excluded_item_id: u32,
-) -> *mut BattleObjectModuleAccessor {
-    if module_accessor.is_null() || slot_ids.is_null() {
-        return std::ptr::null_mut();
-    }
-    let entry = entry_id(module_accessor);
-    if crate::should_quarantine_boss_frame(module_accessor) {
-        if crate::debug::enabled()
-            && transition_block_log_once(2, entry, item_kind as u32, excluded_item_id)
-        {
-            crate::boss_log!(
-                "[PB][BossItem] acquire_excluding_blocked reason=transition_quarantine entry={} requested_kind={} excluded_id=0x{:x} stage=0x{:x}",
-                entry,
-                item_kind,
-                excluded_item_id,
-                smash::app::stage::get_stage_id()
-            );
-        }
-        return std::ptr::null_mut();
-    }
-    if crate::debug::enabled() {
-        reset_transition_block_log(entry);
-    }
-    ItemModule::have_item(module_accessor, ItemKind(item_kind), 0, 0, false, false);
-    SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
-    let mut boss_id = 0;
-    for slot in 0..4 {
-        if ItemModule::is_have_item(module_accessor, slot) {
-            let candidate = ItemModule::get_have_item_id(module_accessor, slot) as u32;
-            if candidate != 0 && candidate != excluded_item_id {
-                boss_id = candidate;
-                break;
-            }
-        }
-    }
-    if boss_id == 0 {
-        boss_id = ItemModule::get_have_item_id(module_accessor, 0) as u32;
-    }
-    let boss_boma = if boss_id != 0 && sv_battle_object::is_active(boss_id) {
-        sv_battle_object::module_accessor(boss_id)
-    } else {
-        std::ptr::null_mut()
-    };
-    (*slot_ids)[entry] = if boss_boma.is_null() { 0 } else { boss_id };
-    if crate::debug::enabled() {
-        let boss_kind = if boss_boma.is_null() {
-            -1
-        } else {
-            smash::app::utility::get_kind(&mut *boss_boma)
-        };
-        crate::boss_log!(
-            "[PB][BossItem] acquire_excluding entry={} requested_kind={} excluded_id=0x{:x} acquired_id=0x{:x} acquired_kind={} stage=0x{:x} fighter_status={} scale={:.4}",
-            entry,
-            item_kind,
-            excluded_item_id,
-            boss_id,
-            boss_kind,
-            smash::app::stage::get_stage_id(),
-            StatusModule::status_kind(module_accessor),
-            ModelModule::scale(module_accessor)
-        );
-    }
-    boss_boma
-}
-
 #[inline(always)]
 pub unsafe fn held_item_by_kind(
     module_accessor: *mut BattleObjectModuleAccessor,
@@ -358,9 +289,8 @@ pub const fn staged_boss_ready_for_activation(
     staged_boss_prepared: bool,
     expected_kind_active: bool,
     activation_attempted: bool,
-    hidden_helper_active: bool,
 ) -> bool {
-    staged_boss_prepared && expected_kind_active && !activation_attempted && hidden_helper_active
+    staged_boss_prepared && expected_kind_active && !activation_attempted
 }
 
 #[inline(always)]
@@ -373,6 +303,31 @@ pub unsafe fn maintain_nonbattle_boss_presentation(item_boma: *mut BattleObjectM
     HitModule::set_whole(item_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
     DamageModule::set_damage_lock(item_boma, true);
     JostleModule::set_status(item_boma, false);
+}
+
+/// Galeem and Dharkon are authored facing the camera, so the object's own `lr`
+/// has to be converted into an explicit yaw or they render side-on. Call this
+/// wherever the object is created or maintained -- including before Ready-Go --
+/// so a staged boss is already facing the right way instead of snapping around
+/// when the match starts. An `lr` that is neither of the two cardinal values is
+/// left untouched, matching the per-boss code this replaces.
+#[inline(always)]
+pub unsafe fn face_boss_along_lr(boss_boma: *mut BattleObjectModuleAccessor) {
+    if boss_boma.is_null() {
+        return;
+    }
+
+    let yaw = match PostureModule::lr(boss_boma) {
+        lr if lr == -1.0 => 90.0,
+        lr if lr == 1.0 => -90.0,
+        _ => return,
+    };
+    let rot = Vector3f {
+        x: 0.0,
+        y: yaw,
+        z: 0.0,
+    };
+    PostureModule::set_rot(boss_boma, &rot, 0);
 }
 
 extern "C" {
@@ -771,10 +726,9 @@ mod tests {
 
     #[test]
     fn staged_activation_uses_verified_lifecycle_state_not_a_host_scale_marker() {
-        assert!(staged_boss_ready_for_activation(true, true, false, true));
-        assert!(!staged_boss_ready_for_activation(false, true, false, true));
-        assert!(!staged_boss_ready_for_activation(true, false, false, true));
-        assert!(!staged_boss_ready_for_activation(true, true, true, true));
-        assert!(!staged_boss_ready_for_activation(true, true, false, false));
+        assert!(staged_boss_ready_for_activation(true, true, false));
+        assert!(!staged_boss_ready_for_activation(false, true, false));
+        assert!(!staged_boss_ready_for_activation(true, false, false));
+        assert!(!staged_boss_ready_for_activation(true, true, true));
     }
 }

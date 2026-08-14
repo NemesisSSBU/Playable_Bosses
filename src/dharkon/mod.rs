@@ -1,11 +1,9 @@
 use crate::config::CONFIG;
-use smash::app::lua_bind;
 use smash::app::lua_bind::*;
 use smash::app::sv_battle_object;
 use smash::app::sv_information;
 use smash::app::BattleObjectModuleAccessor;
 use smash::app::FighterUtil;
-use smash::app::ItemKind;
 use smash::hash40;
 use smash::lib::lua_const::*;
 use smash::lua2cpp::L2CFighterCommon;
@@ -30,7 +28,6 @@ static mut CONTROLLER_X: f32 = 0.0;
 static mut CONTROLLER_Y: f32 = 0.0;
 static mut CONTROL_SPEED_MUL: f32 = 1.25;
 static mut CONTROL_SPEED_MUL_2: f32 = 0.05;
-static mut HIDDEN_CPU: [u32; 8] = [0; 8];
 static mut PREVIEW_ITEM_ID: [u32; 8] = [0; 8];
 static mut WOL_PREVIEW_BATTLE_STATE_RESET: [bool; 8] = [false; 8];
 static mut SPAWN_BISECT_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
@@ -110,18 +107,12 @@ unsafe fn store_dharkon_runtime(slot: *mut BossCommonRuntime) {
 pub unsafe fn reset_match_state(entry_id: usize) {
     let entry = boss_runtime::sanitize_entry_id(entry_id);
     if crate::debug::enabled()
-        && (BOSS_ID[entry] != 0
-            || HIDDEN_CPU[entry] != 0
-            || DEAD
-            || RESULT_SPAWNED
-            || STOP
-            || EXISTS_PUBLIC)
+        && (BOSS_ID[entry] != 0 || DEAD || RESULT_SPAWNED || STOP || EXISTS_PUBLIC)
     {
         crate::boss_log!(
-            "[PB][Dharkon][Reset] entry={} tracked_id=0x{:x} hidden_cpu=0x{:x} controllable={} stop={} dead={} result_spawned={} exists_public={} jump_start={} angry={} controller=({:.2},{:.2})",
+            "[PB][Dharkon][Reset] entry={} tracked_id=0x{:x} controllable={} stop={} dead={} result_spawned={} exists_public={} jump_start={} angry={} controller=({:.2},{:.2})",
             entry,
             BOSS_ID[entry],
-            HIDDEN_CPU[entry],
             core::ptr::addr_of!(CONTROLLABLE).read(),
             core::ptr::addr_of!(STOP).read(),
             core::ptr::addr_of!(DEAD).read(),
@@ -137,7 +128,7 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     IS_ANGRY = false;
     ENTRY_ID = entry;
     RANDOM_ATTACK = 0;
-    if BOSS_ID[entry] != 0 || HIDDEN_CPU[entry] != 0 || DEAD || EXISTS_PUBLIC {
+    if BOSS_ID[entry] != 0 || DEAD || EXISTS_PUBLIC {
         crate::boss_summon::log_boss_scene_exit("dharkon", entry, BOSS_ID[entry], "match_reset");
     }
     BOSS_ID[entry] = 0;
@@ -150,7 +141,6 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     CONTROLLER_Y = 0.0;
     CONTROL_SPEED_MUL = 1.25;
     CONTROL_SPEED_MUL_2 = 0.05;
-    HIDDEN_CPU[entry] = 0;
     SPAWN_BISECT_LAST_SIGNATURE[entry] = u64::MAX;
     ENTRY_PHASE_LAST_SIGNATURE[entry] = u64::MAX;
     STAGED_PREPARATION_ATTEMPTED[entry] = false;
@@ -273,21 +263,15 @@ pub unsafe fn audit_transition(
         return;
     }
     let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
-    if BOSS_ID[entry] == 0 && HIDDEN_CPU[entry] == 0 && !DEAD && !EXISTS_PUBLIC {
+    if BOSS_ID[entry] == 0 && !DEAD && !EXISTS_PUBLIC {
         return;
     }
-    crate::boss_summon::log_result_roster_helper(
-        phase,
-        "dharkon_hidden_cpu_item",
-        HIDDEN_CPU[entry],
-        allow_object_reads,
-    );
     crate::boss_summon::audit_match_end(
         "dharkon",
         entry,
         module_accessor,
         BOSS_ID[entry],
-        HIDDEN_CPU[entry],
+        0,
         DEAD,
         EXISTS_PUBLIC,
         phase,
@@ -308,7 +292,6 @@ unsafe fn log_dharkon_entry_phase(
     }
     let entry = boss_helpers::entry_id(module_accessor).min(7);
     let tracked_id = BOSS_ID[entry];
-    let hidden_cpu_id = HIDDEN_CPU[entry];
     let tracked_active = boss_active;
     let tracked_status = if tracked_active {
         let tracked_boma = sv_battle_object::module_accessor(tracked_id);
@@ -320,26 +303,13 @@ unsafe fn log_dharkon_entry_phase(
     } else {
         -1
     };
-    let hidden_cpu_active = hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id);
-    let hidden_cpu_status = if hidden_cpu_active {
-        let hidden_cpu_boma = sv_battle_object::module_accessor(hidden_cpu_id);
-        if hidden_cpu_boma.is_null() {
-            -1
-        } else {
-            StatusModule::status_kind(hidden_cpu_boma)
-        }
-    } else {
-        -1
-    };
     let mut tag_signature = 0u64;
     for byte in tag.as_bytes() {
         tag_signature = tag_signature.rotate_left(5) ^ (*byte as u64);
     }
     let signature = tag_signature
         ^ (tracked_id as u64).rotate_left(7)
-        ^ (hidden_cpu_id as u64).rotate_left(19)
         ^ (tracked_status as u32 as u64).rotate_left(31)
-        ^ (hidden_cpu_status as u32 as u64).rotate_left(43)
         ^ (stage_one_prepared as u64).rotate_left(3)
         ^ (stage_two_prepared as u64).rotate_left(4)
         ^ (STAGED_PREPARATION_ATTEMPTED[entry] as u64).rotate_left(53)
@@ -350,7 +320,7 @@ unsafe fn log_dharkon_entry_phase(
     }
     ENTRY_PHASE_LAST_SIGNATURE[entry] = signature;
     crate::boss_log!(
-        "[PB][Dharkon][Phase] tag={} entry={} stage=0x{:x} ready_go={} fighter_status={} frame={:.2} scale={:.4} tracked_id=0x{:x} tracked_active={} tracked_status={} hidden_cpu=0x{:x} hidden_cpu_active={} hidden_cpu_status={} stage1={} stage2={} preparation_attempted={} staged_boss_prepared={} exists_public={} controllable={} dead={} stop={} result_spawned={}",
+        "[PB][Dharkon][Phase] tag={} entry={} stage=0x{:x} ready_go={} fighter_status={} frame={:.2} scale={:.4} tracked_id=0x{:x} tracked_active={} tracked_status={} stage1={} stage2={} preparation_attempted={} staged_boss_prepared={} exists_public={} controllable={} dead={} stop={} result_spawned={}",
         tag,
         entry,
         smash::app::stage::get_stage_id(),
@@ -361,9 +331,6 @@ unsafe fn log_dharkon_entry_phase(
         tracked_id,
         tracked_active,
         tracked_status,
-        hidden_cpu_id,
-        hidden_cpu_active,
-        hidden_cpu_status,
         stage_one_prepared,
         stage_two_prepared,
         STAGED_PREPARATION_ATTEMPTED[entry],
@@ -393,23 +360,20 @@ unsafe fn log_dharkon_spawn_bisect(
     }
     let entry = entry.min(7);
     let edge_code = if edge == "begin" { 1u64 } else { 2u64 };
-    let signature = (step as u64)
-        ^ edge_code.rotate_left(8)
-        ^ (BOSS_ID[entry] as u64).rotate_left(16)
-        ^ (HIDDEN_CPU[entry] as u64).rotate_left(32);
+    let signature =
+        (step as u64) ^ edge_code.rotate_left(8) ^ (BOSS_ID[entry] as u64).rotate_left(16);
     if SPAWN_BISECT_LAST_SIGNATURE[entry] == signature {
         return;
     }
     SPAWN_BISECT_LAST_SIGNATURE[entry] = signature;
     crate::boss_log!(
-        "[PB][DharkonSpawnBisect] step={:02} edge={} name={} entry={} host_status={} tracked_id=0x{:x} hidden_cpu=0x{:x} boss_boma_present={}",
+        "[PB][DharkonSpawnBisect] step={:02} edge={} name={} entry={} host_status={} tracked_id=0x{:x} boss_boma_present={}",
         step,
         edge,
         name,
         entry,
         StatusModule::status_kind(module_accessor),
         BOSS_ID[entry],
-        HIDDEN_CPU[entry],
         !boss_boma.is_null()
     );
 }
@@ -424,25 +388,13 @@ unsafe fn log_dharkon_spawn_state(
         return;
     }
     let entry = boss_helpers::entry_id(module_accessor).min(7);
-    let hidden_cpu_id = HIDDEN_CPU[entry];
-    let hidden_cpu_active = hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id);
-    let hidden_cpu_boma = if hidden_cpu_active {
-        sv_battle_object::module_accessor(hidden_cpu_id)
-    } else {
-        std::ptr::null_mut()
-    };
-    let hidden_cpu_status = if hidden_cpu_boma.is_null() {
-        -1
-    } else {
-        StatusModule::status_kind(hidden_cpu_boma)
-    };
     let boss_status = if boss_boma.is_null() {
         -1
     } else {
         StatusModule::status_kind(boss_boma)
     };
     crate::boss_log!(
-        "[PB][Dharkon][SpawnState] tag={} entry={} stage=0x{:x} ready_go={} host_status={} host_scale={:.4} host_pos=({:.2},{:.2},{:.2}) tracked_id=0x{:x} boss_status={} boss_pos=({:.2},{:.2},{:.2}) hidden_cpu=0x{:x} hidden_cpu_active={} hidden_cpu_status={} hidden_pos=({:.2},{:.2},{:.2})",
+        "[PB][Dharkon][SpawnState] tag={} entry={} stage=0x{:x} ready_go={} host_status={} host_scale={:.4} host_pos=({:.2},{:.2},{:.2}) tracked_id=0x{:x} boss_status={} boss_pos=({:.2},{:.2},{:.2})",
         tag,
         entry,
         smash::app::stage::get_stage_id(),
@@ -456,13 +408,7 @@ unsafe fn log_dharkon_spawn_state(
         boss_status,
         if boss_boma.is_null() { 0.0 } else { PostureModule::pos_x(boss_boma) },
         if boss_boma.is_null() { 0.0 } else { PostureModule::pos_y(boss_boma) },
-        if boss_boma.is_null() { 0.0 } else { PostureModule::pos_z(boss_boma) },
-        hidden_cpu_id,
-        hidden_cpu_active,
-        hidden_cpu_status,
-        if hidden_cpu_boma.is_null() { 0.0 } else { PostureModule::pos_x(hidden_cpu_boma) },
-        if hidden_cpu_boma.is_null() { 0.0 } else { PostureModule::pos_y(hidden_cpu_boma) },
-        if hidden_cpu_boma.is_null() { 0.0 } else { PostureModule::pos_z(hidden_cpu_boma) }
+        if boss_boma.is_null() { 0.0 } else { PostureModule::pos_z(boss_boma) }
     );
 }
 
@@ -482,16 +428,6 @@ unsafe fn prepare_staged_dharkon_before_ready_go(
     }
     STAGED_PREPARATION_ATTEMPTED[entry] = true;
 
-    let hidden_cpu_id = HIDDEN_CPU[entry];
-    if hidden_cpu_id == 0 || !sv_battle_object::is_active(hidden_cpu_id) {
-        crate::boss_log!(
-            "[PB][Dharkon][StartupGate] action=prepare_failed entry={} reason=hidden_cpu_inactive hidden_cpu=0x{:x}",
-            entry,
-            hidden_cpu_id
-        );
-        return false;
-    }
-
     log_dharkon_spawn_bisect(
         entry,
         2,
@@ -501,15 +437,6 @@ unsafe fn prepare_staged_dharkon_before_ready_go(
         std::ptr::null_mut(),
     );
     DamageModule::heal(module_accessor, -999.0, 0);
-    ItemModule::throw_item(module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
-    log_dharkon_spawn_bisect(
-        entry,
-        3,
-        "after",
-        "hidden_cpu_detached",
-        module_accessor,
-        std::ptr::null_mut(),
-    );
     log_dharkon_spawn_bisect(
         entry,
         4,
@@ -518,12 +445,8 @@ unsafe fn prepare_staged_dharkon_before_ready_go(
         module_accessor,
         std::ptr::null_mut(),
     );
-    let boss_boma = boss_helpers::acquire_boss_item_excluding(
-        module_accessor,
-        &raw mut BOSS_ID,
-        *ITEM_KIND_DARZ,
-        hidden_cpu_id,
-    );
+    let boss_boma =
+        boss_helpers::acquire_boss_item(module_accessor, &raw mut BOSS_ID, *ITEM_KIND_DARZ);
     let boss_id = BOSS_ID[entry];
     let acquired_kind = if boss_boma.is_null() {
         -1
@@ -554,6 +477,7 @@ unsafe fn prepare_staged_dharkon_before_ready_go(
         false,
     );
     boss_helpers::maintain_nonbattle_boss_presentation(boss_boma);
+    boss_helpers::face_boss_along_lr(boss_boma);
     STAGED_BOSS_PREPARED[entry] = true;
     log_dharkon_spawn_bisect(
         entry,
@@ -564,9 +488,8 @@ unsafe fn prepare_staged_dharkon_before_ready_go(
         boss_boma,
     );
     crate::boss_log!(
-        "[PB][Dharkon][StartupGate] action=prepared_inert entry={} ready_go=false hidden_cpu=0x{:x} boss_id=0x{:x} boss_kind={} boss_status={} motion=wait",
+        "[PB][Dharkon][StartupGate] action=prepared_inert entry={} ready_go=false boss_id=0x{:x} boss_kind={} boss_status={} motion=wait",
         entry,
-        hidden_cpu_id,
         boss_id,
         acquired_kind,
         StatusModule::status_kind(boss_boma)
@@ -608,6 +531,7 @@ unsafe fn maintain_staged_dharkon_before_ready_go(entry: usize) {
         );
     }
     boss_helpers::maintain_nonbattle_boss_presentation(boss_boma);
+    boss_helpers::face_boss_along_lr(boss_boma);
 }
 
 /// Activate only the verified object prepared before Ready-Go. Item creation at
@@ -629,16 +553,6 @@ unsafe fn activate_staged_dharkon_after_ready_go(
         crate::boss_log!(
             "[PB][Dharkon][StartupGate] action=activate_failed entry={} reason=staged_boss_not_prepared",
             entry
-        );
-        return false;
-    }
-
-    let hidden_cpu_id = HIDDEN_CPU[entry];
-    if hidden_cpu_id == 0 || !sv_battle_object::is_active(hidden_cpu_id) {
-        crate::boss_log!(
-            "[PB][Dharkon][StartupGate] action=activate_failed entry={} reason=hidden_cpu_inactive hidden_cpu=0x{:x}",
-            entry,
-            hidden_cpu_id
         );
         return false;
     }
@@ -679,18 +593,33 @@ unsafe fn activate_staged_dharkon_after_ready_go(
     let boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
     WorkModule::set_float(boss_boma, boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
     WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+    // Marks the object as a boss. Every other boss in this project sets this
+    // on every spawn path; Galeem and Dharkon only set it on one rarely-taken
+    // path, so in a normal match they spawned unflagged and CPU AI did not
+    // treat them as targets.
+    WorkModule::set_int(
+        boss_boma,
+        *ITEM_TRAIT_FLAG_BOSS,
+        *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG,
+    );
+    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+    // Galeem and Dharkon share one object, and the variation is what selects
+    // which of the two the entrance plays as. Every work value has to be in
+    // place before FOR_BOSS_START -- the order the working bosses already use.
+    // Setting the variation afterwards started the entrance against an unset
+    // variation, which is why no entrance played here.
+    WorkModule::set_int(
+        boss_boma,
+        *ITEM_VARIATION_DARZ_KIILA,
+        *ITEM_INSTANCE_WORK_INT_VARIATION,
+    );
+    boss_helpers::face_boss_along_lr(boss_boma);
     ModelModule::set_scale(module_accessor, boss_helpers::HIDDEN_HOST_SCALE);
     StatusModule::change_status_request_from_script(
         boss_boma,
         *ITEM_STATUS_KIND_FOR_BOSS_START,
         true,
-    );
-    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
-    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-    WorkModule::set_int(
-        boss_boma,
-        *ITEM_VARIATION_DARZ_KIILA,
-        *ITEM_INSTANCE_WORK_INT_VARIATION,
     );
     STAGED_BOSS_PREPARED[entry] = false;
 
@@ -704,9 +633,8 @@ unsafe fn activate_staged_dharkon_after_ready_go(
     );
     log_dharkon_spawn_state("initial_ready_go", module_accessor, boss_boma);
     crate::boss_log!(
-        "[PB][Dharkon][StartupGate] action=activated entry={} ready_go=true hidden_cpu=0x{:x} boss_id=0x{:x} boss_status={}",
+        "[PB][Dharkon][StartupGate] action=activated entry={} ready_go=true boss_id=0x{:x} boss_status={}",
         entry,
-        hidden_cpu_id,
         boss_id,
         StatusModule::status_kind(boss_boma)
     );
@@ -896,11 +824,8 @@ unsafe fn restore_dharkon_after_item_wipe(module_accessor: *mut BattleObjectModu
 
     let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
     ENTRY_ID = entry;
-    let hidden_cpu_id = HIDDEN_CPU[entry];
     let tracked_active = is_tracked_dharkon_active(entry);
-    let hidden_cpu_active = hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id);
     let staged_initial_sequence = !tracked_active
-        && hidden_cpu_active
         && !EXISTS_PUBLIC
         && (boss_helpers::is_hidden_host_entry_prep(module_accessor)
             || boss_helpers::is_hidden_host_entry_stage_two(module_accessor));
@@ -909,39 +834,13 @@ unsafe fn restore_dharkon_after_item_wipe(module_accessor: *mut BattleObjectModu
     if staged_initial_sequence || failed_initial_activation {
         return;
     }
-    if tracked_active && hidden_cpu_active {
+    if tracked_active {
         return;
     }
 
     ItemModule::remove_all(module_accessor);
-    ItemModule::have_item(
-        module_accessor,
-        ItemKind(*ITEM_KIND_DRACULA2),
-        0,
-        0,
-        false,
-        false,
-    );
-    SoundModule::stop_se(
-        module_accessor,
-        smash::phx::Hash40::new("se_item_item_get"),
-        0,
-    );
-    HIDDEN_CPU[entry] = ItemModule::get_have_item_id(module_accessor, 0) as u32;
-    let hidden_cpu_boma = sv_battle_object::module_accessor(HIDDEN_CPU[entry]);
-    if hidden_cpu_boma.is_null() {
-        return;
-    }
-    ModelModule::set_scale(hidden_cpu_boma, 0.0001);
-    ItemModule::throw_item(module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
-
-    let hidden_cpu_id = HIDDEN_CPU[entry];
-    let boss_boma = boss_helpers::acquire_boss_item_excluding(
-        module_accessor,
-        &raw mut BOSS_ID,
-        *ITEM_KIND_DARZ,
-        hidden_cpu_id,
-    );
+    let boss_boma =
+        boss_helpers::acquire_boss_item(module_accessor, &raw mut BOSS_ID, *ITEM_KIND_DARZ);
     if boss_boma.is_null() || smash::app::utility::get_kind(&mut *boss_boma) != *ITEM_KIND_DARZ {
         BOSS_ID[entry] = 0;
         EXISTS_PUBLIC = false;
@@ -959,6 +858,15 @@ unsafe fn restore_dharkon_after_item_wipe(module_accessor: *mut BattleObjectModu
         *ITEM_INSTANCE_WORK_FLOAT_LEVEL,
     );
     WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+    // Marks the object as a boss. Every other boss in this project sets this
+    // on every spawn path; Galeem and Dharkon only set it on one rarely-taken
+    // path, so in a normal match they spawned unflagged and CPU AI did not
+    // treat them as targets.
+    WorkModule::set_int(
+        boss_boma,
+        *ITEM_TRAIT_FLAG_BOSS,
+        *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG,
+    );
     WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
     WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
     WorkModule::set_int(
@@ -973,20 +881,6 @@ unsafe fn restore_dharkon_after_item_wipe(module_accessor: *mut BattleObjectModu
         z: PostureModule::pos_z(module_accessor),
     };
     PostureModule::set_pos(boss_boma, &boss_pos);
-    PostureModule::set_pos(hidden_cpu_boma, &boss_pos);
-    DamageModule::set_damage_lock(hidden_cpu_boma, true);
-    JostleModule::set_status(hidden_cpu_boma, false);
-    WorkModule::set_float(hidden_cpu_boma, 0.0, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
-    WorkModule::set_float(hidden_cpu_boma, 0.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
-    WorkModule::set_float(hidden_cpu_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
-    WorkModule::set_float(hidden_cpu_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-    if StatusModule::status_kind(hidden_cpu_boma) != *ITEM_STATUS_KIND_NONE {
-        StatusModule::change_status_request_from_script(
-            hidden_cpu_boma,
-            *ITEM_STATUS_KIND_NONE,
-            true,
-        );
-    }
     StatusModule::change_status_request_from_script(
         boss_boma,
         *ITEM_DARZ_STATUS_KIND_MANAGER_WAIT,
@@ -1005,12 +899,10 @@ unsafe fn restore_dharkon_after_item_wipe(module_accessor: *mut BattleObjectModu
     EXISTS_PUBLIC = true;
     RESULT_SPAWNED = false;
     crate::boss_log!(
-        "[PB][Recover] entry {}: restored Dharkon after item wipe tracked_id=0x{:x} hidden_cpu=0x{:x} tracked_active={} hidden_cpu_active={}",
+        "[PB][Recover] entry {}: restored Dharkon after item wipe tracked_id=0x{:x} tracked_active={}",
         entry,
         BOSS_ID[entry],
-        HIDDEN_CPU[entry],
-        is_tracked_dharkon_active(entry),
-        HIDDEN_CPU[entry] != 0 && sv_battle_object::is_active(HIDDEN_CPU[entry])
+        is_tracked_dharkon_active(entry)
     );
 }
 
@@ -1024,10 +916,8 @@ unsafe fn teardown_dharkon_post_match_transition(
 
     let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
     let tracked_id = BOSS_ID[entry];
-    let hidden_cpu_id = HIDDEN_CPU[entry];
     let tracked_active = tracked_id != 0 && sv_battle_object::is_active(tracked_id);
-    let hidden_cpu_active = hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id);
-    if !tracked_active && !hidden_cpu_active && !EXISTS_PUBLIC {
+    if !tracked_active && !EXISTS_PUBLIC {
         return false;
     }
 
@@ -1041,21 +931,6 @@ unsafe fn teardown_dharkon_post_match_transition(
                 *ITEM_STATUS_KIND_STANDBY,
                 true,
             );
-        }
-    }
-
-    if hidden_cpu_active {
-        let hidden_cpu_boma = sv_battle_object::module_accessor(hidden_cpu_id);
-        if !hidden_cpu_boma.is_null() {
-            HitModule::set_whole(hidden_cpu_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
-            SlowModule::clear_whole(hidden_cpu_boma);
-            if StatusModule::status_kind(hidden_cpu_boma) != *ITEM_STATUS_KIND_NONE {
-                StatusModule::change_status_request_from_script(
-                    hidden_cpu_boma,
-                    *ITEM_STATUS_KIND_NONE,
-                    true,
-                );
-            }
         }
     }
 
@@ -1077,10 +952,9 @@ unsafe fn teardown_dharkon_post_match_transition(
     CONTROLLABLE = false;
 
     crate::boss_log!(
-        "[PB][Dharkon][Cleanup] entry {}: cleared Dharkon runtime on non-ready_go transition tracked_active={} hidden_cpu_active={}",
+        "[PB][Dharkon][Cleanup] entry {}: cleared Dharkon runtime on non-ready_go transition tracked_active={}",
         entry,
-        tracked_active,
-        hidden_cpu_active
+        tracked_active
     );
 
     true
@@ -1159,7 +1033,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 selection::is_selected_css_boss(module_accessor, *ITEM_KIND_DARZ);
             if !selected_via_slot
                 && !sv_information::is_ready_go()
-                && (BOSS_ID[ENTRY_ID] != 0 || HIDDEN_CPU[ENTRY_ID] != 0 || EXISTS_PUBLIC)
+                && (BOSS_ID[ENTRY_ID] != 0 || EXISTS_PUBLIC)
             {
                 teardown_dharkon_post_match_transition(module_accessor);
                 return;
@@ -1281,36 +1155,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     module_accessor,
                                     boss_helpers::HIDDEN_HOST_ENTRY_PREP_SCALE,
                                 );
-                                ItemModule::have_item(
-                                    module_accessor,
-                                    ItemKind(*ITEM_KIND_DRACULA2),
-                                    0,
-                                    0,
-                                    false,
-                                    false,
-                                );
-                                SoundModule::stop_se(
-                                    module_accessor,
-                                    smash::phx::Hash40::new("se_item_item_get"),
-                                    0,
-                                );
-                                HIDDEN_CPU[boss_helpers::entry_id(module_accessor)] =
-                                    ItemModule::get_have_item_id(module_accessor, 0) as u32;
-                                let hidden_cpu_boma = sv_battle_object::module_accessor(
-                                    HIDDEN_CPU[boss_helpers::entry_id(module_accessor)],
-                                );
-                                if hidden_cpu_boma.is_null() {
-                                    HIDDEN_CPU[boss_helpers::entry_id(module_accessor)] = 0;
-                                    ModelModule::set_scale(
-                                        module_accessor,
-                                        boss_helpers::HIDDEN_HOST_SCALE,
-                                    );
-                                } else {
-                                    ModelModule::set_scale(
-                                        hidden_cpu_boma,
-                                        boss_helpers::HIDDEN_HOST_SCALE,
-                                    );
-                                }
                                 log_dharkon_entry_phase(
                                     "stage1_prepare",
                                     module_accessor,
@@ -1346,62 +1190,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    if sv_information::is_ready_go() == true {
-                        let hidden_cpu_id = HIDDEN_CPU[boss_helpers::entry_id(module_accessor)];
-                        let hidden_cpu_boma =
-                            if hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id) {
-                                sv_battle_object::module_accessor(hidden_cpu_id)
-                            } else {
-                                std::ptr::null_mut()
-                            };
-                        if !hidden_cpu_boma.is_null() {
-                            DamageModule::set_damage_lock(hidden_cpu_boma, true);
-                            JostleModule::set_status(hidden_cpu_boma, false);
-                            WorkModule::set_float(
-                                hidden_cpu_boma,
-                                0.0,
-                                *ITEM_INSTANCE_WORK_FLOAT_LEVEL,
-                            );
-                            WorkModule::set_float(
-                                hidden_cpu_boma,
-                                0.0,
-                                *ITEM_INSTANCE_WORK_FLOAT_STRENGTH,
-                            );
-                            WorkModule::set_float(
-                                hidden_cpu_boma,
-                                999.0,
-                                *ITEM_INSTANCE_WORK_FLOAT_HP_MAX,
-                            );
-                            WorkModule::set_float(
-                                hidden_cpu_boma,
-                                999.0,
-                                *ITEM_INSTANCE_WORK_FLOAT_HP,
-                            );
-                            if StatusModule::status_kind(hidden_cpu_boma) != *ITEM_STATUS_KIND_NONE
-                            {
-                                StatusModule::change_status_request_from_script(
-                                    hidden_cpu_boma,
-                                    *ITEM_STATUS_KIND_NONE,
-                                    true,
-                                );
-                            }
-                        }
-                        let tracked_id = BOSS_ID[boss_helpers::entry_id(module_accessor)];
-                        if tracked_id != 0
-                            && sv_battle_object::is_active(tracked_id)
-                            && !hidden_cpu_boma.is_null()
-                        {
-                            let boss_boma = sv_battle_object::module_accessor(tracked_id);
-                            if !boss_boma.is_null() {
-                                let x = PostureModule::pos_x(boss_boma);
-                                let y = PostureModule::pos_y(boss_boma);
-                                let z = PostureModule::pos_z(boss_boma);
-                                let boss_pos = Vector3f { x: x, y: y, z: z };
-                                PostureModule::set_pos(hidden_cpu_boma, &boss_pos);
-                            }
-                        }
-                    }
-
                     // Respawn in case of Squad Strike or Specific Circumstances
 
                     if sv_information::is_ready_go()
@@ -1433,45 +1221,13 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 module_accessor,
                                 *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID,
                             ) as usize;
-                            ItemModule::have_item(
-                                module_accessor,
-                                ItemKind(*ITEM_KIND_DRACULA2),
-                                0,
-                                0,
-                                false,
-                                false,
-                            );
-                            SoundModule::stop_se(
-                                module_accessor,
-                                smash::phx::Hash40::new("se_item_item_get"),
-                                0,
-                            );
-                            HIDDEN_CPU[boss_helpers::entry_id(module_accessor)] =
-                                ItemModule::get_have_item_id(module_accessor, 0) as u32;
-                            let hidden_cpu_boma = sv_battle_object::module_accessor(
-                                HIDDEN_CPU[boss_helpers::entry_id(module_accessor)],
-                            );
-                            if !hidden_cpu_boma.is_null() {
-                                ModelModule::set_scale(hidden_cpu_boma, 0.0001);
-                            }
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
-                            ItemModule::throw_item(
-                                fighter.module_accessor,
-                                0.0,
-                                0.0,
-                                0.0,
-                                0,
-                                true,
-                                0.0,
-                            );
-                            let hidden_cpu_id = HIDDEN_CPU[boss_helpers::entry_id(module_accessor)];
-                            let boss_boma = boss_helpers::acquire_boss_item_excluding(
+                            let boss_boma = boss_helpers::acquire_boss_item(
                                 module_accessor,
                                 &raw mut BOSS_ID,
                                 *ITEM_KIND_DARZ,
-                                hidden_cpu_id,
                             );
                             WorkModule::set_float(
                                 boss_boma,
@@ -1501,8 +1257,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 *ITEM_INSTANCE_WORK_INT_VARIATION,
                             );
                             println!(
-                                "[PB][Dharkon][Spawn] rebirth hidden_cpu=0x{:x} boss_id=0x{:x} status={}",
-                                hidden_cpu_id,
+                                "[PB][Dharkon][Spawn] rebirth boss_id=0x{:x} status={}",
                                 BOSS_ID[boss_helpers::entry_id(module_accessor)],
                                 StatusModule::status_kind(boss_boma),
                             );
@@ -1524,24 +1279,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             BOSS_ID[boss_helpers::entry_id(module_accessor)],
                         );
                         if !boss_boma.is_null() {
-                            if lua_bind::PostureModule::lr(boss_boma) == -1.0 {
-                                // left
-                                let vec3 = Vector3f {
-                                    x: 0.0,
-                                    y: 90.0,
-                                    z: 0.0,
-                                };
-                                PostureModule::set_rot(boss_boma, &vec3, 0);
-                            }
-                            if lua_bind::PostureModule::lr(boss_boma) == 1.0 {
-                                // right
-                                let vec3 = Vector3f {
-                                    x: 0.0,
-                                    y: -90.0,
-                                    z: 0.0,
-                                };
-                                PostureModule::set_rot(boss_boma, &vec3, 0);
-                            }
+                            boss_helpers::face_boss_along_lr(boss_boma);
                         }
                     }
 
@@ -1668,12 +1406,10 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                     let staged_initial_sequence = {
                         let entry = boss_helpers::entry_id(module_accessor).min(7);
-                        let hidden_cpu_id = HIDDEN_CPU[entry];
                         boss_helpers::staged_boss_ready_for_activation(
                             STAGED_BOSS_PREPARED[entry],
                             is_tracked_dharkon_active(entry),
                             INITIAL_ACTIVATION_ATTEMPTED[entry],
-                            hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id),
                         )
                     };
                     let respawn_enabled = smash::app::smashball::is_training_mode()
@@ -2636,24 +2372,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 CONTROLLABLE = false;
                                 DamageModule::heal(module_accessor, -999.0, 0);
                                 if !boss_boma.is_null() {
-                                    if lua_bind::PostureModule::lr(boss_boma) == -1.0 {
-                                        // left
-                                        let vec3 = Vector3f {
-                                            x: 0.0,
-                                            y: 90.0,
-                                            z: 0.0,
-                                        };
-                                        PostureModule::set_rot(boss_boma, &vec3, 0);
-                                    }
-                                    if lua_bind::PostureModule::lr(boss_boma) == 1.0 {
-                                        // right
-                                        let vec3 = Vector3f {
-                                            x: 0.0,
-                                            y: -90.0,
-                                            z: 0.0,
-                                        };
-                                        PostureModule::set_rot(boss_boma, &vec3, 0);
-                                    }
+                                    boss_helpers::face_boss_along_lr(boss_boma);
                                     MotionModule::set_rate(boss_boma, 1.0);
                                     StatusModule::change_status_request_from_script(
                                         boss_boma,

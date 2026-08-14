@@ -1534,62 +1534,6 @@ pub unsafe fn log_result_roster_snapshot(phase: &str) {
     }
 }
 
-/// Log an item-backed Galeem/Dharkon helper alongside the FighterManager
-/// topology. These helpers are acquired as items in the current source path,
-/// not as new FighterEntry participants; keep that distinction explicit until
-/// a native summon run proves otherwise.
-pub unsafe fn log_result_roster_helper(
-    phase: &str,
-    helper_kind: &'static str,
-    helper_object_id: u32,
-    allow_object_reads: bool,
-) {
-    if !crate::debug::enabled() || helper_object_id == 0 {
-        return;
-    }
-
-    let kind_index = if helper_kind.contains("dharkon") {
-        1
-    } else {
-        0
-    };
-    let phase_index = result_roster_phase_index(phase).min(3);
-    let latch_index = kind_index * 4 + phase_index;
-    let active = allow_object_reads
-        && sv_battle_object::is_active(helper_object_id)
-        && !sv_battle_object::module_accessor(helper_object_id).is_null();
-    let (kind, status) = if active {
-        let boma = sv_battle_object::module_accessor(helper_object_id);
-        (
-            smash::app::utility::get_kind(&mut *boma),
-            StatusModule::status_kind(boma),
-        )
-    } else {
-        (-1, -1)
-    };
-    let signature = result_roster_text_token(phase)
-        ^ result_roster_text_token(helper_kind).rotate_left(17)
-        ^ (helper_object_id as u64).rotate_left(31)
-        ^ ((active as u64) << 47)
-        ^ (kind as u32 as u64).rotate_left(7)
-        ^ (status as u32 as u64).rotate_left(13);
-    if RESULT_HELPER_LAST_SIGNATURE[latch_index] == signature {
-        return;
-    }
-    RESULT_HELPER_LAST_SIGNATURE[latch_index] = signature;
-
-    crate::boss_log!(
-        "[PB][ResultRoster] phase={} helper_kind={} object_id=0x{:x} active={} fighter_kind={} status={} classification=tracked_item_helper fighter_entry=none_observed result_eligibility=not_a_fighter_manager_entry object_reads={}",
-        phase,
-        helper_kind,
-        helper_object_id,
-        active,
-        kind,
-        status,
-        allow_object_reads
-    );
-}
-
 /// Record the native summon request boundary without changing the request.
 /// Normal boss statuses are ignored, so enabling debug logs cannot create a
 /// per-frame wall of output during ordinary Galeem/Dharkon gameplay.

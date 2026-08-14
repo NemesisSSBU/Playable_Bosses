@@ -1,4 +1,5 @@
 use crate::config::CONFIG;
+use crate::config::CONFIG_DIR;
 use once_cell::sync::Lazy;
 use skyline::nn::oe::{DisplayVersion, GetDisplayVersion, Initialize};
 use smash::app::lua_bind::*;
@@ -45,6 +46,10 @@ enum OpaqueSelectionCacheOrigin {
     TentativeUiSelection,
     ConfirmedUiLookup,
     ConfirmedCondensedCarrier,
+    /// Restored from disk at plugin load. Authoritative like a confirmed
+    /// lookup, but kept distinct so its provenance stays visible in logs and
+    /// so a live confirmation can be told apart from a restored one.
+    RestoredPersistedSelection,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -813,7 +818,12 @@ unsafe fn cached_css_boss_hash(
     }
     match CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] {
         OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-        | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => Some(by_entry),
+        | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
+        // Restored from disk: the last selection that actually entered a boss
+        // battle. Authoritative so a cold launch straight into Spirit Board or
+        // the World of Light map resolves the boss instead of falling back to
+        // the Mario host.
+        | OpaqueSelectionCacheOrigin::RestoredPersistedSelection => Some(by_entry),
         // The previous lookup can be used for WOL only after a real Mario host
         // exists.  Raw UI callbacks never query this stage value.
         OpaqueSelectionCacheOrigin::TentativeUiSelection
@@ -1609,6 +1619,115 @@ unsafe fn log_unconfirmed_condensed_carrier(module_accessor: *mut BattleObjectMo
     );
 }
 
+// ---------------------------------------------------------------------------
+// Persisted boss selection.
+//
+// The per-entry selection cache is `static mut`, so a reboot wipes it. On a
+// cold launch the game restores a saved fighter whose `fighter_kind` is Mario
+// for every item-backed boss, and `summon_boss_id` carries no boss identity —
+// so Spirit Board battles and the World of Light map both resolved to Mario
+// until the player visited the CSS and repopulated the cache by hand.
+//
+// Only a selection that actually entered a boss battle is persisted, so
+// browsing the CSS without starting a match never overwrites the saved value.
+// Every failure path here is silent and non-fatal: if the file is missing,
+// unreadable, or malformed the plugin behaves exactly as it did before.
+// ---------------------------------------------------------------------------
+
+const PERSISTED_SELECTION_FILE: &str = "last_boss_selection.txt";
+static mut PERSISTED_SELECTION_SNAPSHOT: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
+
+fn persisted_selection_path() -> Option<String> {
+    CONFIG_DIR
+        .as_ref()
+        .map(|dir| format!("{}/{}", dir, PERSISTED_SELECTION_FILE))
+}
+
+/// Restores the last battle-confirmed selection for every entry. Called once at
+/// plugin load, before any battle can query the resolver. Never overwrites a
+/// live selection because nothing has been captured yet at this point.
+pub unsafe fn restore_persisted_selections() {
+    let Some(path) = persisted_selection_path() else {
+        return;
+    };
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return;
+    };
+
+    let mut restored = 0usize;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((entry_text, hash_text)) = line.split_once('=') else {
+            continue;
+        };
+        let Ok(entry) = entry_text.trim().parse::<usize>() else {
+            continue;
+        };
+        let hash_text = hash_text.trim();
+        let hash_text = hash_text.strip_prefix("0x").unwrap_or(hash_text);
+        let Ok(hash) = u64::from_str_radix(hash_text, 16) else {
+            continue;
+        };
+        if entry >= MAX_FIGHTERS || !is_boss_css_hash(hash) {
+            continue;
+        }
+        CACHED_BOSS_UI_HASH_BY_ENTRY[entry] = hash;
+        CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry] =
+            OpaqueSelectionCacheOrigin::RestoredPersistedSelection;
+        PERSISTED_SELECTION_SNAPSHOT[entry] = hash;
+        restored += 1;
+    }
+
+    if crate::debug::enabled() {
+        crate::boss_log!(
+            "[PB][PersistedSelection] action=restore path={} entries_restored={} origin=restored_persisted_selection",
+            path,
+            restored
+        );
+    }
+}
+
+/// Records the selection for an entry that has just begun a boss battle.
+/// Writes only when the value actually changed, so a normal match costs no
+/// file I/O after the first time that boss is used.
+pub unsafe fn persist_selection_for_started_battle(entry_id: usize) {
+    if entry_id >= MAX_FIGHTERS {
+        return;
+    }
+    let hash = CACHED_BOSS_UI_HASH_BY_ENTRY[entry_id];
+    if !is_boss_css_hash(hash) || PERSISTED_SELECTION_SNAPSHOT[entry_id] == hash {
+        return;
+    }
+    PERSISTED_SELECTION_SNAPSHOT[entry_id] = hash;
+
+    let Some(path) = persisted_selection_path() else {
+        return;
+    };
+    let mut body = String::from(
+        "# Competitive Playable Bosses - last boss selection that entered a battle.\n",
+    );
+    for entry in 0..MAX_FIGHTERS {
+        let value = PERSISTED_SELECTION_SNAPSHOT[entry];
+        if is_boss_css_hash(value) {
+            body.push_str(&format!("{}=0x{:010x}\n", entry, value));
+        }
+    }
+    let wrote = std::fs::write(&path, body).is_ok();
+    if crate::debug::enabled() {
+        crate::boss_log!(
+            "[PB][PersistedSelection] action=save entry={} boss={} hash=0x{:010x} path={} wrote={}",
+            entry_id,
+            css_identity_label(hash),
+            hash,
+            path,
+            wrote
+        );
+    }
+}
+
 pub unsafe fn selected_css_boss_selector_id(
     module_accessor: *mut BattleObjectModuleAccessor,
 ) -> Option<u64> {
@@ -1801,6 +1920,95 @@ mod condensed_tests {
 
     /// The first eight entries are native colors; WOL Master Hand and Galleom
     /// are same-slot secondary choices. Giga Bowser remains separate.
+    /// The persisted-selection file is untrusted input: a corrupt or hand-edited
+    /// line must be skipped, never applied. Anything that is not a recognised
+    /// boss hash for a valid entry is rejected.
+    #[test]
+    fn persisted_selection_parsing_rejects_untrusted_lines() {
+        fn parse(line: &str) -> Option<(usize, u64)> {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            let (entry_text, hash_text) = line.split_once('=')?;
+            let entry = entry_text.trim().parse::<usize>().ok()?;
+            let hash_text = hash_text.trim();
+            let hash_text = hash_text.strip_prefix("0x").unwrap_or(hash_text);
+            let hash = u64::from_str_radix(hash_text, 16).ok()?;
+            if entry >= MAX_FIGHTERS || !is_boss_css_hash(hash) {
+                return None;
+            }
+            Some((entry, hash))
+        }
+
+        // Valid: a real boss hash for a real entry.
+        let good = format!("0=0x{:010x}", UI_CHARA_MASTERHAND_HASH);
+        assert_eq!(parse(&good), Some((0, UI_CHARA_MASTERHAND_HASH)));
+        assert_eq!(
+            parse(&format!("  7 = 0x{:010x}  ", UI_CHARA_MARX_HASH)),
+            Some((7, UI_CHARA_MARX_HASH))
+        );
+
+        // Rejected: comments, blanks, junk, out-of-range entries, non-boss hashes.
+        assert_eq!(parse("# comment"), None);
+        assert_eq!(parse(""), None);
+        assert_eq!(parse("garbage"), None);
+        assert_eq!(parse("0="), None);
+        assert_eq!(parse("notanentry=0x1"), None);
+        assert_eq!(
+            parse(&format!("8=0x{:010x}", UI_CHARA_MASTERHAND_HASH)),
+            None
+        );
+        assert_eq!(parse(&format!("99=0x{:010x}", UI_CHARA_MARX_HASH)), None);
+        assert_eq!(parse("0=0xdeadbeef"), None);
+        assert_eq!(parse("0=0x0"), None);
+        // The condensed carrier is not a boss identity and must never restore.
+        let carrier = crate::to_hash40("ui_chara_playable_bosses").0;
+        assert_eq!(parse(&format!("0=0x{:010x}", carrier)), None);
+    }
+
+    /// A restored selection is authoritative, exactly like a live confirmation.
+    /// Tentative state stays non-authoritative regardless.
+    #[test]
+    fn restored_persisted_origin_is_authoritative() {
+        fn authoritative(origin: OpaqueSelectionCacheOrigin) -> bool {
+            matches!(
+                origin,
+                OpaqueSelectionCacheOrigin::ConfirmedUiLookup
+                    | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
+                    | OpaqueSelectionCacheOrigin::RestoredPersistedSelection
+            )
+        }
+        assert!(authoritative(
+            OpaqueSelectionCacheOrigin::RestoredPersistedSelection
+        ));
+        assert!(authoritative(OpaqueSelectionCacheOrigin::ConfirmedUiLookup));
+        assert!(!authoritative(
+            OpaqueSelectionCacheOrigin::TentativeUiSelection
+        ));
+        assert!(!authoritative(OpaqueSelectionCacheOrigin::None));
+        // Provenance stays distinguishable from a live confirmation.
+        assert_ne!(
+            OpaqueSelectionCacheOrigin::RestoredPersistedSelection,
+            OpaqueSelectionCacheOrigin::ConfirmedUiLookup
+        );
+    }
+
+    /// Every roster boss must survive a save/restore round trip.
+    #[test]
+    fn every_boss_round_trips_through_the_persisted_format() {
+        for (entry, hash) in CONDENSED_BOSS_ROSTER.iter().enumerate() {
+            let line = format!("{}=0x{:010x}", entry.min(MAX_FIGHTERS - 1), hash);
+            let (entry_text, hash_text) = line.split_once('=').unwrap();
+            let parsed_entry = entry_text.parse::<usize>().unwrap();
+            let parsed_hash =
+                u64::from_str_radix(hash_text.strip_prefix("0x").unwrap(), 16).unwrap();
+            assert!(parsed_entry < MAX_FIGHTERS);
+            assert_eq!(parsed_hash, *hash);
+            assert!(is_boss_css_hash(parsed_hash));
+        }
+    }
+
     #[test]
     fn condensed_roster_contains_native_and_secondary_bosses() {
         assert_eq!(CONDENSED_BOSS_ROSTER.len(), 10);

@@ -509,6 +509,11 @@ unsafe fn update_result_transition_state(
     // that entry has no boss selection of its own.
     if ready_go && !result_mode && (hidden_host || selected_ui_hash != 0 || any_boss_active()) {
         BOSS_HAD_READY_GO[entry_id] = true;
+        // A boss battle has actually begun, so this selection is worth
+        // remembering across a reboot. Browsing the CSS without starting a
+        // match never reaches here and therefore never overwrites the saved
+        // value. Writes only when the boss actually changed.
+        selection::persist_selection_for_started_battle(entry_id);
         BOSS_MATCH_STARTED[entry_id] = true;
         POST_MATCH_PRE_RESULT[entry_id] = false;
         POST_MATCH_TRACKING_INVALIDATED[entry_id] = false;
@@ -1617,6 +1622,16 @@ fn configure_condensed_masterhand_carrier_fields(
     for field_name in CONDENSED_COLOR_MAP_FIELDS.iter().flatten() {
         let copied = copy_field_from_struct(mario_row, charroot, to_hash40(field_name));
         debug_assert!(copied);
+    }
+
+    // `cXX_index`/`cXX_group` must stay Mario's so the carrier loads real,
+    // existing costume resources. `nXX_index` must NOT: it is the per-color
+    // NAME index, and Mario uses one name for all eight costumes, so copying
+    // his map made every slot resolve to name index 00 and display
+    // "MASTER HAND" on every skin. Identity mapping gives slot N the
+    // `nam_chr*_NN_masterhand` label that already exists in msg_name.msbt.
+    for (slot, field_names) in CONDENSED_COLOR_MAP_FIELDS.iter().enumerate() {
+        upsert_u8_field(charroot, to_hash40(field_names[1]), slot as u8);
     }
 
     apply_condensed_css_visibility_for_mode(charroot, CONDENSED_CARRIER_UI_CHARA, true);
@@ -3434,6 +3449,10 @@ pub fn main() {
     Agent::new("mario")
         .on_line(Main, mario_boss_dispatch_frame)
         .install();
+    // Repopulate the per-entry selection cache from disk before anything can
+    // query it. Without this a cold launch into Spirit Board or the World of
+    // Light map resolves to the Mario host until the player visits the CSS.
+    unsafe { selection::restore_persisted_selections() };
     selection::install();
 
     mastercrazy::install();
@@ -3874,9 +3893,14 @@ mod condensed_css_tests {
                 read_u8_field(&carrier, to_hash40(field_names[0])),
                 Some(color as u8)
             );
+            // Name index is deliberately NOT Mario's. Mario names all eight
+            // costumes the same, so copying his map made every carrier skin
+            // display "MASTER HAND". Identity mapping gives slot N the
+            // `nam_chr*_NN_masterhand` label. Costume index and group above/
+            // below still come from Mario so only real costumes are requested.
             assert_eq!(
                 read_u8_field(&carrier, to_hash40(field_names[1])),
-                Some(16 + color as u8)
+                Some(color as u8)
             );
             assert_eq!(
                 read_u8_field(&carrier, to_hash40(field_names[2])),
@@ -3888,6 +3912,52 @@ mod condensed_css_tests {
                 read_hash40_field(&carrier, to_hash40(presentation.characall_field)),
                 Some(to_hash40(presentation.narration_label))
             );
+        }
+    }
+
+    /// Each carrier color must resolve its own MSBT name label. Mario names all
+    /// eight costumes the same, so copying his `nXX_index` map made every skin
+    /// display "MASTER HAND". The name map is identity; the costume map still
+    /// follows Mario so only real Mario costume resources are requested.
+    #[test]
+    fn carrier_name_index_map_is_identity_not_marios() {
+        let mut carrier = masterhand_carrier_row();
+        let mario = mario_color_map_row();
+        configure_condensed_masterhand_carrier_fields(&mut carrier, &mario)
+            .expect("carrier setup should succeed");
+
+        for (slot, field_names) in CONDENSED_COLOR_MAP_FIELDS.iter().enumerate() {
+            // Name index: identity, so slot N asks for nam_chr*_NN_masterhand.
+            assert_eq!(
+                read_u8_field(&carrier, to_hash40(field_names[1])),
+                Some(slot as u8),
+                "{} must map to name index {slot}",
+                field_names[1]
+            );
+            // Costume index and group still come from Mario.
+            assert_eq!(
+                read_u8_field(&carrier, to_hash40(field_names[0])),
+                read_u8_field(&mario, to_hash40(field_names[0])),
+                "{} must keep Mario's costume index",
+                field_names[0]
+            );
+            assert_eq!(
+                read_u8_field(&carrier, to_hash40(field_names[2])),
+                read_u8_field(&mario, to_hash40(field_names[2])),
+                "{} must keep Mario's color group",
+                field_names[2]
+            );
+        }
+
+        // Every name index must be distinct, or two skins would share a name.
+        let names: Vec<_> = CONDENSED_COLOR_MAP_FIELDS
+            .iter()
+            .map(|f| read_u8_field(&carrier, to_hash40(f[1])))
+            .collect();
+        for (i, a) in names.iter().enumerate() {
+            for b in &names[i + 1..] {
+                assert_ne!(a, b, "duplicate name index would repeat a boss name");
+            }
         }
     }
 

@@ -209,6 +209,15 @@ pub fn load_config() -> Config {
 
 pub static CONFIG: Lazy<Config> = Lazy::new(load_config);
 
+/// Directory the active `config.toml` was loaded from, resolved once. Sibling
+/// plugin state (such as the persisted boss selection) lives beside it so it
+/// follows whichever mod folder the user actually installed.
+pub static CONFIG_DIR: Lazy<Option<String>> = Lazy::new(|| {
+    let path = find_config_path()?;
+    let cut = path.rfind('/')?;
+    Some(path[..cut].to_string())
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
