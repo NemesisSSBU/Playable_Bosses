@@ -1,13 +1,25 @@
 {
   "new_dir_files": {
-    "ui/replace/chara/chara_0": [
-      "ui/replace/chara/chara_0/chara_0_mewtwo_masterhand_00.bntx"
-    ],
     "ui/replace/chara/chara_1": [
+      "ui/replace/chara/chara_1/chara_1_masterhand_00.bntx",
+      "ui/replace/chara/chara_1/chara_1_masterhand_01.bntx",
+      "ui/replace/chara/chara_1/chara_1_masterhand_02.bntx",
+      "ui/replace/chara/chara_1/chara_1_masterhand_03.bntx",
+      "ui/replace/chara/chara_1/chara_1_masterhand_04.bntx",
+      "ui/replace/chara/chara_1/chara_1_masterhand_05.bntx",
+      "ui/replace/chara/chara_1/chara_1_masterhand_06.bntx",
+      "ui/replace/chara/chara_1/chara_1_masterhand_07.bntx",
       "ui/replace/chara/chara_1/chara_1_mewtwo_masterhand_00.bntx"
     ],
     "ui/replace/chara/chara_2": [
       "ui/replace/chara/chara_2/chara_2_masterhand_00.bntx",
+      "ui/replace/chara/chara_2/chara_2_masterhand_01.bntx",
+      "ui/replace/chara/chara_2/chara_2_masterhand_02.bntx",
+      "ui/replace/chara/chara_2/chara_2_masterhand_03.bntx",
+      "ui/replace/chara/chara_2/chara_2_masterhand_04.bntx",
+      "ui/replace/chara/chara_2/chara_2_masterhand_05.bntx",
+      "ui/replace/chara/chara_2/chara_2_masterhand_06.bntx",
+      "ui/replace/chara/chara_2/chara_2_masterhand_07.bntx",
       "ui/replace/chara/chara_2/chara_2_crazyhand_00.bntx",
       "ui/replace/chara/chara_2/chara_2_darz_00.bntx",
       "ui/replace/chara/chara_2/chara_2_kiila_00.bntx",
@@ -23,7 +35,13 @@
       "ui/replace/chara/chara_3/chara_3_mewtwo_masterhand_00.bntx"
     ],
     "ui/replace/chara/chara_4": [
-      "ui/replace/chara/chara_4/chara_4_masterhand_00.bntx",
+      "ui/replace/chara/chara_4/chara_4_masterhand_01.bntx",
+      "ui/replace/chara/chara_4/chara_4_masterhand_02.bntx",
+      "ui/replace/chara/chara_4/chara_4_masterhand_03.bntx",
+      "ui/replace/chara/chara_4/chara_4_masterhand_04.bntx",
+      "ui/replace/chara/chara_4/chara_4_masterhand_05.bntx",
+      "ui/replace/chara/chara_4/chara_4_masterhand_06.bntx",
+      "ui/replace/chara/chara_4/chara_4_masterhand_07.bntx",
       "ui/replace/chara/chara_4/chara_4_crazyhand_00.bntx",
       "ui/replace/chara/chara_4/chara_4_darz_00.bntx",
       "ui/replace/chara/chara_4/chara_4_kiila_00.bntx",
@@ -37,6 +55,13 @@
     ],
     "ui/replace/chara/chara_7": [
       "ui/replace/chara/chara_7/chara_7_masterhand_00.bntx",
+      "ui/replace/chara/chara_7/chara_7_masterhand_01.bntx",
+      "ui/replace/chara/chara_7/chara_7_masterhand_02.bntx",
+      "ui/replace/chara/chara_7/chara_7_masterhand_03.bntx",
+      "ui/replace/chara/chara_7/chara_7_masterhand_04.bntx",
+      "ui/replace/chara/chara_7/chara_7_masterhand_05.bntx",
+      "ui/replace/chara/chara_7/chara_7_masterhand_06.bntx",
+      "ui/replace/chara/chara_7/chara_7_masterhand_07.bntx",
       "ui/replace/chara/chara_7/chara_7_crazyhand_00.bntx",
       "ui/replace/chara/chara_7/chara_7_darz_00.bntx",
       "ui/replace/chara/chara_7/chara_7_kiila_00.bntx",
@@ -108,8 +133,8 @@
       "ui/replace/standard/standard_route_mewtwo_masterhand.prc",
       "ui/replace/standard/standard_route_koopag.prc"
     ],
-	  "ui/param/standard": [
-	    "ui/replace/chara/chara_12/chara_12_mewtwo_masterhand_00.bntx"
+    "ui/replace/chara/chara_12": [
+      "ui/replace/chara/chara_12/chara_12_mewtwo_masterhand_00.bntx"
     ],
     "ui/replace/stage/stage_1": [
 	  "ui/replace/stage/stage_1/stage_1_bossstage_final1.bntx",

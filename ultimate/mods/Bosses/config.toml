@@ -1,12 +1,19 @@
 [options]
 FULL_STUN_DURATION = false
 GIGA_BOWSER_NORMAL = false
-WOL_MASTER_HAND_NORMAL = false
-DETECT_CHARACTER_NAME = false
+WOL_MASTER_HAND_NORMAL = true
+DETECT_CHARACTER_NAME = true
 CUSTOM_CSS = false
+
+# false = traditional individual boss CSS entries
+# true = one BOSSES slot using the existing Master Hand carrier
+# If true: Galleom: choose variant 4 (Ganon) and hold Shield through match load.
+# If true: WOL Master Hand: choose variant 1 (Master Hand) and hold Shield through match load.
+CONDENSE_BOSSES_INTO_SINGLE_SLOT = true
+
 BOSS_RESPAWN = false
 BOSS_DIFFICULTY = 10.0
-DEBUG_BOSS_LOGS = false
+DEBUG_BOSS_LOGS = true
 
 MASTER_HAND_CSS = true
 CRAZY_HAND_CSS = true
