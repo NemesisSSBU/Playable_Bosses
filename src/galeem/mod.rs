@@ -14,7 +14,6 @@ use std::u32;
 
 use crate::boss_helpers;
 use crate::boss_runtime::{self, BossCommonRuntime, CommonRuntimeSyncGuard};
-use crate::dharkon;
 use crate::selection;
 
 static mut CONTROLLABLE: bool = true;
@@ -32,23 +31,28 @@ static mut CONTROLLER_Y: f32 = 0.0;
 static mut CONTROL_SPEED_MUL: f32 = 1.25;
 static mut CONTROL_SPEED_MUL_2: f32 = 0.05;
 static mut HIDDEN_CPU: [u32; 8] = [0; 8];
+static mut PREVIEW_ITEM_ID: [u32; 8] = [0; 8];
+static mut WOL_PREVIEW_BATTLE_STATE_RESET: [bool; 8] = [false; 8];
 static mut SPAWN_BISECT_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
+static mut ENTRY_PHASE_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
+static mut STAGED_PREPARATION_ATTEMPTED: [bool; 8] = [false; 8];
+static mut STAGED_BOSS_PREPARED: [bool; 8] = [false; 8];
+static mut INITIAL_ACTIVATION_ATTEMPTED: [bool; 8] = [false; 8];
 static mut WOL_PREVIEW_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
-/// Bounded WOL presentation motion probe, mirroring the Amiibo one. Evidence
-/// only: it never changes behavior and reports once per preview creation.
-static mut WOL_MOTION_PROBE_FRAMES: [u8; 8] = [0; 8];
-static mut WOL_MOTION_PROBE_LAST_FRAME: [f32; 8] = [-1.0; 8];
-static mut WOL_MOTION_PROBE_ADVANCED: [bool; 8] = [false; 8];
-static mut WOL_MOTION_PROBE_BEFORE: [u64; 8] = [0; 8];
-static mut WOL_MOTION_PROBE_AFTER_CHANGE: [u64; 8] = [0; 8];
-static mut WOL_MOTION_PROBE_FIRST_FRAME: [f32; 8] = [-1.0; 8];
-const WOL_MOTION_PROBE_SAMPLE_FRAMES: u8 = 30;
+const WOL_PRESENTATION_SCALE: f32 = 0.05;
 
 const GALEEM_FLOOR_CLEARANCE: f32 = 0.1;
 
 /// Visual-only WOL and Amiibo presentations must stay on Galeem's native idle
 /// rather than entering any combat, movement, or summon status.
 pub(crate) const PRESENTATION_IDLE_MOTION: &str = "wait";
+
+#[inline(always)]
+pub(crate) unsafe fn wol_presentation_item_kind() -> i32 {
+    // The WOL map preview uses the CORE object, not the full boss.
+    // Requesting ITEM_KIND_KIILA here crashed the game on hardware.
+    *ITEM_KIND_KIILACORE
+}
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -148,7 +152,112 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     CONTROL_SPEED_MUL_2 = 0.05;
     HIDDEN_CPU[entry] = 0;
     SPAWN_BISECT_LAST_SIGNATURE[entry] = u64::MAX;
+    ENTRY_PHASE_LAST_SIGNATURE[entry] = u64::MAX;
+    STAGED_PREPARATION_ATTEMPTED[entry] = false;
+    STAGED_BOSS_PREPARED[entry] = false;
+    INITIAL_ACTIVATION_ATTEMPTED[entry] = false;
     crate::boss_summon::reset("galeem", entry, "match_reset");
+}
+
+#[inline(always)]
+unsafe fn begin_wol_preview(entry: usize) {
+    let entry = entry.min(7);
+    if WOL_PREVIEW_BATTLE_STATE_RESET[entry] {
+        return;
+    }
+
+    reset_match_state(entry);
+    let runtime = boss_runtime::slot_ptr(&raw mut boss_runtime::GALEEM_RUNTIME, entry);
+    if !runtime.is_null() {
+        *runtime = BossCommonRuntime::new();
+    }
+    PREVIEW_ITEM_ID[entry] = 0;
+    WOL_PREVIEW_LAST_SIGNATURE[entry] = u64::MAX;
+    WOL_PREVIEW_BATTLE_STATE_RESET[entry] = true;
+    crate::boss_log!(
+        "[PB][Galeem][WolPreview] action=battle_state_isolated entry={} battle_id=0x0 preview_id=0x0",
+        entry
+    );
+}
+
+#[inline(always)]
+unsafe fn end_wol_preview(entry: usize) {
+    let entry = entry.min(7);
+    if !WOL_PREVIEW_BATTLE_STATE_RESET[entry] {
+        return;
+    }
+
+    WOL_PREVIEW_BATTLE_STATE_RESET[entry] = false;
+    PREVIEW_ITEM_ID[entry] = 0;
+    WOL_PREVIEW_LAST_SIGNATURE[entry] = u64::MAX;
+}
+
+#[inline(always)]
+unsafe fn discard_invalid_battle_tracking(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    entry: usize,
+    ready_go: bool,
+    transition_quarantined: bool,
+) {
+    let entry = entry.min(7);
+    let tracked_id = BOSS_ID[entry];
+    if tracked_id == 0 || transition_quarantined {
+        return;
+    }
+
+    let expected_kind_active =
+        boss_helpers::tracked_item_by_kind(&raw const BOSS_ID, entry, *ITEM_KIND_KIILA).is_some();
+    if !boss_helpers::should_discard_tracked_boss(
+        ready_go,
+        transition_quarantined,
+        expected_kind_active,
+        STAGED_BOSS_PREPARED[entry],
+    ) {
+        return;
+    }
+
+    let active = sv_battle_object::is_active(tracked_id);
+    let actual_kind = if active {
+        let tracked_boma = sv_battle_object::module_accessor(tracked_id);
+        if tracked_boma.is_null() {
+            -1
+        } else {
+            smash::app::utility::get_kind(&mut *tracked_boma)
+        }
+    } else {
+        -1
+    };
+    if !ready_go {
+        boss_helpers::clear_owned_boss_item_slot(
+            module_accessor,
+            &raw mut BOSS_ID,
+            &[*ITEM_KIND_KIILA, *ITEM_KIND_KIILACORE],
+            true,
+        );
+        EXISTS_PUBLIC = false;
+        STAGED_BOSS_PREPARED[entry] = false;
+        INITIAL_ACTIVATION_ATTEMPTED[entry] = false;
+    }
+    BOSS_ID[entry] = 0;
+    crate::boss_log!(
+        "[PB][Galeem][StartupGate] action=discard_stale_tracking entry={} reason={} tracked_id=0x{:x} object_active={} actual_kind={} expected_kind={} ready_go={}",
+        entry,
+        if ready_go {
+            "invalid_object_or_kind"
+        } else {
+            "pre_ready_go_object_forbidden"
+        },
+        tracked_id,
+        active,
+        actual_kind,
+        *ITEM_KIND_KIILA,
+        ready_go
+    );
+}
+
+#[inline(always)]
+unsafe fn is_tracked_galeem_active(entry: usize) -> bool {
+    boss_helpers::tracked_item_by_kind(&raw const BOSS_ID, entry, *ITEM_KIND_KIILA).is_some()
 }
 
 /// Feed the shared, read-only match-end audit without exposing Galeem's item
@@ -222,8 +331,26 @@ unsafe fn log_galeem_entry_phase(
     } else {
         -1
     };
+    let mut tag_signature = 0u64;
+    for byte in tag.as_bytes() {
+        tag_signature = tag_signature.rotate_left(5) ^ (*byte as u64);
+    }
+    let signature = tag_signature
+        ^ (tracked_id as u64).rotate_left(7)
+        ^ (hidden_cpu_id as u64).rotate_left(19)
+        ^ (tracked_status as u32 as u64).rotate_left(31)
+        ^ (hidden_cpu_status as u32 as u64).rotate_left(43)
+        ^ (stage_one_prepared as u64).rotate_left(3)
+        ^ (stage_two_prepared as u64).rotate_left(4)
+        ^ (STAGED_PREPARATION_ATTEMPTED[entry] as u64).rotate_left(53)
+        ^ (STAGED_BOSS_PREPARED[entry] as u64).rotate_left(54)
+        ^ (sv_information::is_ready_go() as u64).rotate_left(5);
+    if ENTRY_PHASE_LAST_SIGNATURE[entry] == signature {
+        return;
+    }
+    ENTRY_PHASE_LAST_SIGNATURE[entry] = signature;
     crate::boss_log!(
-        "[PB][Galeem][Phase] tag={} entry={} stage=0x{:x} ready_go={} fighter_status={} frame={:.2} scale={:.4} tracked_id=0x{:x} tracked_active={} tracked_status={} hidden_cpu=0x{:x} hidden_cpu_active={} hidden_cpu_status={} stage1={} stage2={} exists_public={} controllable={} dead={} stop={} result_spawned={}",
+        "[PB][Galeem][Phase] tag={} entry={} stage=0x{:x} ready_go={} fighter_status={} frame={:.2} scale={:.4} tracked_id=0x{:x} tracked_active={} tracked_status={} hidden_cpu=0x{:x} hidden_cpu_active={} hidden_cpu_status={} stage1={} stage2={} preparation_attempted={} staged_boss_prepared={} exists_public={} controllable={} dead={} stop={} result_spawned={}",
         tag,
         entry,
         smash::app::stage::get_stage_id(),
@@ -239,6 +366,8 @@ unsafe fn log_galeem_entry_phase(
         hidden_cpu_status,
         stage_one_prepared,
         stage_two_prepared,
+        STAGED_PREPARATION_ATTEMPTED[entry],
+        STAGED_BOSS_PREPARED[entry],
         core::ptr::addr_of!(EXISTS_PUBLIC).read(),
         core::ptr::addr_of!(CONTROLLABLE).read(),
         core::ptr::addr_of!(DEAD).read(),
@@ -337,50 +466,251 @@ unsafe fn log_galeem_spawn_state(
     );
 }
 
-/// Bounded WOL presentation motion probe for Galeem. Evidence only: it reads
-/// the presentation item and never writes to it. Mirrors the Amiibo
-/// `[PB][AmiiboMotionProbe]` field set so both surfaces can be compared
-/// directly. No single field here is a verdict — an accepted motion name with
-/// a stuck frame can mean a wrong animation resource, a zero-rate or one-frame
-/// motion, missing initialization, or a core object with no animated idle.
-#[inline(always)]
-unsafe fn observe_wol_presentation_motion(
-    entry: usize,
-    boss_boma: *mut BattleObjectModuleAccessor,
-) {
-    let entry = entry.min(7);
-    if boss_boma.is_null() || WOL_MOTION_PROBE_FRAMES[entry] == 0 || !crate::debug::enabled() {
-        return;
+/// Create Galeem while item construction is still safe, but keep the object in
+/// the same inert presentation state used by the Amiibo/WOL viewers until the
+/// match reaches Ready-Go.
+unsafe fn prepare_staged_galeem_before_ready_go(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) -> bool {
+    if module_accessor.is_null() || sv_information::is_ready_go() {
+        return false;
     }
-    WOL_MOTION_PROBE_FRAMES[entry] -= 1;
-    let motion_frame = MotionModule::frame(boss_boma);
-    if WOL_MOTION_PROBE_LAST_FRAME[entry] >= 0.0
-        && (motion_frame - WOL_MOTION_PROBE_LAST_FRAME[entry]).abs() > 0.0001
-    {
-        WOL_MOTION_PROBE_ADVANCED[entry] = true;
+
+    let entry = boss_helpers::entry_id(module_accessor).min(7);
+    if STAGED_PREPARATION_ATTEMPTED[entry] {
+        return STAGED_BOSS_PREPARED[entry] && is_tracked_galeem_active(entry);
     }
-    WOL_MOTION_PROBE_LAST_FRAME[entry] = motion_frame;
-    if WOL_MOTION_PROBE_FRAMES[entry] != 0 {
-        return;
+    STAGED_PREPARATION_ATTEMPTED[entry] = true;
+
+    let hidden_cpu_id = HIDDEN_CPU[entry];
+    if hidden_cpu_id == 0 || !sv_battle_object::is_active(hidden_cpu_id) {
+        crate::boss_log!(
+            "[PB][Galeem][StartupGate] action=prepare_failed entry={} reason=hidden_cpu_inactive hidden_cpu=0x{:x}",
+            entry,
+            hidden_cpu_id
+        );
+        return false;
     }
-    let motion_kind = MotionModule::motion_kind(boss_boma);
-    crate::boss_log!(
-        "[PB][AmiiboMotionProbe] surface=wol entry={} logical_boss=galeem actual_item_kind={} requested_motion_name={} requested_motion_hash=0x{:x} motion_before=0x{:x} motion_immediately_after_change=0x{:x} motion_after_sample_window=0x{:x} name_accepted={} frame_before={:.2} frame_after={:.2} motion_rate={:.3} status_kind={} animation_advanced={} sample_frames={}",
+
+    log_galeem_spawn_bisect(
         entry,
-        smash::app::utility::get_kind(&mut *boss_boma),
-        PRESENTATION_IDLE_MOTION,
-        smash::hash40(PRESENTATION_IDLE_MOTION),
-        WOL_MOTION_PROBE_BEFORE[entry],
-        WOL_MOTION_PROBE_AFTER_CHANGE[entry],
-        motion_kind,
-        motion_kind == smash::hash40(PRESENTATION_IDLE_MOTION),
-        WOL_MOTION_PROBE_FIRST_FRAME[entry],
-        motion_frame,
-        MotionModule::rate(boss_boma),
-        StatusModule::status_kind(boss_boma),
-        WOL_MOTION_PROBE_ADVANCED[entry],
-        WOL_MOTION_PROBE_SAMPLE_FRAMES,
+        2,
+        "begin",
+        "pre_ready_go_prepare",
+        module_accessor,
+        std::ptr::null_mut(),
     );
+    DamageModule::heal(module_accessor, -999.0, 0);
+    ItemModule::throw_item(module_accessor, 0.0, 0.0, 0.0, 0, true, 0.0);
+    log_galeem_spawn_bisect(
+        entry,
+        3,
+        "after",
+        "hidden_cpu_detached",
+        module_accessor,
+        std::ptr::null_mut(),
+    );
+    log_galeem_spawn_bisect(
+        entry,
+        4,
+        "begin",
+        "pre_ready_go_have_item",
+        module_accessor,
+        std::ptr::null_mut(),
+    );
+    let boss_boma = boss_helpers::acquire_boss_item_excluding(
+        module_accessor,
+        &raw mut BOSS_ID,
+        *ITEM_KIND_KIILA,
+        hidden_cpu_id,
+    );
+    let boss_id = BOSS_ID[entry];
+    let acquired_kind = if boss_boma.is_null() {
+        -1
+    } else {
+        smash::app::utility::get_kind(&mut *boss_boma)
+    };
+    if boss_boma.is_null() || acquired_kind != *ITEM_KIND_KIILA {
+        BOSS_ID[entry] = 0;
+        STAGED_BOSS_PREPARED[entry] = false;
+        crate::boss_log!(
+            "[PB][Galeem][StartupGate] action=prepare_failed entry={} reason=invalid_acquired_boss acquired_id=0x{:x} acquired_kind={}",
+            entry,
+            boss_id,
+            acquired_kind
+        );
+        return false;
+    }
+
+    ModelModule::set_scale(boss_boma, boss_helpers::HIDDEN_HOST_SCALE);
+    MotionModule::change_motion(
+        boss_boma,
+        smash::phx::Hash40::new(PRESENTATION_IDLE_MOTION),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    boss_helpers::maintain_nonbattle_boss_presentation(boss_boma);
+    STAGED_BOSS_PREPARED[entry] = true;
+    log_galeem_spawn_bisect(
+        entry,
+        5,
+        "after",
+        "pre_ready_go_prepared",
+        module_accessor,
+        boss_boma,
+    );
+    crate::boss_log!(
+        "[PB][Galeem][StartupGate] action=prepared_inert entry={} ready_go=false hidden_cpu=0x{:x} boss_id=0x{:x} boss_kind={} boss_status={} motion=wait",
+        entry,
+        hidden_cpu_id,
+        boss_id,
+        acquired_kind,
+        StatusModule::status_kind(boss_boma)
+    );
+    true
+}
+
+#[inline(always)]
+unsafe fn maintain_staged_galeem_before_ready_go(entry: usize) {
+    let entry = entry.min(7);
+    if sv_information::is_ready_go() || !STAGED_BOSS_PREPARED[entry] {
+        return;
+    }
+    let Some((_, boss_boma)) =
+        boss_helpers::tracked_item_by_kind(&raw const BOSS_ID, entry, *ITEM_KIND_KIILA)
+    else {
+        BOSS_ID[entry] = 0;
+        STAGED_BOSS_PREPARED[entry] = false;
+        crate::boss_log!(
+            "[PB][Galeem][StartupGate] action=prepare_lost entry={} retry=false",
+            entry
+        );
+        return;
+    };
+
+    if (ModelModule::scale(boss_boma) - boss_helpers::HIDDEN_HOST_SCALE).abs() > f32::EPSILON {
+        ModelModule::set_scale(boss_boma, boss_helpers::HIDDEN_HOST_SCALE);
+    }
+    if MotionModule::motion_kind(boss_boma) != smash::hash40(PRESENTATION_IDLE_MOTION) {
+        MotionModule::change_motion(
+            boss_boma,
+            smash::phx::Hash40::new(PRESENTATION_IDLE_MOTION),
+            0.0,
+            1.0,
+            false,
+            0.0,
+            false,
+            false,
+        );
+    }
+    boss_helpers::maintain_nonbattle_boss_presentation(boss_boma);
+}
+
+/// Activate only the verified object prepared before Ready-Go. Item creation at
+/// this boundary crashes on hardware and must never be retried here.
+unsafe fn activate_staged_galeem_after_ready_go(
+    module_accessor: *mut BattleObjectModuleAccessor,
+) -> bool {
+    if module_accessor.is_null() || !sv_information::is_ready_go() {
+        return false;
+    }
+
+    let entry = boss_helpers::entry_id(module_accessor).min(7);
+    if INITIAL_ACTIVATION_ATTEMPTED[entry] {
+        return false;
+    }
+    INITIAL_ACTIVATION_ATTEMPTED[entry] = true;
+
+    if !STAGED_BOSS_PREPARED[entry] {
+        crate::boss_log!(
+            "[PB][Galeem][StartupGate] action=activate_failed entry={} reason=staged_boss_not_prepared",
+            entry
+        );
+        return false;
+    }
+
+    let hidden_cpu_id = HIDDEN_CPU[entry];
+    if hidden_cpu_id == 0 || !sv_battle_object::is_active(hidden_cpu_id) {
+        crate::boss_log!(
+            "[PB][Galeem][StartupGate] action=activate_failed entry={} reason=hidden_cpu_inactive hidden_cpu=0x{:x}",
+            entry,
+            hidden_cpu_id
+        );
+        return false;
+    }
+
+    let Some((boss_id, boss_boma)) =
+        boss_helpers::tracked_item_by_kind(&raw const BOSS_ID, entry, *ITEM_KIND_KIILA)
+    else {
+        BOSS_ID[entry] = 0;
+        STAGED_BOSS_PREPARED[entry] = false;
+        crate::boss_log!(
+            "[PB][Galeem][StartupGate] action=activate_failed entry={} reason=prepared_boss_invalid",
+            entry
+        );
+        return false;
+    };
+
+    log_galeem_spawn_bisect(
+        entry,
+        10,
+        "begin",
+        "ready_go_activate_prepared",
+        module_accessor,
+        boss_boma,
+    );
+    DEAD = false;
+    CONTROLLABLE = true;
+    JUMP_START = false;
+    STOP = false;
+    RESULT_SPAWNED = false;
+    CONTROLLER_X = 0.0;
+    CONTROLLER_Y = 0.0;
+    DamageModule::heal(module_accessor, -999.0, 0);
+    EXISTS_PUBLIC = true;
+    ModelModule::set_scale(boss_boma, 1.0);
+    DamageModule::set_damage_lock(boss_boma, false);
+    JostleModule::set_status(boss_boma, true);
+    HitModule::set_whole(boss_boma, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
+    let boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
+    WorkModule::set_float(boss_boma, boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
+    WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
+    ModelModule::set_scale(module_accessor, boss_helpers::HIDDEN_HOST_SCALE);
+    StatusModule::change_status_request_from_script(
+        boss_boma,
+        *ITEM_STATUS_KIND_FOR_BOSS_START,
+        true,
+    );
+    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
+    WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+    WorkModule::set_int(
+        boss_boma,
+        *ITEM_VARIATION_KIILA_DARZ,
+        *ITEM_INSTANCE_WORK_INT_VARIATION,
+    );
+    STAGED_BOSS_PREPARED[entry] = false;
+
+    log_galeem_spawn_bisect(
+        entry,
+        12,
+        "after",
+        "ready_go_activate_prepared",
+        module_accessor,
+        boss_boma,
+    );
+    log_galeem_spawn_state("initial_ready_go", module_accessor, boss_boma);
+    crate::boss_log!(
+        "[PB][Galeem][StartupGate] action=activated entry={} ready_go=true hidden_cpu=0x{:x} boss_id=0x{:x} boss_status={}",
+        entry,
+        hidden_cpu_id,
+        boss_id,
+        StatusModule::status_kind(boss_boma)
+    );
+    true
 }
 
 #[inline(always)]
@@ -395,7 +725,7 @@ unsafe fn log_galeem_wol_preview(
         return;
     }
     let entry = entry.min(7);
-    let boss_id = BOSS_ID[entry];
+    let boss_id = PREVIEW_ITEM_ID[entry];
     let signature = (phase as u64)
         ^ (boss_id as u64).rotate_left(12)
         ^ (ModelModule::scale(module_accessor).to_bits() as u64).rotate_left(29)
@@ -429,6 +759,7 @@ unsafe fn ensure_wol_galeem_preview(
 
     let entry = entry.min(7);
     if !selection::is_selected_css_boss(module_accessor, *ITEM_KIND_KIILA) {
+        end_wol_preview(entry);
         log_galeem_wol_preview(
             entry,
             1,
@@ -439,10 +770,12 @@ unsafe fn ensure_wol_galeem_preview(
         return;
     }
 
+    begin_wol_preview(entry);
     boss_helpers::clear_hidden_host_effects(module_accessor);
-    let needs_item = ModelModule::scale(module_accessor) != boss_helpers::HIDDEN_HOST_SCALE
-        || !ItemModule::is_have_item(module_accessor, 0);
-    if needs_item {
+    let expected_kind = wol_presentation_item_kind();
+    let mut presentation =
+        boss_helpers::tracked_item_by_kind(&raw const PREVIEW_ITEM_ID, entry, expected_kind);
+    if presentation.is_none() {
         log_galeem_wol_preview(
             entry,
             2,
@@ -454,19 +787,17 @@ unsafe fn ensure_wol_galeem_preview(
         ModelModule::set_scale(module_accessor, boss_helpers::HIDDEN_HOST_SCALE);
         let boss_boma = boss_helpers::acquire_boss_item(
             module_accessor,
-            &raw mut BOSS_ID,
-            *ITEM_KIND_KIILACORE,
+            &raw mut PREVIEW_ITEM_ID,
+            expected_kind,
         );
-        if boss_boma.is_null() {
+        presentation =
+            boss_helpers::tracked_item_by_kind(&raw const PREVIEW_ITEM_ID, entry, expected_kind);
+        if boss_boma.is_null() || presentation.is_none() {
+            PREVIEW_ITEM_ID[entry] = 0;
             log_galeem_wol_preview(entry, 3, "create_failed", module_accessor, boss_boma);
             return;
         }
-        ModelModule::set_scale(boss_boma, 0.05);
-        WOL_MOTION_PROBE_BEFORE[entry] = MotionModule::motion_kind(boss_boma);
-        WOL_MOTION_PROBE_FIRST_FRAME[entry] = MotionModule::frame(boss_boma);
-        WOL_MOTION_PROBE_FRAMES[entry] = WOL_MOTION_PROBE_SAMPLE_FRAMES;
-        WOL_MOTION_PROBE_LAST_FRAME[entry] = -1.0;
-        WOL_MOTION_PROBE_ADVANCED[entry] = false;
+        ModelModule::set_scale(boss_boma, WOL_PRESENTATION_SCALE);
         MotionModule::change_motion(
             boss_boma,
             smash::phx::Hash40::new(PRESENTATION_IDLE_MOTION),
@@ -477,15 +808,26 @@ unsafe fn ensure_wol_galeem_preview(
             false,
             false,
         );
-        WOL_MOTION_PROBE_AFTER_CHANGE[entry] = MotionModule::motion_kind(boss_boma);
         log_galeem_wol_preview(entry, 4, "create_complete", module_accessor, boss_boma);
     }
 
-    // Read-only presentation probe on whatever item this host is holding.
-    if let Some((_, _, held_boma)) =
-        boss_helpers::held_item_by_kind(module_accessor, &[*ITEM_KIND_KIILACORE])
-    {
-        observe_wol_presentation_motion(entry, held_boma);
+    if let Some((_, preview_boma)) = presentation {
+        if (ModelModule::scale(preview_boma) - WOL_PRESENTATION_SCALE).abs() > f32::EPSILON {
+            ModelModule::set_scale(preview_boma, WOL_PRESENTATION_SCALE);
+        }
+        if MotionModule::motion_kind(preview_boma) != smash::hash40(PRESENTATION_IDLE_MOTION) {
+            MotionModule::change_motion(
+                preview_boma,
+                smash::phx::Hash40::new(PRESENTATION_IDLE_MOTION),
+                0.0,
+                1.0,
+                false,
+                0.0,
+                false,
+                false,
+            );
+        }
+        boss_helpers::maintain_nonbattle_boss_presentation(preview_boma);
     }
 
     if ModelModule::scale(module_accessor) == boss_helpers::HIDDEN_HOST_SCALE {
@@ -531,12 +873,9 @@ unsafe fn ensure_wol_galeem_preview(
         );
     }
 
-    let tracked_id = BOSS_ID[entry];
-    let tracked_boma = if tracked_id != 0 && sv_battle_object::is_active(tracked_id) {
-        sv_battle_object::module_accessor(tracked_id)
-    } else {
-        std::ptr::null_mut()
-    };
+    let tracked_boma = presentation
+        .map(|(_, preview_boma)| preview_boma)
+        .unwrap_or(std::ptr::null_mut());
     log_galeem_wol_preview(entry, 5, "ready", module_accessor, tracked_boma);
 }
 
@@ -556,10 +895,19 @@ unsafe fn restore_galeem_after_item_wipe(module_accessor: *mut BattleObjectModul
 
     let entry = boss_runtime::sanitize_entry_id(boss_helpers::entry_id(module_accessor));
     ENTRY_ID = entry;
-    let tracked_id = BOSS_ID[entry];
     let hidden_cpu_id = HIDDEN_CPU[entry];
-    let tracked_active = tracked_id != 0 && sv_battle_object::is_active(tracked_id);
+    let tracked_active = is_tracked_galeem_active(entry);
     let hidden_cpu_active = hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id);
+    let staged_initial_sequence = !tracked_active
+        && hidden_cpu_active
+        && !EXISTS_PUBLIC
+        && (boss_helpers::is_hidden_host_entry_prep(module_accessor)
+            || boss_helpers::is_hidden_host_entry_stage_two(module_accessor));
+    let failed_initial_activation =
+        INITIAL_ACTIVATION_ATTEMPTED[entry] && !tracked_active && !EXISTS_PUBLIC;
+    if staged_initial_sequence || failed_initial_activation {
+        return;
+    }
     if tracked_active && hidden_cpu_active {
         return;
     }
@@ -593,6 +941,16 @@ unsafe fn restore_galeem_after_item_wipe(module_accessor: *mut BattleObjectModul
         *ITEM_KIND_KIILA,
         hidden_cpu_id,
     );
+    if boss_boma.is_null() || smash::app::utility::get_kind(&mut *boss_boma) != *ITEM_KIND_KIILA {
+        BOSS_ID[entry] = 0;
+        EXISTS_PUBLIC = false;
+        crate::boss_log!(
+            "[PB][Galeem][Recover] action=acquire_failed entry={} expected_kind={}",
+            entry,
+            *ITEM_KIND_KIILA
+        );
+        return;
+    }
     let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
     WorkModule::set_float(
         boss_boma,
@@ -650,7 +1008,7 @@ unsafe fn restore_galeem_after_item_wipe(module_accessor: *mut BattleObjectModul
         entry,
         BOSS_ID[entry],
         HIDDEN_CPU[entry],
-        BOSS_ID[entry] != 0 && sv_battle_object::is_active(BOSS_ID[entry]),
+        is_tracked_galeem_active(entry),
         HIDDEN_CPU[entry] != 0 && sv_battle_object::is_active(HIDDEN_CPU[entry])
     );
 }
@@ -739,6 +1097,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 ensure_wol_galeem_preview(module_accessor, ENTRY_ID);
                 return;
             }
+            end_wol_preview(ENTRY_ID);
             let _runtime_guard = CommonRuntimeSyncGuard::new(
                 boss_runtime::slot_ptr(&raw mut boss_runtime::GALEEM_RUNTIME, ENTRY_ID),
                 load_galeem_runtime,
@@ -747,9 +1106,17 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             let fighter_manager = boss_helpers::fighter_manager();
             let result_mode =
                 !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager);
+            let ready_go = sv_information::is_ready_go();
+            let post_match_transition = crate::any_post_match_pre_result();
+            discard_invalid_battle_tracking(
+                module_accessor,
+                ENTRY_ID,
+                ready_go,
+                result_mode || post_match_transition,
+            );
             if result_mode {
                 audit_transition(module_accessor, "result_ready", false);
-            } else if sv_information::is_ready_go() {
+            } else if ready_go {
                 audit_transition(module_accessor, "battle", true);
             }
             if result_mode {
@@ -763,7 +1130,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             // boundary.  Once Ready-Go has ended, do not observe, recover, or
             // reacquire Galeem's summon/item state while native teardown is
             // still moving the hidden host toward Results.
-            if crate::any_post_match_pre_result() {
+            if post_match_transition {
                 return;
             }
 
@@ -809,7 +1176,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         ModelModule::set_scale(module_accessor, 0.0001);
                         let boss_boma = boss_helpers::acquire_boss_item(
                             module_accessor,
-                            &raw mut BOSS_ID,
+                            &raw mut PREVIEW_ITEM_ID,
                             *ITEM_KIND_KIILACORE,
                         );
                         ModelModule::set_scale(boss_boma, 0.05);
@@ -876,8 +1243,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             module_accessor,
                             *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID,
                         ) as usize;
-                        let boss_active =
-                            boss_helpers::is_tracked_boss_active(&raw const BOSS_ID, ENTRY_ID);
+                        let boss_active = is_tracked_galeem_active(ENTRY_ID);
                         let stage_one_prepared =
                             boss_helpers::is_hidden_host_entry_prep(module_accessor);
                         let stage_two_prepared =
@@ -971,297 +1337,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if MotionModule::frame(module_accessor) >= 5.0
                                 && !boss_active
                                 && boss_helpers::is_hidden_host_entry_stage_two(module_accessor)
+                                && !STAGED_PREPARATION_ATTEMPTED[ENTRY_ID]
                             {
-                                log_galeem_entry_phase(
-                                    "initial_spawn_start",
-                                    module_accessor,
-                                    false,
-                                    false,
-                                    true,
-                                );
-                                let spawn_entry = boss_helpers::entry_id(module_accessor).min(7);
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    1,
-                                    "begin",
-                                    "reset_spawn_state",
-                                    module_accessor,
-                                    std::ptr::null_mut(),
-                                );
-                                DEAD = false;
-                                CONTROLLABLE = true;
-                                JUMP_START = false;
-                                STOP = false;
-                                RESULT_SPAWNED = false;
-                                CONTROLLER_X = 0.0;
-                                CONTROLLER_Y = 0.0;
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    1,
-                                    "after",
-                                    "reset_spawn_state",
-                                    module_accessor,
-                                    std::ptr::null_mut(),
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    2,
-                                    "begin",
-                                    "DamageModule::heal",
-                                    module_accessor,
-                                    std::ptr::null_mut(),
-                                );
-                                DamageModule::heal(module_accessor, -999.0, 0);
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    2,
-                                    "after",
-                                    "DamageModule::heal",
-                                    module_accessor,
-                                    std::ptr::null_mut(),
-                                );
-                                EXISTS_PUBLIC = true;
-                                RESULT_SPAWNED = false;
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    3,
-                                    "begin",
-                                    "ItemModule::throw_item",
-                                    module_accessor,
-                                    std::ptr::null_mut(),
-                                );
-                                ItemModule::throw_item(
-                                    fighter.module_accessor,
-                                    0.0,
-                                    0.0,
-                                    0.0,
-                                    0,
-                                    true,
-                                    0.0,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    3,
-                                    "after",
-                                    "ItemModule::throw_item",
-                                    module_accessor,
-                                    std::ptr::null_mut(),
-                                );
-                                let hidden_cpu_id =
-                                    HIDDEN_CPU[boss_helpers::entry_id(module_accessor)];
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    4,
-                                    "begin",
-                                    "acquire_boss_item_excluding",
-                                    module_accessor,
-                                    std::ptr::null_mut(),
-                                );
-                                let acquired_boss_boma = boss_helpers::acquire_boss_item_excluding(
-                                    module_accessor,
-                                    &raw mut BOSS_ID,
-                                    *ITEM_KIND_KIILA,
-                                    hidden_cpu_id,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    4,
-                                    "after",
-                                    "acquire_boss_item_excluding",
-                                    module_accessor,
-                                    acquired_boss_boma,
-                                );
-                                let boss_id = BOSS_ID[spawn_entry];
-                                let boss_boma =
-                                    if boss_id != 0 && sv_battle_object::is_active(boss_id) {
-                                        sv_battle_object::module_accessor(boss_id)
-                                    } else {
-                                        std::ptr::null_mut()
-                                    };
-                                if boss_boma.is_null() {
-                                    EXISTS_PUBLIC = false;
-                                    BOSS_ID[spawn_entry] = 0;
-                                    crate::boss_log!(
-                                        "[PB][GaleemSpawnBisect] abort reason=invalid_acquired_boss entry={} acquired_id=0x{:x}",
-                                        spawn_entry,
-                                        boss_id
-                                    );
-                                    return;
-                                }
-
-                                let get_boss_intensity =
-                                    CONFIG.options.boss_difficulty.unwrap_or(10.0);
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    5,
-                                    "begin",
-                                    "WorkModule::set_float(level)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                WorkModule::set_float(
-                                    boss_boma,
-                                    get_boss_intensity,
-                                    *ITEM_INSTANCE_WORK_FLOAT_LEVEL,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    5,
-                                    "after",
-                                    "WorkModule::set_float(level)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    6,
-                                    "begin",
-                                    "WorkModule::set_float(strength)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                WorkModule::set_float(
-                                    boss_boma,
-                                    1.0,
-                                    *ITEM_INSTANCE_WORK_FLOAT_STRENGTH,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    6,
-                                    "after",
-                                    "WorkModule::set_float(strength)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    7,
-                                    "begin",
-                                    "ModelModule::set_scale(host)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                ModelModule::set_scale(
-                                    module_accessor,
-                                    boss_helpers::HIDDEN_HOST_SCALE,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    7,
-                                    "after",
-                                    "ModelModule::set_scale(host)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    8,
-                                    "begin",
-                                    "StatusModule::request(FOR_BOSS_START)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                if dharkon::check_status() {
-                                    // MotionModule::change_motion(boss_boma,smash::phx::Hash40::new("entry2"),0.0,1.0,false,0.0,false,false);
-                                    StatusModule::change_status_request_from_script(
-                                        boss_boma,
-                                        *ITEM_STATUS_KIND_FOR_BOSS_START,
-                                        true,
-                                    );
-                                } else {
-                                    StatusModule::change_status_request_from_script(
-                                        boss_boma,
-                                        *ITEM_STATUS_KIND_FOR_BOSS_START,
-                                        true,
-                                    );
-                                }
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    8,
-                                    "after",
-                                    "StatusModule::request(FOR_BOSS_START)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    9,
-                                    "begin",
-                                    "WorkModule::set_float(hp_max)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                WorkModule::set_float(
-                                    boss_boma,
-                                    999.0,
-                                    *ITEM_INSTANCE_WORK_FLOAT_HP_MAX,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    9,
-                                    "after",
-                                    "WorkModule::set_float(hp_max)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    10,
-                                    "begin",
-                                    "WorkModule::set_float(hp)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                WorkModule::set_float(
-                                    boss_boma,
-                                    999.0,
-                                    *ITEM_INSTANCE_WORK_FLOAT_HP,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    10,
-                                    "after",
-                                    "WorkModule::set_float(hp)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    11,
-                                    "begin",
-                                    "WorkModule::set_int(variation)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                WorkModule::set_int(
-                                    boss_boma,
-                                    *ITEM_VARIATION_KIILA_DARZ,
-                                    *ITEM_INSTANCE_WORK_INT_VARIATION,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    11,
-                                    "after",
-                                    "WorkModule::set_int(variation)",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                log_galeem_spawn_bisect(
-                                    spawn_entry,
-                                    12,
-                                    "after",
-                                    "initial_spawn_complete",
-                                    module_accessor,
-                                    boss_boma,
-                                );
-                                println!(
-                                    "[PB][Galeem][Spawn] initial hidden_cpu=0x{:x} boss_id=0x{:x} status={}",
-                                    hidden_cpu_id,
-                                    BOSS_ID[boss_helpers::entry_id(module_accessor)],
-                                    StatusModule::status_kind(boss_boma),
-                                );
-                                log_galeem_spawn_state("initial", module_accessor, boss_boma);
+                                prepare_staged_galeem_before_ready_go(module_accessor);
                             }
+                            maintain_staged_galeem_before_ready_go(ENTRY_ID);
                         }
                     }
 
@@ -1321,12 +1401,21 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    if sv_information::is_ready_go() == true
-                        && (smash::app::smashball::is_training_mode() == true
-                            || CONFIG.options.boss_respawn.unwrap_or(false))
+                    let staged_initial_sequence = {
+                        let entry = boss_helpers::entry_id(module_accessor).min(7);
+                        let hidden_cpu_id = HIDDEN_CPU[entry];
+                        boss_helpers::staged_boss_ready_for_activation(
+                            STAGED_BOSS_PREPARED[entry],
+                            is_tracked_galeem_active(entry),
+                            INITIAL_ACTIVATION_ATTEMPTED[entry],
+                            hidden_cpu_id != 0 && sv_battle_object::is_active(hidden_cpu_id),
+                        )
+                    };
+                    let respawn_enabled = smash::app::smashball::is_training_mode()
+                        || CONFIG.options.boss_respawn.unwrap_or(false);
+                    if sv_information::is_ready_go() && (staged_initial_sequence || respawn_enabled)
                     {
-                        let boss_active =
-                            boss_helpers::is_tracked_boss_active(&raw const BOSS_ID, ENTRY_ID);
+                        let boss_active = is_tracked_galeem_active(ENTRY_ID);
                         let stage_one_prepared =
                             boss_helpers::is_hidden_host_entry_prep(module_accessor);
                         let stage_two_prepared =
@@ -1338,7 +1427,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             stage_one_prepared,
                             stage_two_prepared,
                         );
-                        if !boss_active && !stage_one_prepared && !stage_two_prepared {
+                        if respawn_enabled
+                            && !boss_active
+                            && !stage_one_prepared
+                            && !stage_two_prepared
+                        {
                             DEAD = false;
                             CONTROLLABLE = true;
                             JUMP_START = false;
@@ -1376,63 +1469,75 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 true,
                             );
                         }
-                        if !boss_active && stage_two_prepared {
+                        if staged_initial_sequence || (stage_two_prepared && !boss_active) {
                             log_galeem_entry_phase(
                                 "ready_go_spawn_start",
                                 module_accessor,
+                                boss_active,
                                 false,
-                                false,
-                                true,
+                                stage_two_prepared,
                             );
-                            RESULT_SPAWNED = false;
-                            let boss_boma = boss_helpers::acquire_boss_item(
-                                module_accessor,
-                                &raw mut BOSS_ID,
-                                *ITEM_KIND_KIILA,
-                            );
+                            if staged_initial_sequence {
+                                activate_staged_galeem_after_ready_go(module_accessor);
+                            } else {
+                                RESULT_SPAWNED = false;
+                                let boss_boma = boss_helpers::acquire_boss_item(
+                                    module_accessor,
+                                    &raw mut BOSS_ID,
+                                    *ITEM_KIND_KIILA,
+                                );
+                                if boss_boma.is_null() {
+                                    return;
+                                }
 
-                            let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
-                            WorkModule::set_float(
-                                boss_boma,
-                                get_boss_intensity,
-                                *ITEM_INSTANCE_WORK_FLOAT_LEVEL,
-                            );
-                            WorkModule::set_float(
-                                boss_boma,
-                                1.0,
-                                *ITEM_INSTANCE_WORK_FLOAT_STRENGTH,
-                            );
-                            WorkModule::set_int(
-                                boss_boma,
-                                *ITEM_TRAIT_FLAG_BOSS,
-                                *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG,
-                            );
-                            WorkModule::set_float(
-                                boss_boma,
-                                999.0,
-                                *ITEM_INSTANCE_WORK_FLOAT_HP_MAX,
-                            );
-                            WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-                            WorkModule::set_int(
-                                boss_boma,
-                                *ITEM_VARIATION_KIILA_DARZ,
-                                *ITEM_INSTANCE_WORK_INT_VARIATION,
-                            );
-                            ModelModule::set_scale(
-                                module_accessor,
-                                boss_helpers::HIDDEN_HOST_SCALE,
-                            );
-                            StatusModule::change_status_request_from_script(
-                                boss_boma,
-                                *ITEM_STATUS_KIND_FOR_BOSS_START,
-                                true,
-                            );
-                            println!(
-                                "[PB][Galeem][Spawn] ready_go boss_id=0x{:x} status={}",
-                                BOSS_ID[boss_helpers::entry_id(module_accessor)],
-                                StatusModule::status_kind(boss_boma),
-                            );
-                            log_galeem_spawn_state("ready_go", module_accessor, boss_boma);
+                                let get_boss_intensity =
+                                    CONFIG.options.boss_difficulty.unwrap_or(10.0);
+                                WorkModule::set_float(
+                                    boss_boma,
+                                    get_boss_intensity,
+                                    *ITEM_INSTANCE_WORK_FLOAT_LEVEL,
+                                );
+                                WorkModule::set_float(
+                                    boss_boma,
+                                    1.0,
+                                    *ITEM_INSTANCE_WORK_FLOAT_STRENGTH,
+                                );
+                                WorkModule::set_int(
+                                    boss_boma,
+                                    *ITEM_TRAIT_FLAG_BOSS,
+                                    *ITEM_INSTANCE_WORK_INT_TRAIT_FLAG,
+                                );
+                                WorkModule::set_float(
+                                    boss_boma,
+                                    999.0,
+                                    *ITEM_INSTANCE_WORK_FLOAT_HP_MAX,
+                                );
+                                WorkModule::set_float(
+                                    boss_boma,
+                                    999.0,
+                                    *ITEM_INSTANCE_WORK_FLOAT_HP,
+                                );
+                                WorkModule::set_int(
+                                    boss_boma,
+                                    *ITEM_VARIATION_KIILA_DARZ,
+                                    *ITEM_INSTANCE_WORK_INT_VARIATION,
+                                );
+                                ModelModule::set_scale(
+                                    module_accessor,
+                                    boss_helpers::HIDDEN_HOST_SCALE,
+                                );
+                                StatusModule::change_status_request_from_script(
+                                    boss_boma,
+                                    *ITEM_STATUS_KIND_FOR_BOSS_START,
+                                    true,
+                                );
+                                println!(
+                                    "[PB][Galeem][Spawn] ready_go boss_id=0x{:x} status={}",
+                                    BOSS_ID[boss_helpers::entry_id(module_accessor)],
+                                    StatusModule::status_kind(boss_boma),
+                                );
+                                log_galeem_spawn_state("ready_go", module_accessor, boss_boma);
+                            }
                         }
                     }
 
@@ -1774,10 +1879,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if sv_information::is_ready_go() == true {
                             // SET POS AND STOPS OUT OF BOUNDS
                             if ModelModule::scale(module_accessor) == 0.0001
-                                && boss_helpers::is_tracked_boss_active(
-                                    &raw const BOSS_ID,
-                                    ENTRY_ID,
-                                )
+                                && is_tracked_galeem_active(ENTRY_ID)
                             {
                                 let boss_boma = sv_battle_object::module_accessor(
                                     BOSS_ID[boss_helpers::entry_id(module_accessor)],
@@ -3320,4 +3422,24 @@ pub unsafe fn frame(fighter: &mut L2CFighterCommon) {
         return;
     }
     once_per_fighter_frame(fighter);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wol_preview_uses_core_galeem_without_battle_tracking() {
+        // Reverted: the full boss object crashed WOL on hardware.
+        unsafe {
+            assert_eq!(wol_presentation_item_kind(), *ITEM_KIND_KIILACORE);
+            assert_ne!(wol_presentation_item_kind(), *ITEM_KIND_KIILA);
+        }
+        assert_eq!(PRESENTATION_IDLE_MOTION, "wait");
+        assert_eq!(WOL_PRESENTATION_SCALE, 0.05);
+        assert_ne!(
+            core::ptr::addr_of!(BOSS_ID) as usize,
+            core::ptr::addr_of!(PREVIEW_ITEM_ID) as usize
+        );
+    }
 }

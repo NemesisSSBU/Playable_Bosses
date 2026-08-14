@@ -1944,14 +1944,9 @@ pub unsafe fn audit_match_end(
         } else {
             (false, -1, 0)
         };
-    let hidden_host_item_active = if allow_object_reads
+    let hidden_host_item_active = allow_object_reads
         && hidden_host_item_id != 0
-        && sv_battle_object::is_active(hidden_host_item_id)
-    {
-        true
-    } else {
-        false
-    };
+        && sv_battle_object::is_active(hidden_host_item_id);
 
     // The category-5 FighterManager child can outlive the ordinary summon
     // observation, so record its parent association before native result

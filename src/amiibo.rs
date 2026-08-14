@@ -32,6 +32,16 @@ pub(crate) struct NfpMatchKey {
     pub enable_unknown_numbering_id: bool,
 }
 
+fn duplicate_nfp_match_key(
+    left: Option<NfpMatchKey>,
+    right: Option<NfpMatchKey>,
+) -> Option<NfpMatchKey> {
+    match (left, right) {
+        (Some(left), Some(right)) if left == right => Some(left),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy)]
 enum AmiiboFieldType {
     Bool,
@@ -565,8 +575,8 @@ pub fn configured_mappings() -> Vec<ConfiguredBossAmiibo> {
                         || mapping.ui_amiibo_id == other.ui_amiibo_id
                         || (!mapping.remap_existing
                             && !other.remap_existing
-                            && mapping.nfp_match_key.is_some()
-                            && mapping.nfp_match_key == other.nfp_match_key))
+                            && duplicate_nfp_match_key(mapping.nfp_match_key, other.nfp_match_key)
+                                .is_some()))
             });
             (!duplicate).then_some(*mapping)
         })
@@ -625,12 +635,11 @@ pub fn validation_errors() -> Vec<String> {
                     mapping.identity.name, other.identity.name, mapping.tag_id
                 ));
             }
-            if !mapping.remap_existing
-                && !other.remap_existing
-                && mapping.nfp_match_key.is_some()
-                && mapping.nfp_match_key == other.nfp_match_key
-            {
-                let key = mapping.nfp_match_key.expect("checked above");
+            if !mapping.remap_existing && !other.remap_existing {
+                let Some(key) = duplicate_nfp_match_key(mapping.nfp_match_key, other.nfp_match_key)
+                else {
+                    continue;
+                };
                 errors.push(format!(
                     "{} and {} reuse native NFP key upper=0x{:04x} lower=0x{:02x} numbering=0x{:04x}; private virtual IDs must use unique model numbers",
                     mapping.identity.name,

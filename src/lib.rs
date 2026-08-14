@@ -152,6 +152,10 @@ unsafe fn reset_stale_match_generation_if_new_round(
     }
 
     let previous_phase = lifecycle_phase_name(BOSS_LIFECYCLE_PHASE[entry]);
+    // Clear the previous match's per-entry WOL secondary-selection latch
+    // before resolving this new round. The fresh decision made below remains
+    // armed for the new match rather than being cleared after resolution.
+    selection::reset_condensed_selection(entry);
     let selected_ui_hash = selection::selected_css_boss_selector_id(module_accessor).unwrap_or(0);
 
     // This clears only the temporary scene suppression. The selected boss UI
@@ -858,6 +862,7 @@ unsafe fn cleanup_hidden_host_post_match_transition(
         RESULT_BISECT_ACTIVE[entry_id] = false;
         RESULT_BISECT_TICKS[entry_id] = 0;
         RESULT_BISECT_ALIVE_LOGGED[entry_id] = false;
+        selection::reset_condensed_selection(entry_id);
         reset_boss_runtime_for_fighter(module_accessor, entry_id);
         crate::boss_log!(
             "[PB][ResultTransition] entry={} phase=scene_exit cleanup_action=result_bookkeeping_cleared stage=0x{:x}",
@@ -928,6 +933,7 @@ unsafe fn cleanup_hidden_host_post_match_transition(
     TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE[entry_id] = u64::MAX;
     selection::suppress_boss_selection_until_ready_go(entry_id);
     BOSS_MATCH_STARTED[entry_id] = false;
+    selection::reset_condensed_selection(entry_id);
     reset_boss_runtime_for_fighter(module_accessor, entry_id);
     BOSS_HAD_READY_GO[entry_id] = false;
     POST_MATCH_PRE_RESULT[entry_id] = false;
@@ -1016,9 +1022,11 @@ extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
         }
 
         let transition_phase = update_result_transition_state(module_accessor);
-        if transition_phase == BossTransitionPhase::Battle
-            || transition_phase == BossTransitionPhase::NotApplicable
-        {
+        let battle_active = matches!(
+            transition_phase,
+            BossTransitionPhase::Battle | BossTransitionPhase::NotApplicable
+        );
+        if battle_active {
             // Snapshot the logical boss while the battle host still owns its
             // battle item. Result mode later consumes this immutable identity
             // instead of querying mutable CSS/menu state during teardown.
@@ -1051,9 +1059,7 @@ extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
         // in ResultReady, where normal boss frames are quarantined.
         result_camera::frame(module_accessor);
         cleanup_hidden_host_post_match_transition(module_accessor);
-        if transition_phase == BossTransitionPhase::Battle
-            || transition_phase == BossTransitionPhase::NotApplicable
-        {
+        if battle_active {
             restore_plain_mario_after_hidden_host_cleanup(module_accessor);
             log_hidden_host_transition_snapshot(module_accessor);
             log_boss_presentation_snapshot(module_accessor);
@@ -1295,6 +1301,15 @@ fn read_u8_field(param_struct: &ParamStruct, field_hash: Hash40) -> Option<u8> {
         .and_then(|(_, field)| field.try_into_ref::<u8>().ok().copied())
 }
 
+#[cfg(test)]
+fn read_i8_field(param_struct: &ParamStruct, field_hash: Hash40) -> Option<i8> {
+    param_struct
+        .0
+        .iter()
+        .find(|(hash, _)| *hash == field_hash)
+        .and_then(|(_, field)| field.try_into_ref::<i8>().ok().copied())
+}
+
 fn read_bool_field(param_struct: &ParamStruct, field_hash: Hash40) -> Option<bool> {
     param_struct
         .0
@@ -1309,6 +1324,16 @@ fn read_hash40_field(param_struct: &ParamStruct, field_hash: Hash40) -> Option<H
         .iter()
         .find(|(hash, _)| *hash == field_hash)
         .and_then(|(_, field)| field.try_into_ref::<Hash40>().ok().copied())
+}
+
+#[cfg(test)]
+fn read_string_field(param_struct: &ParamStruct, field_hash: Hash40) -> Option<&str> {
+    param_struct
+        .0
+        .iter()
+        .find(|(hash, _)| *hash == field_hash)
+        .and_then(|(_, field)| field.try_into_ref::<String>().ok())
+        .map(String::as_str)
 }
 
 fn read_u16_field(param_struct: &ParamStruct, field_hash: Hash40) -> Option<u16> {
@@ -1377,6 +1402,267 @@ fn copy_field_from_struct(
     true
 }
 
+const CONDENSED_CARRIER_UI_CHARA: &str = "ui_chara_masterhand";
+const CONDENSED_NATIVE_COLOR_COUNT: u8 = 8;
+const CONDENSED_COLOR_MAP_FIELDS: [[&str; 3]; CONDENSED_NATIVE_COLOR_COUNT as usize] = [
+    ["c00_index", "n00_index", "c00_group"],
+    ["c01_index", "n01_index", "c01_group"],
+    ["c02_index", "n02_index", "c02_group"],
+    ["c03_index", "n03_index", "c03_group"],
+    ["c04_index", "n04_index", "c04_group"],
+    ["c05_index", "n05_index", "c05_group"],
+    ["c06_index", "n06_index", "c06_group"],
+    ["c07_index", "n07_index", "c07_group"],
+];
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct CondensedNativePresentation {
+    logical_index: u8,
+    logical_boss: &'static str,
+    source_ui_chara_id: &'static str,
+    layout_template_ui_chara_id: &'static str,
+    layout_template_id: &'static str,
+    carrier_layout_id: &'static str,
+    characall_field: &'static str,
+    narration_label: &'static str,
+}
+
+/// The `ui_chara_db` row remains the Master Hand carrier. Each `ui_layout_db`
+/// alias copies the boss-authored layout data when available, then uses the
+/// carrier identity and local color. Galeem and Dharkon have no native layout
+/// rows, so their 512x512 portraits use Master Hand's native boss layout.
+const CONDENSED_NATIVE_PRESENTATIONS: [CondensedNativePresentation;
+    CONDENSED_NATIVE_COLOR_COUNT as usize] = [
+    CondensedNativePresentation {
+        logical_index: 0,
+        logical_boss: "master_hand",
+        source_ui_chara_id: "ui_chara_masterhand",
+        layout_template_ui_chara_id: "ui_chara_masterhand",
+        layout_template_id: "ui_chara_master_hand_00",
+        carrier_layout_id: "ui_chara_master_hand_00",
+        characall_field: "characall_label_c00",
+        narration_label: "vc_narration_characall_masterhand",
+    },
+    CondensedNativePresentation {
+        logical_index: 1,
+        logical_boss: "crazy_hand",
+        source_ui_chara_id: "ui_chara_crazyhand",
+        layout_template_ui_chara_id: "ui_chara_crazyhand",
+        layout_template_id: "ui_chara_crazy_hand_00",
+        carrier_layout_id: "ui_chara_master_hand_01",
+        characall_field: "characall_label_c01",
+        narration_label: "vc_narration_characall_crazyhand",
+    },
+    CondensedNativePresentation {
+        logical_index: 2,
+        logical_boss: "dharkon",
+        source_ui_chara_id: "ui_chara_darz",
+        layout_template_ui_chara_id: "ui_chara_masterhand",
+        layout_template_id: "ui_chara_master_hand_00",
+        carrier_layout_id: "ui_chara_master_hand_02",
+        characall_field: "characall_label_c02",
+        narration_label: "vc_narration_characall_darz",
+    },
+    CondensedNativePresentation {
+        logical_index: 3,
+        logical_boss: "galeem",
+        source_ui_chara_id: "ui_chara_kiila",
+        layout_template_ui_chara_id: "ui_chara_masterhand",
+        layout_template_id: "ui_chara_master_hand_00",
+        carrier_layout_id: "ui_chara_master_hand_03",
+        characall_field: "characall_label_c03",
+        narration_label: "vc_narration_characall_kiila",
+    },
+    CondensedNativePresentation {
+        logical_index: 4,
+        logical_boss: "ganon_boss",
+        source_ui_chara_id: "ui_chara_ganonboss",
+        layout_template_ui_chara_id: "ui_chara_ganonboss",
+        layout_template_id: "ui_chara_ganonboss_00",
+        carrier_layout_id: "ui_chara_master_hand_04",
+        characall_field: "characall_label_c04",
+        narration_label: "vc_narration_characall_ganonboss",
+    },
+    CondensedNativePresentation {
+        logical_index: 5,
+        logical_boss: "rathalos",
+        source_ui_chara_id: "ui_chara_lioleus",
+        layout_template_ui_chara_id: "ui_chara_lioleus",
+        layout_template_id: "ui_chara_lioleus_00",
+        carrier_layout_id: "ui_chara_master_hand_05",
+        characall_field: "characall_label_c05",
+        narration_label: "vc_narration_characall_lioleus",
+    },
+    CondensedNativePresentation {
+        logical_index: 6,
+        logical_boss: "dracula",
+        source_ui_chara_id: "ui_chara_dracula",
+        layout_template_ui_chara_id: "ui_chara_dracula",
+        layout_template_id: "ui_chara_dracula_00",
+        carrier_layout_id: "ui_chara_master_hand_06",
+        characall_field: "characall_label_c06",
+        narration_label: "vc_narration_characall_dracula",
+    },
+    CondensedNativePresentation {
+        logical_index: 7,
+        logical_boss: "marx",
+        source_ui_chara_id: "ui_chara_marx",
+        layout_template_ui_chara_id: "ui_chara_marx",
+        layout_template_id: "ui_chara_marx_00",
+        carrier_layout_id: "ui_chara_master_hand_07",
+        characall_field: "characall_label_c07",
+        narration_label: "vc_narration_characall_marx",
+    },
+];
+const CONDENSED_SUPPRESSED_UI_CHARA: [&str; 9] = [
+    "ui_chara_crazyhand",
+    "ui_chara_darz",
+    "ui_chara_kiila",
+    "ui_chara_ganonboss",
+    "ui_chara_lioleus",
+    "ui_chara_dracula",
+    "ui_chara_marx",
+    "ui_chara_mewtwo_masterhand",
+    "ui_chara_galleom",
+];
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum CondensedCssRole {
+    Carrier,
+    Suppressed,
+    Untouched,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum CondensedCarrierError {
+    MissingCarrierNameId,
+    InvalidCarrierNameId,
+    MissingMarioColorMapField(&'static str),
+    InvalidMarioColorMapField(&'static str),
+}
+
+#[inline]
+fn condensed_css_enabled() -> bool {
+    CONFIG.options.condense_bosses_into_single_slot()
+}
+
+fn condensed_css_role(ui_chara_id: &str) -> CondensedCssRole {
+    if ui_chara_id == CONDENSED_CARRIER_UI_CHARA {
+        CondensedCssRole::Carrier
+    } else if CONDENSED_SUPPRESSED_UI_CHARA.contains(&ui_chara_id) {
+        CondensedCssRole::Suppressed
+    } else {
+        CondensedCssRole::Untouched
+    }
+}
+
+fn apply_condensed_css_visibility_for_mode(
+    charroot: &mut ParamStruct,
+    ui_chara_id: &str,
+    condensed_enabled: bool,
+) {
+    if !condensed_enabled {
+        return;
+    }
+
+    match condensed_css_role(ui_chara_id) {
+        CondensedCssRole::Carrier => {
+            patch_bool_field(charroot, to_hash40("can_select"), true);
+            patch_bool_field(charroot, to_hash40("is_hidden_boss"), false);
+        }
+        CondensedCssRole::Suppressed => {
+            // Keep the database row and selector intact for Amiibo and runtime
+            // identity consumers; only remove its standalone CSS availability.
+            patch_bool_field(charroot, to_hash40("can_select"), false);
+            patch_bool_field(charroot, to_hash40("is_hidden_boss"), true);
+            patch_i8_field(charroot, to_hash40("disp_order"), -1);
+            patch_i8_field(charroot, to_hash40("skill_list_order"), -1);
+        }
+        CondensedCssRole::Untouched => {}
+    }
+}
+
+fn apply_condensed_css_visibility(charroot: &mut ParamStruct, ui_chara_id: &str) {
+    apply_condensed_css_visibility_for_mode(charroot, ui_chara_id, condensed_css_enabled());
+}
+
+fn configure_condensed_masterhand_carrier_fields(
+    charroot: &mut ParamStruct,
+    mario_row: &ParamStruct,
+) -> Result<usize, CondensedCarrierError> {
+    let name_id_hash = to_hash40("name_id");
+    let Some((_, name_id_field)) = charroot.0.iter().find(|(hash, _)| *hash == name_id_hash) else {
+        return Err(CondensedCarrierError::MissingCarrierNameId);
+    };
+    let Ok(name_id) = name_id_field.try_into_ref::<String>() else {
+        return Err(CondensedCarrierError::InvalidCarrierNameId);
+    };
+    if name_id != "masterhand" {
+        return Err(CondensedCarrierError::InvalidCarrierNameId);
+    }
+
+    // `color_num` alone does not create selectable variations. A normal
+    // fighter row also maps each local slot through cXX_index, nXX_index, and
+    // cXX_group. Copy Mario's complete named maps so the Mario-backed carrier
+    // produces real host colors 0..7 without requesting any new costumes.
+    for field_name in CONDENSED_COLOR_MAP_FIELDS.iter().flatten() {
+        let field_hash = to_hash40(field_name);
+        let Some((_, value)) = mario_row.0.iter().find(|(hash, _)| *hash == field_hash) else {
+            return Err(CondensedCarrierError::MissingMarioColorMapField(field_name));
+        };
+        if value.try_into_ref::<u8>().is_err() {
+            return Err(CondensedCarrierError::InvalidMarioColorMapField(field_name));
+        }
+    }
+    for field_name in CONDENSED_COLOR_MAP_FIELDS.iter().flatten() {
+        let copied = copy_field_from_struct(mario_row, charroot, to_hash40(field_name));
+        debug_assert!(copied);
+    }
+
+    apply_condensed_css_visibility_for_mode(charroot, CONDENSED_CARRIER_UI_CHARA, true);
+    // Keep the native string-valued `name_id = "masterhand"` untouched. Smash
+    // uses it for both masterhand_XX resources and per-color MSBT labels.
+    upsert_u8_field(
+        charroot,
+        to_hash40("color_num"),
+        CONDENSED_NATIVE_COLOR_COUNT,
+    );
+
+    // Native colors remain visually Ganon and Master Hand. Shield selects
+    // Galleom from Ganon or WOL Master Hand from Master Hand without asking Mario to
+    // load an unsupported ninth/tenth costume.
+    for presentation in CONDENSED_NATIVE_PRESENTATIONS {
+        upsert_hash40_field(
+            charroot,
+            to_hash40(presentation.characall_field),
+            to_hash40(presentation.narration_label),
+        );
+    }
+    Ok(CONDENSED_COLOR_MAP_FIELDS.len() * CONDENSED_COLOR_MAP_FIELDS[0].len())
+}
+
+/// Condensed mode owns the carrier/suppression rows regardless of legacy CSS
+/// options. With condensed mode off, this is exactly the previous CUSTOM_CSS
+/// and per-boss/Amiibo callback policy. Character-name detection is selection
+/// logic and deliberately cannot disable these named PRC mutations.
+fn should_install_item_boss_css_callback(
+    condensed_enabled: bool,
+    custom_css: bool,
+    _detect_character_name: bool,
+    individual_css_enabled: bool,
+    amiibo_mapping_enabled: bool,
+) -> bool {
+    condensed_enabled || (!custom_css && (individual_css_enabled || amiibo_mapping_enabled))
+}
+
+fn should_install_giga_bowser_css_callback(
+    custom_css: bool,
+    giga_bowser_css: bool,
+    amiibo_mapping_enabled: bool,
+) -> bool {
+    !custom_css && (giga_bowser_css || amiibo_mapping_enabled)
+}
+
 #[arc_callback]
 fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     // ARCropolis may invoke a file callback more than once. Always start from
@@ -1399,15 +1685,16 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         );
         return None;
     }
-    let mut reader = std::io::Cursor::new(&data[..original_size]);
-    let mut root = match prc::read_stream(&mut reader) {
-        Ok(root) => root,
-        Err(error) => {
-            crate::boss_log!("[PB][Amiibo] failed to parse ui_amiibo_db.prc: {:?}", error);
-            return None;
+    let mut root = {
+        let mut reader = std::io::Cursor::new(&data[..original_size]);
+        match prc::read_stream(&mut reader) {
+            Ok(root) => root,
+            Err(error) => {
+                crate::boss_log!("[PB][Amiibo] failed to parse ui_amiibo_db.prc: {:?}", error);
+                return None;
+            }
         }
     };
-    drop(reader);
     let db_root_hash = to_hash40("db_root");
     let root_field_count = root.0.len();
     let Some((_, db_root)) = root.0.iter_mut().find(|(key, _)| *key == db_root_hash) else {
@@ -1760,21 +2047,26 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         return Some(original_size);
     }
 
-    let mut writer = std::io::Cursor::new(&mut *data);
-    if let Err(error) = write_stream(&mut writer, &root) {
-        drop(writer);
-        if load_original_file(hash, &mut data).is_none() {
+    let written_size = {
+        let mut writer = std::io::Cursor::new(&mut *data);
+        write_stream(&mut writer, &root).map(|_| writer.position() as usize)
+    };
+    let written_size = match written_size {
+        Ok(written_size) => written_size,
+        Err(error) => {
+            if load_original_file(hash, &mut data).is_none() {
+                crate::boss_log!(
+                    "[PB][Amiibo] failed to restore the original ui_amiibo_db.prc after a write error; failing closed"
+                );
+                return None;
+            }
             crate::boss_log!(
-                "[PB][Amiibo] failed to restore the original ui_amiibo_db.prc after a write error; failing closed"
+                "[PB][Amiibo] failed to write patched ui_amiibo_db.prc: {:?}",
+                error
             );
-            return None;
+            return Some(original_size);
         }
-        crate::boss_log!(
-            "[PB][Amiibo] failed to write patched ui_amiibo_db.prc: {:?}",
-            error
-        );
-        return Some(original_size);
-    }
+    };
 
     crate::boss_log!(
         "[PB][Amiibo] ui_amiibo_db.prc entries {} -> {} (added={} remapped={})",
@@ -1783,7 +2075,7 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         added,
         remapped
     );
-    Some(writer.position() as usize)
+    Some(written_size)
 }
 
 #[arc_callback]
@@ -1848,6 +2140,115 @@ fn callback_koopag_layout(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
+    Some(writer.position() as usize)
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum CondensedLayoutError {
+    MissingLayoutTemplate(&'static str),
+    MissingNamedFields(&'static str),
+}
+
+fn ensure_condensed_carrier_layouts(
+    db_root_list: &mut ParamList,
+) -> Result<usize, CondensedLayoutError> {
+    let ui_layout_id_hash = to_hash40("ui_layout_id");
+    let ui_chara_id_hash = to_hash40("ui_chara_id");
+    let chara_color_hash = to_hash40("chara_color");
+
+    // Prepare all rows before mutating the database so a missing boss layout
+    // cannot leave a partially rewritten carrier.
+    let mut prepared_layouts = Vec::with_capacity(CONDENSED_NATIVE_PRESENTATIONS.len());
+    for presentation in CONDENSED_NATIVE_PRESENTATIONS {
+        let layout_template_id = to_hash40(presentation.layout_template_id);
+        let Some(mut cloned_layout) = db_root_list
+            .0
+            .iter()
+            .find(|param| struct_hash40_field_matches(param, ui_layout_id_hash, layout_template_id))
+            .and_then(|param| param.try_into_ref::<ParamStruct>().ok())
+            .cloned()
+        else {
+            return Err(CondensedLayoutError::MissingLayoutTemplate(
+                presentation.layout_template_id,
+            ));
+        };
+
+        let target_layout_id = to_hash40(presentation.carrier_layout_id);
+        let template_chara_id = to_hash40(presentation.layout_template_ui_chara_id);
+        if read_hash40_field(&cloned_layout, ui_chara_id_hash) != Some(template_chara_id)
+            || !patch_hash40_field(&mut cloned_layout, ui_layout_id_hash, target_layout_id)
+            || !patch_hash40_field(
+                &mut cloned_layout,
+                ui_chara_id_hash,
+                to_hash40(CONDENSED_CARRIER_UI_CHARA),
+            )
+            || !patch_u8_field(
+                &mut cloned_layout,
+                chara_color_hash,
+                presentation.logical_index,
+            )
+        {
+            return Err(CondensedLayoutError::MissingNamedFields(
+                presentation.layout_template_id,
+            ));
+        }
+
+        prepared_layouts.push((target_layout_id, cloned_layout));
+    }
+
+    for (target_layout_id, cloned_layout) in prepared_layouts {
+        if let Some(target_param) = db_root_list
+            .0
+            .iter_mut()
+            .find(|param| struct_hash40_field_matches(param, ui_layout_id_hash, target_layout_id))
+        {
+            *target_param = ParamKind::Struct(cloned_layout);
+        } else {
+            db_root_list.0.push(ParamKind::Struct(cloned_layout));
+        }
+    }
+
+    Ok(CONDENSED_NATIVE_PRESENTATIONS.len())
+}
+
+#[arc_callback]
+fn callback_condensed_boss_layout(hash: u64, mut data: &mut [u8]) -> Option<usize> {
+    load_original_file(hash, &mut data);
+    let mut reader = std::io::Cursor::new(&mut data);
+    let mut root = prc::read_stream(&mut reader).unwrap();
+    let original_size = reader.position() as usize;
+    let (db_root_hash, db_root) = &mut root.0[0];
+    assert_eq!(*db_root_hash, to_hash40("db_root"));
+    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
+
+    let carrier_layout_count = match ensure_condensed_carrier_layouts(db_root_list) {
+        Ok(count) => count,
+        Err(reason) => {
+            crate::boss_log!("[PB][CondensedBossCSS] ui_layout_db failure={:?}", reason);
+            return Some(original_size);
+        }
+    };
+
+    let mut writer = std::io::Cursor::new(data);
+    write_stream(&mut writer, &root).unwrap();
+    crate::boss_log!(
+        "[PB][CondensedBossCSS] carrier_layouts={} presentation=boss_layout_data+carrier_identity_assets asset_name_id=masterhand native_colors=0..7",
+        carrier_layout_count
+    );
+    for presentation in CONDENSED_NATIVE_PRESENTATIONS {
+        crate::boss_log!(
+            "[PB][CondensedBossCSS] logical_index={} logical_boss={} carrier_layout={} layout_template={} layout_template_ui_chara={} source_ui_chara={} asset_ui_chara={} chara_color={} asset_color={:02} asset_families=chara_1|chara_2|chara_4|chara_7",
+            presentation.logical_index,
+            presentation.logical_boss,
+            presentation.carrier_layout_id,
+            presentation.layout_template_id,
+            presentation.layout_template_ui_chara_id,
+            presentation.source_ui_chara_id,
+            CONDENSED_CARRIER_UI_CHARA,
+            presentation.logical_index,
+            presentation.logical_index
+        );
+    }
     Some(writer.position() as usize)
 }
 
@@ -1991,21 +2392,26 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
     let mut reader = std::io::Cursor::new(&mut data);
     let mut root = prc::read_stream(&mut reader).unwrap();
+    let original_size = reader.position() as usize;
     let (db_root_hash, db_root) = &mut root.0[0];
     assert_eq!(*db_root_hash, to_hash40("db_root"));
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
-    let charroot = db_root_list
+    let ui_chara_id_hash = to_hash40("ui_chara_id");
+    let carrier_index = db_root_list
         .0
-        .iter_mut()
-        .find(|param| {
-            let ui_chara_struct = param.try_into_ref::<ParamStruct>().unwrap();
-            let (_, ui_chara_id) = &ui_chara_struct.0[0];
-            let ui_chara_hash = ui_chara_id.try_into_ref::<Hash40>().unwrap();
-            *ui_chara_hash == to_hash40("ui_chara_masterhand")
+        .iter()
+        .position(|param| {
+            struct_hash40_field_matches(
+                param,
+                ui_chara_id_hash,
+                to_hash40(CONDENSED_CARRIER_UI_CHARA),
+            )
         })
+        .expect("ui_chara_db must contain ui_chara_masterhand");
+    let mut charroot = db_root_list.0[carrier_index]
+        .try_into_ref::<ParamStruct>()
         .unwrap()
-        .try_into_mut::<ParamStruct>()
-        .unwrap();
+        .clone();
     charroot.0.iter_mut().for_each(|(hash, param)| {
         if *hash == to_hash40("can_select") {
             *param.try_into_mut::<bool>().unwrap() = true;
@@ -2039,15 +2445,78 @@ fn callback_masterhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
             *param.try_into_mut::<Hash40>().unwrap() = to_hash40("ui_series_smashbros");
         }
     });
-    patch_css_selector_fields(charroot, "ui_chara_masterhand", 0x160);
+    patch_css_selector_fields(&mut charroot, "ui_chara_masterhand", 0x160);
+    if condensed_css_enabled() {
+        let mario_row = db_root_list
+            .0
+            .iter()
+            .find(|param| {
+                struct_hash40_field_matches(param, ui_chara_id_hash, to_hash40("ui_chara_mario"))
+            })
+            .and_then(|param| param.try_into_ref::<ParamStruct>().ok())
+            .cloned();
+
+        match mario_row {
+            Some(mario_row) => {
+                match configure_condensed_masterhand_carrier_fields(&mut charroot, &mario_row) {
+                    Ok(copied_color_fields) => {
+                        if crate::debug::enabled() {
+                            let mut costume_indices = [u8::MAX; 8];
+                            let mut local_indices = [u8::MAX; 8];
+                            let mut color_groups = [u8::MAX; 8];
+                            for (color, field_names) in
+                                CONDENSED_COLOR_MAP_FIELDS.iter().enumerate()
+                            {
+                                costume_indices[color] =
+                                    read_u8_field(&charroot, to_hash40(field_names[0]))
+                                        .unwrap_or(u8::MAX);
+                                local_indices[color] =
+                                    read_u8_field(&charroot, to_hash40(field_names[1]))
+                                        .unwrap_or(u8::MAX);
+                                color_groups[color] =
+                                    read_u8_field(&charroot, to_hash40(field_names[2]))
+                                        .unwrap_or(u8::MAX);
+                            }
+                            crate::boss_log!(
+                                "[PB][CondensedBossCSS] carrier=ui_chara_masterhand name_id=masterhand native_colors={} copied_mario_color_map_fields={} c_indices={:?} n_indices={:?} c_groups={:?} galleom=ganon_color+shield wol_master_hand=master_hand_color+shield backing=fighter_kind_mario",
+                                CONDENSED_NATIVE_COLOR_COUNT,
+                                copied_color_fields,
+                                costume_indices,
+                                local_indices,
+                                color_groups
+                            );
+                        }
+                    }
+                    Err(reason) => {
+                        crate::boss_log!(
+                            "[PB][CondensedBossCSS] carrier=ui_chara_masterhand action=preserve_traditional_master_hand reason={:?}",
+                            reason
+                        );
+                    }
+                }
+            }
+            None => {
+                crate::boss_log!(
+                    "[PB][CondensedBossCSS] carrier=ui_chara_masterhand action=preserve_traditional_master_hand reason=missing_ui_chara_mario_template"
+                );
+            }
+        }
+    }
+    db_root_list.0[carrier_index] = ParamKind::Struct(charroot);
     amiibo_preview::log_ui_chara_db_boundary(
         "ui_chara_masterhand",
         "fighter_kind_mario",
         "item:masterhand",
     );
     let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
+    if let Err(error) = write_stream(&mut writer, &root) {
+        crate::boss_log!(
+            "[PB][CondensedBossCSS] ui_chara_db write failed: {:?}",
+            error
+        );
+        return Some(original_size);
+    }
+    Some(writer.position() as usize)
 }
 
 // Crazy Hand
@@ -2106,6 +2575,7 @@ fn callback_crazyhand(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
     });
     patch_css_selector_fields(charroot, "ui_chara_crazyhand", 0x169);
+    apply_condensed_css_visibility(charroot, "ui_chara_crazyhand");
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -2166,6 +2636,7 @@ fn callback_dharkon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
     });
     patch_css_selector_fields(charroot, "ui_chara_darz", 0x19A);
+    apply_condensed_css_visibility(charroot, "ui_chara_darz");
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -2226,6 +2697,7 @@ fn callback_galeem(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
     });
     patch_css_selector_fields(charroot, "ui_chara_kiila", 0x18F);
+    apply_condensed_css_visibility(charroot, "ui_chara_kiila");
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -2286,6 +2758,7 @@ fn callback_marx(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
     });
     patch_css_selector_fields(charroot, "ui_chara_marx", 0x180);
+    apply_condensed_css_visibility(charroot, "ui_chara_marx");
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -2347,6 +2820,7 @@ fn callback_ganon(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
     });
     patch_css_selector_fields(charroot, "ui_chara_ganonboss", 0x172);
+    apply_condensed_css_visibility(charroot, "ui_chara_ganonboss");
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -2407,6 +2881,7 @@ fn callback_dracula(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
     });
     patch_css_selector_fields(charroot, "ui_chara_dracula", 0x175);
+    apply_condensed_css_visibility(charroot, "ui_chara_dracula");
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -2467,6 +2942,7 @@ fn callback_galleom(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
     });
     patch_css_selector_fields(charroot, "ui_chara_galleom", 0x16F);
+    apply_condensed_css_visibility(charroot, "ui_chara_galleom");
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -2527,6 +3003,7 @@ fn callback_rathalos(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
     });
     patch_css_selector_fields(charroot, "ui_chara_lioleus", 0x188);
+    apply_condensed_css_visibility(charroot, "ui_chara_lioleus");
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -2588,6 +3065,7 @@ fn callback_wolmh(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         }
     });
     patch_css_selector_fields(charroot, "ui_chara_mewtwo_masterhand", 0x1A6);
+    apply_condensed_css_visibility(charroot, "ui_chara_mewtwo_masterhand");
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
     return Some(writer.position() as usize);
@@ -2879,7 +3357,9 @@ pub fn main() {
     let opts = &cfg.options;
     amiibo_preview::install_nro_trace();
     let giga_bowser_normal = !opts.giga_bowser_normal.unwrap_or(false);
-    let use_disp_order_char = !opts.custom_css.unwrap_or(false);
+    let condensed_css = opts.condense_bosses_into_single_slot();
+    let custom_css = opts.custom_css.unwrap_or(false);
+    let detect_character_name = opts.detect_character_name.unwrap_or(false);
     let master_hand_css = opts.master_hand_css.unwrap_or(true);
     let crazy_hand_css = opts.crazy_hand_css.unwrap_or(true);
     let dharkon_css = opts.dharkon_css.unwrap_or(true);
@@ -2938,9 +3418,15 @@ pub fn main() {
         if !amiibo_mappings.is_empty() {
             amiibo_preview::log_mapping_profiles(&amiibo_mappings);
         }
-        if !use_disp_order_char && !amiibo_mappings.is_empty() {
+        if !condensed_css && custom_css && !amiibo_mappings.is_empty() {
             crate::boss_log!(
                 "[PB][Amiibo] CUSTOM_CSS=true: amiibo rows require the user's custom ui_chara_db entries"
+            );
+        }
+        if condensed_css {
+            crate::boss_log!(
+                "[PB][CondensedBossCSS] enabled=true custom_css={} carrier=ui_chara_masterhand native_colors=8 galleom=ganon_color+shield wol_master_hand=master_hand_color+shield",
+                custom_css
             );
         }
     }
@@ -2959,43 +3445,110 @@ pub fn main() {
         callback_amiibo::install("ui/param/database/ui_amiibo_db.prc", MAX_FILE_SIZE);
     }
 
-    if use_disp_order_char {
-        if giga_bowser_css || amiibo_has("giga_bowser") {
-            callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if giga_bowser_css || amiibo_has("giga_bowser") {
-            callback_koopag_layout::install("ui/param/database/ui_layout_db.prc", MAX_FILE_SIZE);
-        }
-        if master_hand_css || amiibo_has("master_hand") {
-            callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if crazy_hand_css || amiibo_has("crazy_hand") {
-            callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if dharkon_css || amiibo_has("dharkon") {
-            callback_dharkon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if galeem_css || amiibo_has("galeem") {
-            callback_galeem::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if dracula_css || amiibo_has("dracula") {
-            callback_dracula::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if marx_css || amiibo_has("marx") {
-            callback_marx::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if ganon_css || amiibo_has("ganon_boss") {
-            callback_ganon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if galleom_css || amiibo_has("galleom") {
-            callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if rathalos_css || amiibo_has("rathalos") {
-            callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
-        if wol_master_hand_css || amiibo_has("wol_master_hand") {
-            callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        }
+    if should_install_giga_bowser_css_callback(
+        custom_css,
+        giga_bowser_css,
+        amiibo_has("giga_bowser"),
+    ) {
+        callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+        callback_koopag_layout::install("ui/param/database/ui_layout_db.prc", MAX_FILE_SIZE);
+    }
+
+    if should_install_item_boss_css_callback(
+        condensed_css,
+        custom_css,
+        detect_character_name,
+        master_hand_css,
+        amiibo_has("master_hand"),
+    ) {
+        callback_masterhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+    }
+    if should_install_item_boss_css_callback(
+        condensed_css,
+        custom_css,
+        detect_character_name,
+        crazy_hand_css,
+        amiibo_has("crazy_hand"),
+    ) {
+        callback_crazyhand::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+    }
+    if should_install_item_boss_css_callback(
+        condensed_css,
+        custom_css,
+        detect_character_name,
+        dharkon_css,
+        amiibo_has("dharkon"),
+    ) {
+        callback_dharkon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+    }
+    if should_install_item_boss_css_callback(
+        condensed_css,
+        custom_css,
+        detect_character_name,
+        galeem_css,
+        amiibo_has("galeem"),
+    ) {
+        callback_galeem::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+    }
+    if should_install_item_boss_css_callback(
+        condensed_css,
+        custom_css,
+        detect_character_name,
+        dracula_css,
+        amiibo_has("dracula"),
+    ) {
+        callback_dracula::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+    }
+    if should_install_item_boss_css_callback(
+        condensed_css,
+        custom_css,
+        detect_character_name,
+        marx_css,
+        amiibo_has("marx"),
+    ) {
+        callback_marx::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+    }
+    if should_install_item_boss_css_callback(
+        condensed_css,
+        custom_css,
+        detect_character_name,
+        ganon_css,
+        amiibo_has("ganon_boss"),
+    ) {
+        callback_ganon::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+    }
+    if should_install_item_boss_css_callback(
+        condensed_css,
+        custom_css,
+        detect_character_name,
+        galleom_css,
+        amiibo_has("galleom"),
+    ) {
+        callback_galleom::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+    }
+    if should_install_item_boss_css_callback(
+        condensed_css,
+        custom_css,
+        detect_character_name,
+        rathalos_css,
+        amiibo_has("rathalos"),
+    ) {
+        callback_rathalos::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+    }
+    if should_install_item_boss_css_callback(
+        condensed_css,
+        custom_css,
+        detect_character_name,
+        wol_master_hand_css,
+        amiibo_has("wol_master_hand"),
+    ) {
+        callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
+    }
+    if condensed_css {
+        callback_condensed_boss_layout::install(
+            "ui/param/database/ui_layout_db.prc",
+            MAX_FILE_SIZE,
+        );
     }
 
     if final2_stage {
@@ -3018,5 +3571,851 @@ pub fn main() {
     }
     if dracula_stage {
         callback_map_7::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+    }
+}
+
+#[cfg(test)]
+mod condensed_css_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn read_le_u16(data: &[u8], offset: usize) -> u16 {
+        u16::from_le_bytes(data[offset..offset + 2].try_into().unwrap())
+    }
+
+    fn read_le_u32(data: &[u8], offset: usize) -> u32 {
+        u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap())
+    }
+
+    fn read_le_u64(data: &[u8], offset: usize) -> u64 {
+        u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap())
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct BntxTextureInfo<'a> {
+        name: &'a str,
+        width: u32,
+        height: u32,
+    }
+
+    fn parse_single_texture_bntx(data: &[u8]) -> BntxTextureInfo<'_> {
+        assert!(data.len() >= 0x40, "truncated BNTX");
+        assert_eq!(&data[..4], b"BNTX");
+        assert_eq!(read_le_u32(data, 0x1c) as usize, data.len());
+        assert_eq!(&data[0x20..0x24], b"NX  ");
+        assert_eq!(read_le_u32(data, 0x24), 1, "expected one texture");
+
+        let texture_table = read_le_u64(data, 0x28) as usize;
+        assert!(texture_table + 8 <= data.len());
+        let brti = read_le_u64(data, texture_table) as usize;
+        assert!(brti + 0x68 <= data.len());
+        assert_eq!(&data[brti..brti + 4], b"BRTI");
+
+        let name_length_offset = read_le_u64(data, brti + 0x60) as usize;
+        assert!(name_length_offset + 2 <= data.len());
+        let name_length = usize::from(read_le_u16(data, name_length_offset));
+        let name_start = name_length_offset + 2;
+        let name_end = name_start + name_length;
+        assert!(name_end < data.len());
+        assert_eq!(data[name_end], 0, "BNTX texture name must be terminated");
+
+        BntxTextureInfo {
+            name: std::str::from_utf8(&data[name_start..name_end]).unwrap(),
+            width: read_le_u32(data, brti + 0x24),
+            height: read_le_u32(data, brti + 0x28),
+        }
+    }
+
+    fn find_section(data: &[u8], magic: &[u8; 4]) -> usize {
+        data.windows(magic.len())
+            .position(|window| window == magic)
+            .unwrap_or_else(|| panic!("missing {:?} section", std::str::from_utf8(magic)))
+    }
+
+    fn bntx_texture_payload(data: &[u8]) -> &[u8] {
+        let start = find_section(data, b"BRTD") + 0x10;
+        let end = data[start..]
+            .windows(4)
+            .position(|window| window == b"_RLT")
+            .map(|offset| start + offset)
+            .expect("missing BNTX relocation section");
+        &data[start..end]
+    }
+
+    fn fnv1a64(data: &[u8]) -> u64 {
+        data.iter().fold(0xcbf29ce484222325, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+        })
+    }
+
+    fn assert_manifest_path_once(manifest: &str, path: &str) {
+        assert_eq!(
+            manifest.matches(path).count(),
+            1,
+            "{path} must appear exactly once in the install manifest"
+        );
+    }
+
+    fn msbt_label_group(label: &str, group_count: u32) -> u32 {
+        label.bytes().fold(0u32, |hash, byte| {
+            hash.wrapping_mul(0x492).wrapping_add(u32::from(byte))
+        }) % group_count
+    }
+
+    fn parse_msbt_label_indices(data: &[u8]) -> BTreeMap<String, u32> {
+        assert_eq!(&data[..8], b"MsgStdBn");
+        assert_eq!(&data[8..10], b"\xff\xfe", "test archive must be LE");
+        assert_eq!(read_le_u32(data, 0x12) as usize, data.len());
+
+        let section_count = usize::from(read_le_u16(data, 0x0e));
+        let mut section_offset = 0x20usize;
+        for _ in 0..section_count {
+            let section_size = read_le_u32(data, section_offset + 4) as usize;
+            if &data[section_offset..section_offset + 4] == b"LBL1" {
+                let payload_offset = section_offset + 0x10;
+                let group_count = read_le_u32(data, payload_offset);
+                let mut labels = BTreeMap::new();
+                for group in 0..group_count {
+                    let group_entry = payload_offset + 4 + group as usize * 8;
+                    let label_count = read_le_u32(data, group_entry);
+                    let mut cursor = payload_offset + read_le_u32(data, group_entry + 4) as usize;
+                    for _ in 0..label_count {
+                        let label_length = usize::from(data[cursor]);
+                        cursor += 1;
+                        let label = std::str::from_utf8(&data[cursor..cursor + label_length])
+                            .unwrap()
+                            .to_owned();
+                        cursor += label_length;
+                        let text_index = read_le_u32(data, cursor);
+                        cursor += 4;
+                        assert_eq!(
+                            msbt_label_group(&label, group_count),
+                            group,
+                            "MSBT label is stored in the wrong hash group: {label}"
+                        );
+                        assert!(labels.insert(label, text_index).is_none());
+                    }
+                }
+                return labels;
+            }
+            section_offset = (section_offset + 0x10 + section_size + 0x0f) & !0x0f;
+        }
+
+        panic!("msg_name.msbt has no LBL1 section");
+    }
+
+    fn parse_msbt_texts(data: &[u8]) -> Vec<String> {
+        let section_count = usize::from(read_le_u16(data, 0x0e));
+        let mut section_offset = 0x20usize;
+        for _ in 0..section_count {
+            let section_size = read_le_u32(data, section_offset + 4) as usize;
+            if &data[section_offset..section_offset + 4] == b"TXT2" {
+                let payload_offset = section_offset + 0x10;
+                let text_count = read_le_u32(data, payload_offset) as usize;
+                return (0..text_count)
+                    .map(|index| {
+                        let relative_offset =
+                            read_le_u32(data, payload_offset + 4 + index * 4) as usize;
+                        let mut cursor = payload_offset + relative_offset;
+                        let mut utf16 = Vec::new();
+                        loop {
+                            let code_unit = read_le_u16(data, cursor);
+                            cursor += 2;
+                            if code_unit == 0 {
+                                break;
+                            }
+                            utf16.push(code_unit);
+                        }
+                        String::from_utf16(&utf16).expect("invalid UTF-16 in msg_name.msbt")
+                    })
+                    .collect();
+            }
+            section_offset = (section_offset + 0x10 + section_size + 0x0f) & !0x0f;
+        }
+
+        panic!("msg_name.msbt has no TXT2 section");
+    }
+
+    fn css_visibility_row(
+        can_select: bool,
+        is_hidden_boss: bool,
+        disp_order: i8,
+        skill_list_order: i8,
+    ) -> ParamStruct {
+        ParamStruct(vec![
+            (to_hash40("can_select"), ParamKind::Bool(can_select)),
+            (to_hash40("is_hidden_boss"), ParamKind::Bool(is_hidden_boss)),
+            (to_hash40("disp_order"), ParamKind::I8(disp_order)),
+            (
+                to_hash40("skill_list_order"),
+                ParamKind::I8(skill_list_order),
+            ),
+        ])
+    }
+
+    fn mario_color_map_row() -> ParamStruct {
+        let mut fields = Vec::new();
+        for (color, field_names) in CONDENSED_COLOR_MAP_FIELDS.iter().enumerate() {
+            fields.push((to_hash40(field_names[0]), ParamKind::U8(color as u8)));
+            fields.push((to_hash40(field_names[1]), ParamKind::U8(16 + color as u8)));
+            fields.push((to_hash40(field_names[2]), ParamKind::U8(32 + color as u8)));
+        }
+        ParamStruct(fields)
+    }
+
+    fn masterhand_carrier_row() -> ParamStruct {
+        let mut row = css_visibility_row(false, true, 118, 87);
+        row.0.push((
+            to_hash40("name_id"),
+            ParamKind::Str("masterhand".to_owned()),
+        ));
+        row
+    }
+
+    #[test]
+    fn condensed_css_roles_are_explicit_for_every_required_entry() {
+        assert_eq!(
+            CONDENSED_SUPPRESSED_UI_CHARA,
+            [
+                "ui_chara_crazyhand",
+                "ui_chara_darz",
+                "ui_chara_kiila",
+                "ui_chara_ganonboss",
+                "ui_chara_lioleus",
+                "ui_chara_dracula",
+                "ui_chara_marx",
+                "ui_chara_mewtwo_masterhand",
+                "ui_chara_galleom",
+            ]
+        );
+        assert_eq!(
+            condensed_css_role(CONDENSED_CARRIER_UI_CHARA),
+            CondensedCssRole::Carrier
+        );
+        for ui_chara_id in CONDENSED_SUPPRESSED_UI_CHARA {
+            assert_eq!(
+                condensed_css_role(ui_chara_id),
+                CondensedCssRole::Suppressed,
+                "{ui_chara_id} must not remain a standalone condensed CSS entry"
+            );
+        }
+        assert_eq!(
+            condensed_css_role("ui_chara_koopag"),
+            CondensedCssRole::Untouched
+        );
+    }
+
+    #[test]
+    fn condensed_visibility_mutations_preserve_rows_and_leave_giga_untouched() {
+        let mut carrier = css_visibility_row(false, true, 118, 87);
+        apply_condensed_css_visibility_for_mode(&mut carrier, CONDENSED_CARRIER_UI_CHARA, true);
+        assert_eq!(
+            read_bool_field(&carrier, to_hash40("can_select")),
+            Some(true)
+        );
+        assert_eq!(
+            read_bool_field(&carrier, to_hash40("is_hidden_boss")),
+            Some(false)
+        );
+
+        for ui_chara_id in CONDENSED_SUPPRESSED_UI_CHARA {
+            let mut row = css_visibility_row(true, false, 120, 90);
+            apply_condensed_css_visibility_for_mode(&mut row, ui_chara_id, true);
+            assert_eq!(read_bool_field(&row, to_hash40("can_select")), Some(false));
+            assert_eq!(
+                read_bool_field(&row, to_hash40("is_hidden_boss")),
+                Some(true)
+            );
+            assert_eq!(read_i8_field(&row, to_hash40("disp_order")), Some(-1));
+            assert_eq!(read_i8_field(&row, to_hash40("skill_list_order")), Some(-1));
+        }
+
+        let mut giga = css_visibility_row(true, false, 117, 86);
+        let original_giga = giga.clone();
+        apply_condensed_css_visibility_for_mode(&mut giga, "ui_chara_koopag", true);
+        assert_eq!(giga, original_giga);
+
+        let mut disabled = css_visibility_row(true, false, 120, 90);
+        let original_disabled = disabled.clone();
+        apply_condensed_css_visibility_for_mode(&mut disabled, "ui_chara_crazyhand", false);
+        assert_eq!(disabled, original_disabled);
+    }
+
+    #[test]
+    fn carrier_row_exposes_exactly_native_colors_zero_through_seven() {
+        let mut carrier = masterhand_carrier_row();
+        let mario = mario_color_map_row();
+        assert_eq!(
+            configure_condensed_masterhand_carrier_fields(&mut carrier, &mario),
+            Ok(24)
+        );
+
+        assert_eq!(CONDENSED_NATIVE_COLOR_COUNT, 8);
+        assert_eq!(
+            read_u8_field(&carrier, to_hash40("color_num")),
+            Some(CONDENSED_NATIVE_COLOR_COUNT)
+        );
+        assert_eq!(
+            read_string_field(&carrier, to_hash40("name_id")),
+            Some("masterhand")
+        );
+        assert_eq!(read_hash40_field(&carrier, to_hash40("name_id")), None);
+        assert_eq!(
+            carrier
+                .0
+                .iter()
+                .filter(|(hash, _)| *hash == to_hash40("name_id"))
+                .count(),
+            1,
+            "the carrier must retain exactly one string-valued name_id"
+        );
+        for (color, field_names) in CONDENSED_COLOR_MAP_FIELDS.iter().enumerate() {
+            assert_eq!(
+                read_u8_field(&carrier, to_hash40(field_names[0])),
+                Some(color as u8)
+            );
+            assert_eq!(
+                read_u8_field(&carrier, to_hash40(field_names[1])),
+                Some(16 + color as u8)
+            );
+            assert_eq!(
+                read_u8_field(&carrier, to_hash40(field_names[2])),
+                Some(32 + color as u8)
+            );
+        }
+        for presentation in CONDENSED_NATIVE_PRESENTATIONS {
+            assert_eq!(
+                read_hash40_field(&carrier, to_hash40(presentation.characall_field)),
+                Some(to_hash40(presentation.narration_label))
+            );
+        }
+    }
+
+    #[test]
+    fn carrier_color_map_setup_is_atomic_when_mario_schema_is_incomplete() {
+        let carrier = masterhand_carrier_row();
+        let mut incomplete_mario = mario_color_map_row();
+        incomplete_mario
+            .0
+            .retain(|(hash, _)| *hash != to_hash40("n07_index"));
+        let mut candidate = carrier.clone();
+
+        assert_eq!(
+            configure_condensed_masterhand_carrier_fields(&mut candidate, &incomplete_mario),
+            Err(CondensedCarrierError::MissingMarioColorMapField(
+                "n07_index"
+            ))
+        );
+        assert_eq!(candidate, carrier);
+    }
+
+    #[test]
+    fn carrier_rejects_a_non_string_name_id_without_mutation() {
+        let mut carrier = css_visibility_row(false, true, 118, 87);
+        carrier.0.push((
+            to_hash40("name_id"),
+            ParamKind::Hash(to_hash40("masterhand")),
+        ));
+        let original = carrier.clone();
+
+        assert_eq!(
+            configure_condensed_masterhand_carrier_fields(&mut carrier, &mario_color_map_row()),
+            Err(CondensedCarrierError::InvalidCarrierNameId)
+        );
+        assert_eq!(carrier, original);
+    }
+
+    #[test]
+    fn native_presentation_table_is_complete_ordered_and_unique() {
+        let expected = [
+            (
+                0,
+                "master_hand",
+                "ui_chara_masterhand",
+                "ui_chara_masterhand",
+                "ui_chara_master_hand_00",
+                "ui_chara_master_hand_00",
+            ),
+            (
+                1,
+                "crazy_hand",
+                "ui_chara_crazyhand",
+                "ui_chara_crazyhand",
+                "ui_chara_crazy_hand_00",
+                "ui_chara_master_hand_01",
+            ),
+            (
+                2,
+                "dharkon",
+                "ui_chara_darz",
+                "ui_chara_masterhand",
+                "ui_chara_master_hand_00",
+                "ui_chara_master_hand_02",
+            ),
+            (
+                3,
+                "galeem",
+                "ui_chara_kiila",
+                "ui_chara_masterhand",
+                "ui_chara_master_hand_00",
+                "ui_chara_master_hand_03",
+            ),
+            (
+                4,
+                "ganon_boss",
+                "ui_chara_ganonboss",
+                "ui_chara_ganonboss",
+                "ui_chara_ganonboss_00",
+                "ui_chara_master_hand_04",
+            ),
+            (
+                5,
+                "rathalos",
+                "ui_chara_lioleus",
+                "ui_chara_lioleus",
+                "ui_chara_lioleus_00",
+                "ui_chara_master_hand_05",
+            ),
+            (
+                6,
+                "dracula",
+                "ui_chara_dracula",
+                "ui_chara_dracula",
+                "ui_chara_dracula_00",
+                "ui_chara_master_hand_06",
+            ),
+            (
+                7,
+                "marx",
+                "ui_chara_marx",
+                "ui_chara_marx",
+                "ui_chara_marx_00",
+                "ui_chara_master_hand_07",
+            ),
+        ];
+
+        assert_eq!(CONDENSED_NATIVE_PRESENTATIONS.len(), expected.len());
+        for (presentation, expected) in CONDENSED_NATIVE_PRESENTATIONS.iter().zip(expected) {
+            assert_eq!(
+                (
+                    presentation.logical_index,
+                    presentation.logical_boss,
+                    presentation.source_ui_chara_id,
+                    presentation.layout_template_ui_chara_id,
+                    presentation.layout_template_id,
+                    presentation.carrier_layout_id,
+                ),
+                expected
+            );
+        }
+
+        for (index, presentation) in CONDENSED_NATIVE_PRESENTATIONS.iter().enumerate() {
+            for other in CONDENSED_NATIVE_PRESENTATIONS.iter().skip(index + 1) {
+                assert_ne!(presentation.source_ui_chara_id, other.source_ui_chara_id);
+                assert_ne!(presentation.carrier_layout_id, other.carrier_layout_id);
+                assert_ne!(presentation.characall_field, other.characall_field);
+            }
+        }
+    }
+
+    #[test]
+    fn carrier_layout_callback_uses_carrier_identity_and_local_color() {
+        let layout_templates = [
+            ("ui_chara_master_hand_00", "ui_chara_masterhand", 0),
+            ("ui_chara_crazy_hand_00", "ui_chara_crazyhand", 1),
+            ("ui_chara_ganonboss_00", "ui_chara_ganonboss", 4),
+            ("ui_chara_lioleus_00", "ui_chara_lioleus", 5),
+            ("ui_chara_dracula_00", "ui_chara_dracula", 6),
+            ("ui_chara_marx_00", "ui_chara_marx", 7),
+        ];
+        let mut layouts = ParamList(
+            layout_templates
+                .iter()
+                .map(|(layout_id, ui_chara_id, marker)| {
+                    ParamKind::Struct(ParamStruct(vec![
+                        (
+                            to_hash40("ui_layout_id"),
+                            ParamKind::Hash(to_hash40(layout_id)),
+                        ),
+                        (
+                            to_hash40("ui_chara_id"),
+                            ParamKind::Hash(to_hash40(ui_chara_id)),
+                        ),
+                        (to_hash40("chara_color"), ParamKind::U8(7)),
+                        (to_hash40("presentation_marker"), ParamKind::U8(*marker)),
+                    ]))
+                })
+                .collect(),
+        );
+
+        assert_eq!(ensure_condensed_carrier_layouts(&mut layouts), Ok(8));
+        assert_eq!(layouts.0.len(), 13);
+        for presentation in CONDENSED_NATIVE_PRESENTATIONS {
+            let row = layouts
+                .0
+                .iter()
+                .find(|param| {
+                    struct_hash40_field_matches(
+                        param,
+                        to_hash40("ui_layout_id"),
+                        to_hash40(presentation.carrier_layout_id),
+                    )
+                })
+                .and_then(|param| param.try_into_ref::<ParamStruct>().ok())
+                .expect("every native carrier variation needs a layout row");
+            assert_eq!(
+                read_hash40_field(row, to_hash40("ui_chara_id")),
+                Some(to_hash40(CONDENSED_CARRIER_UI_CHARA))
+            );
+            assert_eq!(
+                read_u8_field(row, to_hash40("chara_color")),
+                Some(presentation.logical_index)
+            );
+            assert_eq!(
+                read_u8_field(row, to_hash40("presentation_marker")),
+                layout_templates
+                    .iter()
+                    .find(|(layout_id, _, _)| *layout_id == presentation.layout_template_id)
+                    .map(|(_, _, marker)| *marker),
+                "the full native layout template must survive aliasing"
+            );
+        }
+
+        for (layout_id, ui_chara_id, _) in layout_templates {
+            let source_row = layouts
+                .0
+                .iter()
+                .find(|param| {
+                    struct_hash40_field_matches(
+                        param,
+                        to_hash40("ui_layout_id"),
+                        to_hash40(layout_id),
+                    )
+                })
+                .and_then(|param| param.try_into_ref::<ParamStruct>().ok())
+                .expect("condensed aliases must preserve native layout templates");
+            assert_eq!(
+                read_hash40_field(source_row, to_hash40("ui_chara_id")),
+                Some(to_hash40(ui_chara_id))
+            );
+        }
+        assert!(!CONDENSED_NATIVE_PRESENTATIONS
+            .iter()
+            .any(|presentation| presentation.carrier_layout_id == "ui_chara_master_hand_08"));
+    }
+
+    #[test]
+    fn condensed_native_portraits_are_installable_and_self_named() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let manifest = std::fs::read_to_string(root.join("ultimate/mods/Bosses/config.json"))
+            .expect("missing ARCropolis mod manifest");
+        // Colors 1-7 are byte-for-byte Ultimate's native boss texture payloads
+        // from the matching chara_1 family. Only their single BNTX texture key
+        // is changed to the Master Hand carrier's color-specific lookup.
+        let native_payload_fingerprints = [
+            0xb451a665b2de2d9f,
+            0x3c93b7ca716a256e,
+            0x0c51f6e5b257133a,
+            0x6d4d97d9c81a8590,
+            0xf76775032f8ae450,
+            0xb3bedd15e7b87e4e,
+            0xce44555f1fc66007,
+        ];
+        for color in 0..CONDENSED_NATIVE_COLOR_COUNT {
+            let internal_name = format!("chara_1_masterhand_{color:02}");
+            let relative_path =
+                format!("ultimate/mods/Bosses/ui/replace/chara/chara_1/{internal_name}.bntx");
+            let data = std::fs::read(root.join(&relative_path))
+                .unwrap_or_else(|_| panic!("missing condensed portrait asset {relative_path}"));
+            let info = parse_single_texture_bntx(&data);
+            assert_eq!(info.name, internal_name);
+            assert_manifest_path_once(
+                &manifest,
+                relative_path.trim_start_matches("ultimate/mods/Bosses/"),
+            );
+
+            if color > 0 {
+                assert_eq!(data.len(), 266_344);
+                assert_eq!((info.width, info.height), (512, 512));
+                assert_eq!(
+                    fnv1a64(bntx_texture_payload(&data)),
+                    native_payload_fingerprints[usize::from(color - 1)],
+                    "color {color} must retain its source-proven native boss portrait payload"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn condensed_native_css_icons_are_installable_and_self_named() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let manifest = std::fs::read_to_string(root.join("ultimate/mods/Bosses/config.json"))
+            .expect("missing ARCropolis mod manifest");
+
+        // Color zero uses Ultimate's existing Master Hand icon. The remaining
+        // carrier colors are new resource paths and must ship explicitly.
+        let variant_names = [
+            "masterhand",
+            "crazyhand",
+            "darz",
+            "kiila",
+            "ganonboss",
+            "lioleus",
+            "dracula",
+            "marx",
+        ];
+        for color in 1..CONDENSED_NATIVE_COLOR_COUNT {
+            let internal_name = format!("chara_4_masterhand_{color:02}");
+            let relative_path =
+                format!("ultimate/mods/Bosses/ui/replace/chara/chara_4/{internal_name}.bntx");
+            let data = std::fs::read(root.join(&relative_path))
+                .unwrap_or_else(|_| panic!("missing condensed CSS icon {relative_path}"));
+            assert_eq!(parse_single_texture_bntx(&data).name, internal_name);
+
+            let source_name = variant_names[usize::from(color)];
+            let source_path = root.join(format!(
+                "ultimate/mods/Bosses/ui/replace/chara/chara_4/chara_4_{source_name}_00.bntx"
+            ));
+            let source_data = std::fs::read(&source_path)
+                .unwrap_or_else(|_| panic!("missing source CSS icon {}", source_path.display()));
+            assert_eq!(
+                bntx_texture_payload(&data),
+                bntx_texture_payload(&source_data),
+                "color {color} must retain the {source_name} CSS icon payload"
+            );
+            assert_manifest_path_once(
+                &manifest,
+                relative_path.trim_start_matches("ultimate/mods/Bosses/"),
+            );
+        }
+
+        assert!(
+            !manifest.contains("chara_4_masterhand_00.bntx"),
+            "the native color-zero icon must not be declared as a missing new file"
+        );
+    }
+
+    #[test]
+    fn condensed_native_stock_and_layout_portraits_are_installable_and_self_named() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let manifest = std::fs::read_to_string(root.join("ultimate/mods/Bosses/config.json"))
+            .expect("missing ARCropolis mod manifest");
+        let variant_names = [
+            "masterhand",
+            "crazyhand",
+            "darz",
+            "kiila",
+            "ganonboss",
+            "lioleus",
+            "dracula",
+            "marx",
+        ];
+
+        for family in [2, 7] {
+            for color in 0..CONDENSED_NATIVE_COLOR_COUNT {
+                let internal_name = format!("chara_{family}_masterhand_{color:02}");
+                let relative_path = format!(
+                    "ultimate/mods/Bosses/ui/replace/chara/chara_{family}/{internal_name}.bntx"
+                );
+                let data = std::fs::read(root.join(&relative_path))
+                    .unwrap_or_else(|_| panic!("missing condensed carrier asset {relative_path}"));
+                assert_eq!(parse_single_texture_bntx(&data).name, internal_name);
+                assert_manifest_path_once(
+                    &manifest,
+                    relative_path.trim_start_matches("ultimate/mods/Bosses/"),
+                );
+
+                if color > 0 {
+                    let source_name = variant_names[usize::from(color)];
+                    let source_path = root.join(format!(
+                        "ultimate/mods/Bosses/ui/replace/chara/chara_{family}/chara_{family}_{source_name}_00.bntx"
+                    ));
+                    let source_data = std::fs::read(&source_path).unwrap_or_else(|_| {
+                        panic!("missing carrier source asset {}", source_path.display())
+                    });
+                    assert_eq!(
+                        bntx_texture_payload(&data),
+                        bntx_texture_payload(&source_data),
+                        "family {family} color {color} must retain the {source_name} texture payload"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn condensed_name_archive_contains_carrier_and_variant_labels() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let data = std::fs::read(root.join("ultimate/mods/Bosses/ui/message/msg_name.msbt"))
+            .expect("missing supplied msg_name.msbt");
+        let labels = parse_msbt_label_indices(&data);
+        let texts = parse_msbt_texts(&data);
+
+        for name_id in [
+            "playable_bosses",
+            "masterhand",
+            "crazyhand",
+            "darz",
+            "kiila",
+            "ganonboss",
+            "lioleus",
+            "dracula",
+            "marx",
+            "galleom",
+            "mewtwo_masterhand",
+        ] {
+            for prefix in [
+                "nam_chr0_00_",
+                "nam_chr1_00_",
+                "nam_chr2_00_",
+                "nam_chr3_00_",
+            ] {
+                let label = format!("{prefix}{name_id}");
+                assert!(labels.contains_key(&label), "missing message label {label}");
+            }
+        }
+
+        let variant_names = [
+            "masterhand",
+            "crazyhand",
+            "darz",
+            "kiila",
+            "ganonboss",
+            "lioleus",
+            "dracula",
+            "marx",
+        ];
+        for prefix in ["nam_chr0", "nam_chr1", "nam_chr2", "nam_chr3"] {
+            for (color, source_name) in variant_names.iter().enumerate() {
+                let source_label = format!("{prefix}_00_{source_name}");
+                let carrier_label = format!("{prefix}_{color:02}_masterhand");
+                assert_eq!(
+                    labels.get(&carrier_label),
+                    labels.get(&source_label),
+                    "carrier color {color} must reuse the existing {source_name} text through the active masterhand lookup"
+                );
+            }
+        }
+
+        let expected_text = [
+            [
+                "Master Hand",
+                "Crazy Hand",
+                "Dharkon",
+                "Galeem",
+                "Ganon",
+                "Rathalos",
+                "Dracula",
+                "Marx",
+            ],
+            [
+                "Master Hand",
+                "Crazy Hand",
+                "Dharkon",
+                "Galeem",
+                "Ganon, The Demon King",
+                "Rathalos",
+                "Dracula",
+                "Marx",
+            ],
+            [
+                "MASTER HAND",
+                "CRAZY HAND",
+                "DHARKON",
+                "GALEEM",
+                "GANON",
+                "RATHALOS",
+                "DRACULA",
+                "MARX",
+            ],
+            [
+                "MASTER HAND",
+                "CRAZY HAND",
+                "DHARKON",
+                "GALEEM",
+                "GANON",
+                "RATHALOS",
+                "DRACULA",
+                "MARX",
+            ],
+        ];
+        for (prefix_index, prefix) in ["nam_chr0", "nam_chr1", "nam_chr2", "nam_chr3"]
+            .iter()
+            .enumerate()
+        {
+            for color in 0..CONDENSED_NATIVE_COLOR_COUNT {
+                let label = format!("{prefix}_{color:02}_masterhand");
+                let text_index = usize::try_from(labels[&label]).unwrap();
+                assert_eq!(
+                    texts[text_index],
+                    expected_text[prefix_index][usize::from(color)],
+                    "incorrect visible name for carrier color {color} in {prefix}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn carrier_layout_aliasing_is_atomic_when_a_source_layout_is_missing() {
+        let original = ParamList(vec![ParamKind::Struct(ParamStruct(vec![
+            (
+                to_hash40("ui_layout_id"),
+                ParamKind::Hash(to_hash40("ui_chara_master_hand_00")),
+            ),
+            (
+                to_hash40("ui_chara_id"),
+                ParamKind::Hash(to_hash40("ui_chara_masterhand")),
+            ),
+            (to_hash40("chara_color"), ParamKind::U8(0)),
+        ]))]);
+        let mut layouts = original.clone();
+
+        assert_eq!(
+            ensure_condensed_carrier_layouts(&mut layouts),
+            Err(CondensedLayoutError::MissingLayoutTemplate(
+                "ui_chara_crazy_hand_00"
+            ))
+        );
+        assert_eq!(layouts, original);
+    }
+
+    #[test]
+    fn condensed_config_takes_precedence_over_legacy_css_options() {
+        // Required matrix: condensed mode owns the item-boss rows regardless
+        // of CUSTOM_CSS, DETECT_CHARACTER_NAME, or individual row flags.
+        assert!(should_install_item_boss_css_callback(
+            true, false, true, false, false
+        ));
+        assert!(should_install_item_boss_css_callback(
+            true, true, false, false, false
+        ));
+        assert!(should_install_item_boss_css_callback(
+            true, false, true, true, false
+        ));
+
+        // With condensed mode off, preserve the prior CUSTOM_CSS and
+        // per-boss/Amiibo behavior exactly.
+        assert!(should_install_item_boss_css_callback(
+            false, false, true, true, false
+        ));
+        assert!(should_install_item_boss_css_callback(
+            false, false, false, false, true
+        ));
+        assert!(!should_install_item_boss_css_callback(
+            false, false, true, false, false
+        ));
+        assert!(!should_install_item_boss_css_callback(
+            false, true, false, false, false
+        ));
+        assert!(!should_install_item_boss_css_callback(
+            false, true, false, true, true
+        ));
+    }
+
+    #[test]
+    fn condensed_mode_does_not_change_giga_bowser_callback_policy() {
+        assert!(should_install_giga_bowser_css_callback(false, true, false));
+        assert!(should_install_giga_bowser_css_callback(false, false, true));
+        assert!(!should_install_giga_bowser_css_callback(true, true, true));
     }
 }

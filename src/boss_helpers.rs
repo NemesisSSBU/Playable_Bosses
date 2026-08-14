@@ -95,8 +95,23 @@ pub unsafe fn is_operation_cpu_entry(
     fighter_manager: *mut FighterManager,
     entry_id: usize,
 ) -> bool {
-    // This is only the operation-CPU bit. It is not a Figure Player test; the
-    // pinned public bindings do not expose a separate NFP/FP discriminator.
+    // This is only the operation-CPU bit. It is NOT a Figure Player test.
+    //
+    // Audited against the pinned bindings: they expose no FP/NFP/amiibo/
+    // FigurePlayer symbol of any kind, and `FighterInformation` exposes
+    // exactly one operation predicate (`is_operation_cpu`) with no level,
+    // personality, or learning-state accessor. An ordinary CPU and a Figure
+    // Player are therefore indistinguishable at this boundary.
+    //
+    // Consequence, recorded deliberately rather than papered over: every boss
+    // spawn writes `BOSS_DIFFICULTY` into the boss item's
+    // `ITEM_INSTANCE_WORK_FLOAT_LEVEL` unconditionally, so an FP-backed boss
+    // receives the configured difficulty rather than its own amiibo level.
+    // That cannot be fixed by gating on this predicate — gating on it would
+    // catch FPs too. Input authority IS preserved (the plugin only sets
+    // `CONTROLLABLE` when this returns false, so Nintendo keeps driving CPU
+    // and FP hosts). Do not invent an amiibo-level -> difficulty mapping to
+    // close the gap; no source-backed relationship exists.
     let info = fighter_information_entry(fighter_manager, entry_id);
     !info.is_null() && FighterInformation::is_operation_cpu(info)
 }
@@ -298,14 +313,66 @@ pub unsafe fn held_item_by_kind(
             continue;
         }
         let item_kind = smash::app::utility::get_kind(&mut *item_boma);
-        if expected_kinds
-            .iter()
-            .any(|&expected_kind| expected_kind == item_kind)
-        {
+        if expected_kinds.contains(&item_kind) {
             return Some((slot, item_id, item_boma));
         }
     }
     None
+}
+
+#[inline(always)]
+pub unsafe fn tracked_item_by_kind(
+    slot_ids: *const [u32; 8],
+    entry: usize,
+    expected_kind: i32,
+) -> Option<(u32, *mut BattleObjectModuleAccessor)> {
+    if slot_ids.is_null() {
+        return None;
+    }
+
+    let item_id = (*slot_ids)[entry.min(7)];
+    if item_id == 0 || !sv_battle_object::is_active(item_id) {
+        return None;
+    }
+
+    let item_boma = sv_battle_object::module_accessor(item_id);
+    if item_boma.is_null() || smash::app::utility::get_kind(&mut *item_boma) != expected_kind {
+        return None;
+    }
+
+    Some((item_id, item_boma))
+}
+
+#[inline(always)]
+pub const fn should_discard_tracked_boss(
+    ready_go: bool,
+    transition_quarantined: bool,
+    expected_kind_active: bool,
+    staged_boss_prepared: bool,
+) -> bool {
+    !transition_quarantined && (!expected_kind_active || (!ready_go && !staged_boss_prepared))
+}
+
+#[inline(always)]
+pub const fn staged_boss_ready_for_activation(
+    staged_boss_prepared: bool,
+    expected_kind_active: bool,
+    activation_attempted: bool,
+    hidden_helper_active: bool,
+) -> bool {
+    staged_boss_prepared && expected_kind_active && !activation_attempted && hidden_helper_active
+}
+
+#[inline(always)]
+pub unsafe fn maintain_nonbattle_boss_presentation(item_boma: *mut BattleObjectModuleAccessor) {
+    if item_boma.is_null() {
+        return;
+    }
+
+    AttackModule::clear_all(item_boma);
+    HitModule::set_whole(item_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+    DamageModule::set_damage_lock(item_boma, true);
+    JostleModule::set_status(item_boma, false);
 }
 
 extern "C" {
@@ -361,7 +428,7 @@ pub unsafe fn clear_owned_boss_item_slot(
     }
 
     let tracked_kind = smash::app::utility::get_kind(&mut *tracked_boma);
-    if !expected_kinds.iter().any(|&kind| kind == tracked_kind) {
+    if !expected_kinds.contains(&tracked_kind) {
         if crate::debug::enabled() {
             crate::boss_log!(
                 "[PB][BossItem] owned_clear refused entry={} tracked_id=0x{:x} tracked_kind={} expected={:?}",
@@ -423,13 +490,21 @@ pub unsafe fn is_hidden_host(module_accessor: *mut BattleObjectModuleAccessor) -
 }
 
 #[inline(always)]
+fn within_epsilon(value: f32, expected: f32, epsilon: f32) -> bool {
+    (expected - epsilon..=expected + epsilon).contains(&value)
+}
+
+#[inline(always)]
 pub unsafe fn is_hidden_host_entry_prep(module_accessor: *mut BattleObjectModuleAccessor) -> bool {
     if module_accessor.is_null() {
         return false;
     }
     let scale = ModelModule::scale(module_accessor);
-    scale >= HIDDEN_HOST_ENTRY_PREP_SCALE - HIDDEN_HOST_ENTRY_PREP_EPSILON
-        && scale <= HIDDEN_HOST_ENTRY_PREP_SCALE + HIDDEN_HOST_ENTRY_PREP_EPSILON
+    within_epsilon(
+        scale,
+        HIDDEN_HOST_ENTRY_PREP_SCALE,
+        HIDDEN_HOST_ENTRY_PREP_EPSILON,
+    )
 }
 
 #[inline(always)]
@@ -440,8 +515,11 @@ pub unsafe fn is_hidden_host_entry_stage_two(
         return false;
     }
     let scale = ModelModule::scale(module_accessor);
-    scale >= HIDDEN_HOST_ENTRY_STAGE2_SCALE - HIDDEN_HOST_ENTRY_PREP_EPSILON
-        && scale <= HIDDEN_HOST_ENTRY_STAGE2_SCALE + HIDDEN_HOST_ENTRY_PREP_EPSILON
+    within_epsilon(
+        scale,
+        HIDDEN_HOST_ENTRY_STAGE2_SCALE,
+        HIDDEN_HOST_ENTRY_PREP_EPSILON,
+    )
 }
 
 #[inline(always)]
@@ -450,8 +528,11 @@ pub unsafe fn is_hidden_host_baseline(module_accessor: *mut BattleObjectModuleAc
         return false;
     }
     let scale = ModelModule::scale(module_accessor);
-    scale >= HIDDEN_HOST_BASELINE_SCALE - HIDDEN_HOST_BASELINE_EPSILON
-        && scale <= HIDDEN_HOST_BASELINE_SCALE + HIDDEN_HOST_BASELINE_EPSILON
+    within_epsilon(
+        scale,
+        HIDDEN_HOST_BASELINE_SCALE,
+        HIDDEN_HOST_BASELINE_EPSILON,
+    )
 }
 
 #[inline(always)]
@@ -561,7 +642,7 @@ pub unsafe fn restore_plain_mario_visuals(module_accessor: *mut BattleObjectModu
     };
     PostureModule::set_rot(module_accessor, &reset_rot, 0);
 
-    let mut reset_joint_rot = Vector3f {
+    let reset_joint_rot = Vector3f {
         x: 0.0,
         y: 0.0,
         z: 0.0,
@@ -569,7 +650,7 @@ pub unsafe fn restore_plain_mario_visuals(module_accessor: *mut BattleObjectModu
     ModelModule::set_joint_rotate(
         module_accessor,
         Hash40::new("root"),
-        &mut reset_joint_rot,
+        &reset_joint_rot,
         smash::app::MotionNodeRotateCompose {
             _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
         },
@@ -672,4 +753,28 @@ pub fn is_boss_passthrough_stage(stage_id: i32) -> bool {
 #[inline(always)]
 pub fn is_boss_nonbattle_stage(stage_id: i32) -> bool {
     is_boss_preview_stage(stage_id) || is_boss_passthrough_stage(stage_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{should_discard_tracked_boss, staged_boss_ready_for_activation};
+
+    #[test]
+    fn battle_tracking_requires_the_expected_kind_and_an_explicit_preparation_phase() {
+        assert!(should_discard_tracked_boss(false, false, true, false));
+        assert!(!should_discard_tracked_boss(false, false, true, true));
+        assert!(should_discard_tracked_boss(false, false, false, true));
+        assert!(should_discard_tracked_boss(true, false, false, false));
+        assert!(!should_discard_tracked_boss(true, false, true, false));
+        assert!(!should_discard_tracked_boss(false, true, true, false));
+    }
+
+    #[test]
+    fn staged_activation_uses_verified_lifecycle_state_not_a_host_scale_marker() {
+        assert!(staged_boss_ready_for_activation(true, true, false, true));
+        assert!(!staged_boss_ready_for_activation(false, true, false, true));
+        assert!(!staged_boss_ready_for_activation(true, false, false, true));
+        assert!(!staged_boss_ready_for_activation(true, true, true, true));
+        assert!(!staged_boss_ready_for_activation(true, true, false, false));
+    }
 }

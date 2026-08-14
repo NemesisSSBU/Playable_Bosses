@@ -1479,7 +1479,7 @@ unsafe fn set_root_joint_rotation(
         return;
     }
 
-    let mut root_rotation = Vector3f {
+    let root_rotation = Vector3f {
         x: rotation[0],
         y: rotation[1],
         z: rotation[2],
@@ -1487,7 +1487,7 @@ unsafe fn set_root_joint_rotation(
     ModelModule::set_joint_rotate(
         module_accessor,
         Hash40::new("root"),
-        &mut root_rotation,
+        &root_rotation,
         smash::app::MotionNodeRotateCompose {
             _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
         },
@@ -1836,7 +1836,7 @@ unsafe fn apply_item_presentation(
     let expected_motion = smash::hash40(profile.idle_motion);
     let motion_before = MotionModule::motion_kind(item_boma);
     let frame_before = MotionModule::frame(item_boma);
-    if state.apply_profile_idle_motion && MotionModule::motion_kind(item_boma) != expected_motion {
+    if state.apply_profile_idle_motion && motion_before != expected_motion {
         MotionModule::change_motion(
             item_boma,
             Hash40::new(profile.idle_motion),
@@ -1876,14 +1876,15 @@ unsafe fn apply_item_presentation(
     }
 
     maintain_item_presentation_safety(item_boma);
+    let motion = MotionModule::motion_kind(item_boma);
     ItemPresentationApplyResult {
-        motion: MotionModule::motion_kind(item_boma),
+        motion,
         native_rotation_after_motion,
         native_lr_after_motion,
         desired_presentation_rotation: profile.presentation_rotation,
         final_presentation_rotation: presentation_rotation(item_boma),
         motion_before,
-        motion_after_change: MotionModule::motion_kind(item_boma),
+        motion_after_change: motion,
         frame_before,
     }
 }
@@ -2121,6 +2122,7 @@ unsafe fn log_transform_calibration(
 /// - A tap:              cycle axis x -> y -> z
 /// - X or Y (jump) tap:  cycle target item_root -> item_posture -> host_root
 /// - A held ~1s:         reset the current target to its configured baseline
+///
 /// Engaging the chord logs a snapshot without changing anything.
 ///
 /// The right stick is intentionally never read: it is Nintendo's native
@@ -2971,9 +2973,9 @@ unsafe fn activate_verified_item_presentation(
             state.viewer_anchor.initial_position[0],
             state.viewer_anchor.initial_position[1],
             state.viewer_anchor.initial_position[2],
-            viewer_host_position(module_accessor)[0],
-            viewer_host_position(module_accessor)[1],
-            viewer_host_position(module_accessor)[2],
+            host_position[0],
+            host_position[1],
+            host_position[2],
             state.viewer_anchor.position[0],
             state.viewer_anchor.position[1],
             state.viewer_anchor.position[2],
@@ -3999,6 +4001,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
             if transform_window_complete && !state.transform_ready_logged {
                 state.transform_ready_logged = true;
                 if crate::debug::enabled() {
+                    let current_host_position = viewer_host_position(module_accessor);
                     crate::boss_log!(
                         "[PB][AmiiboPreviewRuntime] transform_ready generation={} logical_boss={} presentation_object_id=0x{:x} initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) desired_position=({:.3},{:.3},{:.3}) actual_position=({:.3},{:.3},{:.3}) presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) final_presentation_rotation=({:.1},{:.1},{:.1}) desired_scale={:.4} actual_scale={:.4} motion=0x{:x} status={} ownership={} slot_still_held={}",
                         state.viewer_generation,
@@ -4007,9 +4010,9 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                         state.viewer_anchor.initial_position[0],
                         state.viewer_anchor.initial_position[1],
                         state.viewer_anchor.initial_position[2],
-                        viewer_host_position(module_accessor)[0],
-                        viewer_host_position(module_accessor)[1],
-                        viewer_host_position(module_accessor)[2],
+                        current_host_position[0],
+                        current_host_position[1],
+                        current_host_position[2],
                         state.viewer_anchor.position[0],
                         state.viewer_anchor.position[1],
                         state.viewer_anchor.position[2],
@@ -4044,6 +4047,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                 let host_visible = VisibilityModule::is_visible(module_accessor);
                 let host_model_visible = ModelModule::is_visible(module_accessor);
                 if crate::debug::enabled() {
+                    let current_host_position = viewer_host_position(module_accessor);
                     crate::boss_log!(
                         "[PB][AmiiboPreviewRuntime] stable_presentation generation={} logical_boss={} presentation_object_id=0x{:x} active=true expected_kind={} actual_kind={} item_visible={} item_model_visible={} initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) boss_position=({:.3},{:.3},{:.3}) desired_position=({:.3},{:.3},{:.3}) scale={:.4} desired_scale={:.4} lr={:.3} presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) final_presentation_rotation=({:.1},{:.1},{:.1}) status={} motion=0x{:x} host_hidden={} host_scale={:.4} host_engine_visible={} host_model_visible={} ownership={} slot_still_held={} current_slot_item_id=0x{:x}",
                         state.viewer_generation,
@@ -4056,9 +4060,9 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                         state.viewer_anchor.initial_position[0],
                         state.viewer_anchor.initial_position[1],
                         state.viewer_anchor.initial_position[2],
-                        viewer_host_position(module_accessor)[0],
-                        viewer_host_position(module_accessor)[1],
-                        viewer_host_position(module_accessor)[2],
+                        current_host_position[0],
+                        current_host_position[1],
+                        current_host_position[2],
                         state.viewer_anchor.position[0],
                         state.viewer_anchor.position[1],
                         state.viewer_anchor.position[2],
@@ -4114,6 +4118,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
         let native_reclaim = !object_active || presentation_boma.is_null();
         if native_reclaim && !state.stabilization_reacquire_used {
             if crate::debug::enabled() {
+                let current_host_position = viewer_host_position(module_accessor);
                 crate::boss_log!(
                     "[PB][AmiiboPreviewRuntime] presentation_reacquire_scheduled generation={} logical_boss={} host_object_id=0x{:x} presentation_object_id=0x{:x} expected_kind={} object_active={} ownership={} attempt=1 initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) reason=native_viewer_initialization_reclaim",
                     state.viewer_generation,
@@ -4126,9 +4131,9 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                     state.viewer_anchor.initial_position[0],
                     state.viewer_anchor.initial_position[1],
                     state.viewer_anchor.initial_position[2],
-                    viewer_host_position(module_accessor)[0],
-                    viewer_host_position(module_accessor)[1],
-                    viewer_host_position(module_accessor)[2],
+                    current_host_position[0],
+                    current_host_position[1],
+                    current_host_position[2],
                     state.viewer_anchor.position[0],
                     state.viewer_anchor.position[1],
                     state.viewer_anchor.position[2],
@@ -4220,6 +4225,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
         return false;
     }
     if crate::debug::enabled() {
+        let current_host_position = viewer_host_position(module_accessor);
         crate::boss_log!(
             "[PB][AmiiboPreviewRuntime] presentation_create_begin generation={} logical_boss={} stage=0x{:x} host_object_id=0x{:x} requested_kind={} backing={} motion={} scale={:?} acquisition_recipe={} initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) anchor_offset=({:.2},{:.2},{:.2}) host_recipe={} camera=native_viewer_host",
             state.viewer_generation,
@@ -4234,9 +4240,9 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
             state.viewer_anchor.initial_position[0],
             state.viewer_anchor.initial_position[1],
             state.viewer_anchor.initial_position[2],
-            viewer_host_position(module_accessor)[0],
-            viewer_host_position(module_accessor)[1],
-            viewer_host_position(module_accessor)[2],
+            current_host_position[0],
+            current_host_position[1],
+            current_host_position[2],
             state.viewer_anchor.position[0],
             state.viewer_anchor.position[1],
             state.viewer_anchor.position[2],
@@ -4409,9 +4415,9 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
             state.viewer_anchor.initial_position[0],
             state.viewer_anchor.initial_position[1],
             state.viewer_anchor.initial_position[2],
-            viewer_host_position(module_accessor)[0],
-            viewer_host_position(module_accessor)[1],
-            viewer_host_position(module_accessor)[2],
+            host_position[0],
+            host_position[1],
+            host_position[2],
             state.viewer_anchor.position[0],
             state.viewer_anchor.position[1],
             state.viewer_anchor.position[2],
@@ -4994,7 +5000,6 @@ mod tests {
         }
         assert_ne!(*ITEM_KIND_KIILA, *ITEM_KIND_KIILACORE);
         assert_ne!(*ITEM_KIND_DARZ, *ITEM_KIND_DARZCENTIPEDE);
-
         // The hardware-proven stage-0x135 architecture is untouched.
         for profile in [galeem, dharkon] {
             assert_eq!(
@@ -5025,6 +5030,35 @@ mod tests {
                 profile.key == "galeem" || profile.key == "dharkon",
                 "boss {} must not be treated as a full-boss backing",
                 profile.key
+            );
+        }
+    }
+
+    /// Locks the truthful AI-authority position. The pinned bindings expose no
+    /// FP/NFP discriminator and no FP level accessor, so the plugin must not
+    /// pretend to support amiibo intensity. This test fails if anyone adds a
+    /// config knob implying an amiibo-level -> boss-difficulty mapping.
+    #[test]
+    fn no_fabricated_figure_player_intensity_mapping_exists() {
+        // `BOSS_DIFFICULTY` is the only intensity source, and it is a plain
+        // ordinary-CPU boss-AI value. There is deliberately no FP level, FP
+        // intensity, or amiibo-level option to derive one from.
+        let distributed = include_str!("../ultimate/mods/Bosses/config.toml");
+        let parsed: toml::Value = toml::from_str(distributed).expect("distributed config parses");
+        let options = parsed.get("options").and_then(|v| v.as_table()).unwrap();
+        assert!(options.contains_key("BOSS_DIFFICULTY"));
+        for forbidden in [
+            "AMIIBO_DIFFICULTY",
+            "FP_DIFFICULTY",
+            "FP_LEVEL",
+            "AMIIBO_LEVEL",
+            "FIGURE_PLAYER_DIFFICULTY",
+            "AMIIBO_INTENSITY",
+        ] {
+            assert!(
+                !options.contains_key(forbidden),
+                "{} implies an unsupported FP intensity mapping",
+                forbidden
             );
         }
     }
