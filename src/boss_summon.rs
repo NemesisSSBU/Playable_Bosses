@@ -6,6 +6,8 @@
 //! native child and provides a bounded timing guard around the existing native
 //! parent-death cleanup path.
 
+#![allow(dead_code)]
+
 use smash::app::lua_bind::{
     FighterEntry as FighterEntryBindings, FighterInformation, FighterManager, MotionModule,
     StatusModule, TeamModule, WorkModule,

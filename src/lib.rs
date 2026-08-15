@@ -34,6 +34,7 @@ use crate::config::CONFIG;
 const MAX_FIGHTERS: usize = 8;
 static mut BOSS_MATCH_STARTED: [bool; 8] = [false; 8];
 static mut BOSS_HAD_READY_GO: [bool; 8] = [false; 8];
+static mut MARIO_READY_GO_LOGGED: [bool; 8] = [false; 8];
 static mut POST_MATCH_PRE_RESULT: [bool; 8] = [false; 8];
 static mut RESULT_MODE_SEEN: [bool; 8] = [false; 8];
 static mut POST_MATCH_TRACKING_INVALIDATED: [bool; 8] = [false; 8];
@@ -625,8 +626,6 @@ unsafe fn update_result_transition_state(
             BossTransitionPhase::SceneExit => "scene_exit",
             _ => "quarantine",
         };
-        galeem::audit_transition(module_accessor, audit_phase, false);
-        dharkon::audit_transition(module_accessor, audit_phase, false);
 
         // Galeem/Dharkon summon tracing is observational only. Clear that
         // plugin bookkeeping at the same boundary as the other transient
@@ -1012,9 +1011,37 @@ unsafe fn restore_plain_mario_after_hidden_host_cleanup(
     );
 }
 
+unsafe fn log_mario_ready_go_dispatch_enter(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() {
+        return;
+    }
+    let entry = boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1);
+    if !smash::app::sv_information::is_ready_go() {
+        MARIO_READY_GO_LOGGED[entry] = false;
+        return;
+    }
+    if MARIO_READY_GO_LOGGED[entry] || !crate::debug::enabled() {
+        return;
+    }
+    MARIO_READY_GO_LOGGED[entry] = true;
+    let selector = selection::selected_css_boss_selector_id(module_accessor).unwrap_or(0);
+    crate::boss_log!(
+        "[PB][MarioReadyGo] edge=dispatch_enter entry={} stage=0x{:x} selector=0x{:x} have_item={} host_status={} scale={:.4}",
+        entry,
+        smash::app::stage::get_stage_id(),
+        selector,
+        ItemModule::is_have_item(module_accessor, 0),
+        StatusModule::status_kind(module_accessor),
+        ModelModule::scale(module_accessor)
+    );
+}
+
 extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let module_accessor = fighter.module_accessor;
+        log_mario_ready_go_dispatch_enter(module_accessor);
 
         // The Figure Player viewer has a real Mario host, but it is not a
         // battle host.  Its presentation-only item must consume the callback
@@ -1022,7 +1049,8 @@ extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
         // the menu scene.
         let stage_id = smash::app::stage::get_stage_id();
         let amiibo_viewer = stage_id == boss_helpers::STAGE_ID_AMIIBO_PREVIEW;
-        if amiibo_preview::frame(module_accessor, stage_id) || amiibo_viewer {
+        let amiibo_consumed = amiibo_preview::frame(module_accessor, stage_id);
+        if amiibo_consumed || amiibo_viewer {
             return;
         }
 
