@@ -3101,6 +3101,7 @@ unsafe fn restore_master_hand_after_item_wipe(
     ENTRY_ID = entry;
     let tracked_id = BOSS_ID[entry];
     if tracked_id != 0 && sv_battle_object::is_active(tracked_id) {
+        boss_helpers::ensure_boss_item_visible(sv_battle_object::module_accessor(tracked_id));
         return;
     }
     if let Some((_, held_id, _)) =
@@ -3170,6 +3171,7 @@ unsafe fn restore_crazy_hand_after_item_wipe(
     ENTRY_ID_2 = entry;
     let tracked_id = BOSS_ID_2[entry];
     if tracked_id != 0 && sv_battle_object::is_active(tracked_id) {
+        boss_helpers::ensure_boss_item_visible(sv_battle_object::module_accessor(tracked_id));
         return;
     }
     if let Some((_, held_id, _)) =
@@ -3744,6 +3746,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         let boss_boma = sv_battle_object::module_accessor(
                             BOSS_ID[boss_helpers::entry_id(module_accessor)],
                         );
+                        boss_helpers::ensure_boss_item_visible(boss_boma);
                         let x = PostureModule::pos_x(boss_boma);
                         let y = PostureModule::pos_y(boss_boma);
                         let z = PostureModule::pos_z(boss_boma);
@@ -4851,12 +4854,18 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     == true
                                 {
                                     CONTROLLABLE = false;
+                                    StatusModule::change_status_request_from_script(
+                                        boss_boma,
+                                        *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
+                                        true,
+                                    );
+                                } else {
+                                    StatusModule::change_status_request_from_script(
+                                        boss_boma,
+                                        *ITEM_MASTERHAND_STATUS_KIND_WAIT_TIME,
+                                        true,
+                                    );
                                 }
-                                StatusModule::change_status_request_from_script(
-                                    boss_boma,
-                                    *ITEM_MASTERHAND_STATUS_KIND_WAIT_TIME,
-                                    true,
-                                );
                             }
                         }
                     }
@@ -8269,6 +8278,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         let boss_boma = sv_battle_object::module_accessor(
                             BOSS_ID_2[boss_helpers::entry_id(module_accessor)],
                         );
+                        boss_helpers::ensure_boss_item_visible(boss_boma);
                         let x = PostureModule::pos_x(boss_boma);
                         let y = PostureModule::pos_y(boss_boma);
                         let z = PostureModule::pos_z(boss_boma);
@@ -9726,12 +9736,18 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     ) == true
                                     {
                                         CONTROLLABLE_2 = false;
+                                        StatusModule::change_status_request_from_script(
+                                            boss_boma_2,
+                                            *ITEM_CRAZYHAND_STATUS_KIND_WAIT_CHASE,
+                                            true,
+                                        );
+                                    } else {
+                                        StatusModule::change_status_request_from_script(
+                                            boss_boma_2,
+                                            *ITEM_CRAZYHAND_STATUS_KIND_WAIT_TIME,
+                                            true,
+                                        );
                                     }
-                                    StatusModule::change_status_request_from_script(
-                                        boss_boma_2,
-                                        *ITEM_CRAZYHAND_STATUS_KIND_WAIT_TIME,
-                                        true,
-                                    );
                                 }
                             }
                         }

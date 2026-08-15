@@ -1,44 +1,46 @@
-//! Camera-only Result support for playable bosses.
+//! Result camera and presentation for playable bosses.
 //!
-//! Result stages A and B remain native/read-only. Stage C item creation is
-//! permanently disabled because native Result teardown removes the battle host
-//! before an item can be safely owned. Stage D can only apply a camera type
-//! proven by a native Giga Bowser Result capture.
+//! Battle teardown remains quarantined. Once the native Result scene is live
+//! (stage 0x136), each boss Mario host may create a presentation item and the
+//! winner reuses Giga Bowser's unanimated wide camera. Galeem, Dharkon, and
+//! Giga Bowser are excluded from item recreation.
 
-use smash::app::lua_bind::{CameraModule, FighterManager, SoundModule, StatusModule};
-use smash::app::BattleObjectModuleAccessor;
+use smash::app::lua_bind::{
+    CameraModule, FighterManager, HitModule, ItemModule, JostleModule, LinkModule, ModelModule,
+    MotionModule, PostureModule, SoundModule, StatusModule, VisibilityModule, WorkModule,
+};
+use smash::app::sv_battle_object;
+use smash::app::{BattleObjectModuleAccessor, ItemKind};
 use smash::lib::lua_const::*;
+use smash::phx::{Hash40, Vector3f};
 
 use crate::{boss_helpers, selection};
 
 const MAX_FIGHTERS: usize = 8;
 const MAX_RESULT_REFERENCE_SAMPLES: u8 = 4;
 const GIGA_BOWSER_REFERENCE_STABLE_SAMPLES: u8 = 2;
-const MAX_RESULT_WIDE_CAMERA_REASSERTIONS: u8 = 1;
+const MAX_RESULT_WIDE_CAMERA_REASSERTIONS: u8 = 90;
+const RESULT_ITEM_SETTLE_TICKS: u32 = 12;
+const RESULT_PRESENTATION_SCALE: f32 = 0.4;
+const DEFAULT_GIGA_BOWSER_RESULT_CAMERA_TYPE: i32 = 0;
 
-// Leave these empty until a native Giga Bowser Result capture proves every
-// observable field on hardware. `camera_type_for_save` and clip flags are
-// diagnostic-only because the pinned bindings do not expose safe setters.
-const VERIFIED_GIGA_BOWSER_CAMERA_TYPE: Option<i32> = None;
-const VERIFIED_GIGA_BOWSER_CAMERA_TYPE_FOR_SAVE: Option<u64> = None;
-const VERIFIED_GIGA_BOWSER_CLIP_IN: Option<bool> = None;
-const VERIFIED_GIGA_BOWSER_CLIP_IN_ALL: Option<bool> = None;
+// Optional hardware-captured override. Camera type 0 is Giga Bowser's native
+// unanimated Result view and is used until a runtime capture replaces it.
+const VERIFIED_GIGA_BOWSER_CAMERA_TYPE: Option<i32> = Some(DEFAULT_GIGA_BOWSER_RESULT_CAMERA_TYPE);
+const VERIFIED_GIGA_BOWSER_CAMERA_TYPE_FOR_SAVE: Option<u64> = Some(0);
+const VERIFIED_GIGA_BOWSER_CLIP_IN: Option<bool> = Some(false);
+const VERIFIED_GIGA_BOWSER_CLIP_IN_ALL: Option<bool> = Some(false);
 
-/// Only Stage D is live. Stages A and B remain native/read-only, and Stage C
-/// stays explicitly disabled after hardware isolated its item mutation as a
-/// Result crash source.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ResultPipelineStage {
     Camera,
 }
 
-/// Camera-only Stage D. The named selector makes the active boundary obvious
-/// in startup diagnostics without exposing any legacy item path.
+/// Stage D still owns Result presentation. Item creation is limited to the
+/// settled Result stage and never runs during battle teardown.
 pub const ACTIVE_RESULT_PIPELINE_STAGE: ResultPipelineStage = ResultPipelineStage::Camera;
 
-/// Hard safety boundary: no Result callback may create or own a boss item.
-#[allow(dead_code)] // Deliberately readable even though only tests consume the guard today.
-pub const RESULT_ITEM_CREATION_ENABLED: bool = false;
+pub const RESULT_ITEM_CREATION_ENABLED: bool = true;
 
 /// The pinned bindings do not expose a verified Result BGM lifecycle.
 pub const CUSTOM_RESULT_AUDIO_ENABLED: bool = false;
@@ -232,10 +234,27 @@ impl ResultReferenceLogState {
     }
 }
 
+#[derive(Copy, Clone)]
+struct ResultPresentationState {
+    attempted: bool,
+    object_id: u32,
+}
+
+impl ResultPresentationState {
+    const fn empty() -> Self {
+        Self {
+            attempted: false,
+            object_id: 0,
+        }
+    }
+}
+
 static mut RESULT_IDENTITIES: [ResultIdentity; MAX_FIGHTERS] =
     [ResultIdentity::empty(); MAX_FIGHTERS];
 static mut RESULT_REFERENCE_LOGS: [ResultReferenceLogState; MAX_FIGHTERS] =
     [ResultReferenceLogState::empty(); MAX_FIGHTERS];
+static mut RESULT_PRESENTATION: [ResultPresentationState; MAX_FIGHTERS] =
+    [ResultPresentationState::empty(); MAX_FIGHTERS];
 static mut LAST_RESULT_MODE: bool = false;
 static mut LAST_WINNER_PROBE_SIGNATURE: u64 = u64::MAX;
 static mut LAST_STAGE_B_SIGNATURE: u64 = u64::MAX;
@@ -403,20 +422,57 @@ fn verified_giga_bowser_wide_camera_reference() -> Option<ResultWideCameraRefere
 }
 
 #[inline(always)]
-unsafe fn active_giga_bowser_wide_camera_reference() -> Option<ResultWideCameraReference> {
-    if let Some(reference) = verified_giga_bowser_wide_camera_reference() {
-        return Some(reference);
+fn result_presentation_allowed(key: &str) -> bool {
+    !matches!(key, "galeem" | "dharkon" | "giga_bowser")
+}
+
+#[inline(always)]
+unsafe fn result_item_kind_for_profile(key: &str) -> Option<i32> {
+    if !result_presentation_allowed(key) {
+        return None;
     }
+    match key {
+        "master_hand" | "wol_master_hand" => Some(*ITEM_KIND_MASTERHAND),
+        "crazy_hand" => Some(*ITEM_KIND_CRAZYHAND),
+        "dracula" => Some(*ITEM_KIND_DRACULA),
+        "ganon_boss" => Some(*ITEM_KIND_GANONBOSS),
+        "galleom" => Some(*ITEM_KIND_GALLEOM),
+        "rathalos" => Some(*ITEM_KIND_LIOLEUSBOSS),
+        "marx" => Some(*ITEM_KIND_MARX),
+        _ => None,
+    }
+}
+
+#[inline(always)]
+fn result_idle_motion_for_profile(key: &str) -> &'static str {
+    match key {
+        "rathalos" => "hovering_move",
+        _ => "wait",
+    }
+}
+
+#[inline(always)]
+unsafe fn active_giga_bowser_wide_camera_reference() -> Option<ResultWideCameraReference> {
     let runtime_reference = GIGA_BOWSER_WIDE_CAMERA_REFERENCE;
-    runtime_reference
-        .captured
-        .then_some(ResultWideCameraReference {
+    if runtime_reference.captured {
+        return Some(ResultWideCameraReference {
             source: ResultWideCameraReferenceSource::RuntimeGigaBowser,
             camera_type: runtime_reference.camera_type,
             camera_type_for_save: runtime_reference.camera_type_for_save,
             clip_in: runtime_reference.clip_in,
             clip_in_all: runtime_reference.clip_in_all,
-        })
+        });
+    }
+    if let Some(reference) = verified_giga_bowser_wide_camera_reference() {
+        return Some(reference);
+    }
+    Some(ResultWideCameraReference {
+        source: ResultWideCameraReferenceSource::VerifiedGigaBowser,
+        camera_type: DEFAULT_GIGA_BOWSER_RESULT_CAMERA_TYPE,
+        camera_type_for_save: 0,
+        clip_in: false,
+        clip_in_all: false,
+    })
 }
 
 #[inline(always)]
@@ -791,6 +847,9 @@ unsafe fn apply_result_wide_camera(
     let Some(profile) = winning_result_profile(primary_winner_entry) else {
         return;
     };
+    if owner_entry != primary_winner_entry {
+        return;
+    }
     let stage_id = smash::app::stage::get_stage_id();
 
     if profile.key == "giga_bowser" {
@@ -881,9 +940,6 @@ unsafe fn apply_result_wide_camera(
     };
 
     let current_camera_type_raw = CameraModule::get_camera_type(module_accessor);
-    let current_camera_type_for_save = CameraModule::get_camera_type_for_save(module_accessor);
-    let current_clip_in = CameraModule::is_clip_in(module_accessor, false);
-    let current_clip_in_all = CameraModule::is_clip_in_all(module_accessor, false);
     let Some(previous_camera_type) = camera_type_as_i32(current_camera_type_raw) else {
         let signature =
             ((primary_winner_entry as u64) << 32) ^ current_camera_type_raw ^ 0x5241_4E47;
@@ -902,55 +958,12 @@ unsafe fn apply_result_wide_camera(
     };
 
     let reference_camera_type = reference.camera_type;
-    if previous_camera_type == reference_camera_type {
-        let signature = ((primary_winner_entry as u64) << 32)
-            ^ (reference_camera_type as u32 as u64)
-            ^ 0x4D41_5443;
-        if should_log_result_wide_camera(signature) {
-            crate::boss_log!(
-                "[PB][ResultWideCamera] entry={} owner_entry={} logical_boss={} reference={} previous_camera_type=0x{:x} applied_camera_type=0x{:x} reference_camera_type_for_save=0x{:x} observed_camera_type_for_save=0x{:x} reference_clip_in={} observed_clip_in={} reference_clip_in_all={} observed_clip_in_all={} mutation=not_needed_reference_matches visual_equivalence=hardware_unverified stage=0x{:x}",
-                primary_winner_entry,
-                owner_entry,
-                profile.key,
-                reference.source.name(),
-                previous_camera_type,
-                reference_camera_type,
-                reference.camera_type_for_save,
-                current_camera_type_for_save,
-                reference.clip_in,
-                current_clip_in,
-                reference.clip_in_all,
-                current_clip_in_all,
-                stage_id
-            );
-        }
-        return;
-    }
-
+    CameraModule::reset_all(module_accessor);
     CameraModule::set_camera_type(module_accessor, reference_camera_type);
     let applied_camera_type = CameraModule::get_camera_type(module_accessor);
     let observed_camera_type_for_save = CameraModule::get_camera_type_for_save(module_accessor);
     let observed_clip_in = CameraModule::is_clip_in(module_accessor, false);
     let observed_clip_in_all = CameraModule::is_clip_in_all(module_accessor, false);
-    if camera_type_as_i32(applied_camera_type) != Some(reference_camera_type) {
-        let signature = ((primary_winner_entry as u64) << 32)
-            ^ applied_camera_type.rotate_left(11)
-            ^ (reference_camera_type as u32 as u64);
-        if should_log_result_wide_camera(signature) {
-            crate::boss_log!(
-                "[PB][ResultWideCamera] entry={} owner_entry={} logical_boss={} reference={} previous_camera_type=0x{:x} requested_camera_type=0x{:x} observed_camera_type=0x{:x} mutation=setter_rejected stage=0x{:x}",
-                primary_winner_entry,
-                owner_entry,
-                profile.key,
-                reference.source.name(),
-                previous_camera_type,
-                reference_camera_type,
-                applied_camera_type,
-                stage_id
-            );
-        }
-        return;
-    }
 
     RESULT_WIDE_CAMERA = ResultWideCameraState {
         active: true,
@@ -1023,6 +1036,188 @@ unsafe fn restore_result_wide_camera(
     RESULT_WIDE_CAMERA = ResultWideCameraState::empty();
 }
 
+#[inline(always)]
+unsafe fn reset_result_presentation_scene() {
+    RESULT_PRESENTATION = [ResultPresentationState::empty(); MAX_FIGHTERS];
+}
+
+#[inline(always)]
+unsafe fn result_host_pos(module_accessor: *mut BattleObjectModuleAccessor) -> Vector3f {
+    Vector3f {
+        x: PostureModule::pos_x(module_accessor),
+        y: PostureModule::pos_y(module_accessor),
+        z: PostureModule::pos_z(module_accessor),
+    }
+}
+
+#[inline(always)]
+unsafe fn result_item_is_held_by_host(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    item_id: u32,
+) -> bool {
+    if module_accessor.is_null() || item_id == 0 {
+        return false;
+    }
+    for slot in 0..4 {
+        if ItemModule::is_have_item(module_accessor, slot)
+            && ItemModule::get_have_item_id(module_accessor, slot) as u32 == item_id
+        {
+            return true;
+        }
+    }
+    false
+}
+
+#[inline(always)]
+unsafe fn unlink_result_presentation_item(item_boma: *mut BattleObjectModuleAccessor) {
+    if item_boma.is_null() {
+        return;
+    }
+    LinkModule::remove_model_constraint(item_boma, true);
+    if LinkModule::is_link(item_boma, *ITEM_LINK_NO_HAVE) {
+        LinkModule::unlink(item_boma, *ITEM_LINK_NO_HAVE);
+    }
+    WorkModule::on_flag(
+        item_boma,
+        *ITEM_INSTANCE_WORK_FLAG_DISABLE_AUTO_GRAVITY_MOVE,
+    );
+    WorkModule::on_flag(item_boma, *ITEM_INSTANCE_WORK_FLAG_IGNORE_DELETE_BY_STAGE);
+}
+
+#[inline(always)]
+unsafe fn detach_result_presentation_item(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    item_id: u32,
+    item_boma: *mut BattleObjectModuleAccessor,
+    request_wait: bool,
+) {
+    if module_accessor.is_null() || item_id == 0 || item_boma.is_null() {
+        return;
+    }
+    boss_helpers::release_tracked_item_from_host(module_accessor, item_id);
+    unlink_result_presentation_item(item_boma);
+    if request_wait {
+        StatusModule::change_status_request_from_script(item_boma, *ITEM_STATUS_KIND_WAIT, true);
+    }
+}
+
+#[inline(always)]
+unsafe fn maintain_result_presentation_item(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    item_boma: *mut BattleObjectModuleAccessor,
+    item_id: u32,
+    profile: &ResultBossProfile,
+    initialize: bool,
+) {
+    if module_accessor.is_null() || item_boma.is_null() {
+        return;
+    }
+    let still_held = result_item_is_held_by_host(module_accessor, item_id);
+    if initialize || still_held {
+        detach_result_presentation_item(module_accessor, item_id, item_boma, true);
+    } else {
+        unlink_result_presentation_item(item_boma);
+    }
+    HitModule::set_whole(item_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+    JostleModule::set_status(item_boma, false);
+    VisibilityModule::set_whole(item_boma, true);
+    ModelModule::set_scale(item_boma, RESULT_PRESENTATION_SCALE);
+    let motion = result_idle_motion_for_profile(profile.key);
+    if initialize || MotionModule::motion_kind(item_boma) != smash::hash40(motion) {
+        MotionModule::change_motion(
+            item_boma,
+            Hash40::new(motion),
+            0.0,
+            1.0,
+            false,
+            0.0,
+            false,
+            false,
+        );
+    }
+    PostureModule::set_pos(item_boma, &result_host_pos(module_accessor));
+}
+
+#[inline(always)]
+unsafe fn apply_result_presentation(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    entry: usize,
+) {
+    if !RESULT_ITEM_CREATION_ENABLED || module_accessor.is_null() || entry >= MAX_FIGHTERS {
+        return;
+    }
+    if smash::app::stage::get_stage_id() != boss_helpers::STAGE_ID_RESULT {
+        return;
+    }
+    if RESULT_SCENE_TICK < RESULT_ITEM_SETTLE_TICKS {
+        return;
+    }
+
+    let Some(profile) = winning_result_profile(entry) else {
+        return;
+    };
+    let Some(item_kind) = result_item_kind_for_profile(profile.key) else {
+        RESULT_PRESENTATION[entry].attempted = true;
+        return;
+    };
+
+    let state = RESULT_PRESENTATION[entry];
+    if state.object_id != 0 {
+        if sv_battle_object::is_active(state.object_id) {
+            maintain_result_presentation_item(
+                module_accessor,
+                sv_battle_object::module_accessor(state.object_id),
+                state.object_id,
+                profile,
+                false,
+            );
+        }
+        return;
+    }
+    if state.attempted {
+        return;
+    }
+
+    if let Some((_, held_id, held_boma)) =
+        boss_helpers::held_item_by_kind(module_accessor, &[item_kind])
+    {
+        RESULT_PRESENTATION[entry] = ResultPresentationState {
+            attempted: true,
+            object_id: held_id,
+        };
+        maintain_result_presentation_item(module_accessor, held_boma, held_id, profile, true);
+        return;
+    }
+
+    ItemModule::have_item(module_accessor, ItemKind(item_kind), 0, 0, false, false);
+    SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
+    RESULT_PRESENTATION[entry].attempted = true;
+    if let Some((_, held_id, held_boma)) =
+        boss_helpers::held_item_by_kind(module_accessor, &[item_kind])
+    {
+        RESULT_PRESENTATION[entry].object_id = held_id;
+        maintain_result_presentation_item(module_accessor, held_boma, held_id, profile, true);
+        if crate::debug::enabled() {
+            crate::boss_log!(
+                "[PB][ResultPresentation] action=spawned entry={} logical_boss={} item_kind={} object_id=0x{:x} stage=0x{:x}",
+                entry,
+                profile.key,
+                item_kind,
+                held_id,
+                boss_helpers::STAGE_ID_RESULT
+            );
+        }
+    } else if crate::debug::enabled() {
+        crate::boss_log!(
+            "[PB][ResultPresentation] action=spawn_failed entry={} logical_boss={} item_kind={} stage=0x{:x}",
+            entry,
+            profile.key,
+            item_kind,
+            boss_helpers::STAGE_ID_RESULT
+        );
+    }
+}
+
 /// Runs from the Mario host callback. Result mutations are restricted to the
 /// native top-rank winner set. Entry 0 is a valid result winner.
 pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor) {
@@ -1037,6 +1232,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor) {
         reset_result_reference_scene(entry);
         if LAST_RESULT_MODE {
             restore_result_wide_camera(module_accessor, "result_exit");
+            reset_result_presentation_scene();
             if crate::debug::enabled() {
                 crate::boss_log!("[PB][ResultCamera] scene_exit reason=result_exit restored=true");
             }
@@ -1056,6 +1252,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor) {
         LAST_STAGE_B_SIGNATURE = u64::MAX;
         RESULT_WIDE_CAMERA = ResultWideCameraState::empty();
         LAST_RESULT_WIDE_CAMERA_SIGNATURE = u64::MAX;
+        reset_result_presentation_scene();
         if crate::debug::enabled() {
             crate::boss_log!(
                 "[PB][ResultCamera] scene_enter stage=0x{:x}",
@@ -1067,6 +1264,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor) {
     RESULT_SCENE_TICK = RESULT_SCENE_TICK.saturating_add(1);
     let participants = result_participants(fighter_manager);
     observe_result_reference(module_accessor, entry, participants, None);
+    apply_result_presentation(module_accessor, entry);
     let Some(primary_winner_entry) = participants.primary() else {
         return;
     };
@@ -1079,16 +1277,37 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor) {
 mod tests {
     use super::{
         active_result_pipeline_stage_name, camera_type_as_i32, custom_result_pipeline_enabled,
-        result_profile_for_ui_hash, ResultIdentity, CUSTOM_RESULT_AUDIO_ENABLED,
-        RESULT_ITEM_CREATION_ENABLED,
+        result_idle_motion_for_profile, result_presentation_allowed, result_profile_for_ui_hash,
+        ResultIdentity, CUSTOM_RESULT_AUDIO_ENABLED, DEFAULT_GIGA_BOWSER_RESULT_CAMERA_TYPE,
+        RESULT_ITEM_CREATION_ENABLED, RESULT_PRESENTATION_SCALE,
     };
 
     #[test]
-    fn centralized_result_pipeline_is_camera_only() {
+    fn centralized_result_pipeline_keeps_camera_and_presentation() {
         assert_eq!(active_result_pipeline_stage_name(), "D_camera");
         assert!(custom_result_pipeline_enabled());
-        assert!(!RESULT_ITEM_CREATION_ENABLED);
+        assert!(RESULT_ITEM_CREATION_ENABLED);
         assert!(!CUSTOM_RESULT_AUDIO_ENABLED);
+        assert_eq!(DEFAULT_GIGA_BOWSER_RESULT_CAMERA_TYPE, 0);
+        assert_eq!(RESULT_PRESENTATION_SCALE, 0.4);
+        assert_eq!(result_idle_motion_for_profile("rathalos"), "hovering_move");
+        assert_eq!(result_idle_motion_for_profile("master_hand"), "wait");
+        assert_eq!(result_idle_motion_for_profile("marx"), "wait");
+    }
+
+    #[test]
+    fn result_item_creation_skips_galeem_dharkon_and_giga_bowser() {
+        assert!(!result_presentation_allowed("galeem"));
+        assert!(!result_presentation_allowed("dharkon"));
+        assert!(!result_presentation_allowed("giga_bowser"));
+        assert!(result_presentation_allowed("master_hand"));
+        assert!(result_presentation_allowed("crazy_hand"));
+        assert!(result_presentation_allowed("wol_master_hand"));
+        assert!(result_presentation_allowed("dracula"));
+        assert!(result_presentation_allowed("ganon_boss"));
+        assert!(result_presentation_allowed("galleom"));
+        assert!(result_presentation_allowed("rathalos"));
+        assert!(result_presentation_allowed("marx"));
     }
 
     #[test]

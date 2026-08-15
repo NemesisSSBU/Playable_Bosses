@@ -280,6 +280,17 @@ unsafe fn any_boss_active() -> bool {
         || ganon::check_status()
 }
 
+unsafe fn is_boss_mario_host(module_accessor: *mut smash::app::BattleObjectModuleAccessor) -> bool {
+    if module_accessor.is_null() {
+        return false;
+    }
+    boss_helpers::is_hidden_host(module_accessor)
+        || boss_helpers::is_hidden_host_entry_prep(module_accessor)
+        || boss_helpers::is_hidden_host_entry_stage_two(module_accessor)
+        || boss_helpers::is_hidden_host_baseline(module_accessor)
+        || selection::selected_css_boss_selector_id(module_accessor).is_some()
+}
+
 unsafe fn suppress_hidden_host_result_audio(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
 ) {
@@ -291,6 +302,15 @@ unsafe fn suppress_hidden_host_result_audio(
         return;
     }
     boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
+}
+
+unsafe fn suppress_boss_mario_host_death_voice(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+) {
+    if !is_boss_mario_host(module_accessor) {
+        return;
+    }
+    boss_helpers::suppress_boss_mario_death_voice(module_accessor);
 }
 
 unsafe fn log_hidden_host_transition_snapshot(
@@ -1055,6 +1075,7 @@ extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
         }
 
         let transition_phase = update_result_transition_state(module_accessor);
+        suppress_boss_mario_host_death_voice(module_accessor);
         let battle_active = matches!(
             transition_phase,
             BossTransitionPhase::Battle | BossTransitionPhase::NotApplicable

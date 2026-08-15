@@ -950,13 +950,18 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    if sv_information::is_ready_go()
-                        && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0
-                    {
+                    if BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0 {
                         let boss_boma = sv_battle_object::module_accessor(
                             BOSS_ID[boss_helpers::entry_id(module_accessor)],
                         );
                         if !boss_boma.is_null() {
+                            if !sv_information::is_ready_go() {
+                                PostureModule::set_lr(
+                                    boss_boma,
+                                    PostureModule::lr(module_accessor),
+                                );
+                                PostureModule::update_rot_y_lr(boss_boma);
+                            }
                             if lua_bind::PostureModule::lr(boss_boma) == -1.0 {
                                 // left
                                 let vec3 = Vector3f {

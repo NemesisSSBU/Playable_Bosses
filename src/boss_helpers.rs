@@ -398,6 +398,7 @@ pub unsafe fn acquire_boss_item_excluding(
         std::ptr::null_mut()
     };
     (*slot_ids)[entry] = if boss_boma.is_null() { 0 } else { boss_id };
+    ensure_boss_item_visible(boss_boma);
     if crate::debug::enabled() {
         let boss_kind = if boss_boma.is_null() {
             -1
@@ -450,6 +451,7 @@ pub unsafe fn acquire_boss_item(
         std::ptr::null_mut()
     };
     (*slot_ids)[entry] = if boss_boma.is_null() { 0 } else { boss_id };
+    ensure_boss_item_visible(boss_boma);
     if crate::debug::enabled() {
         let fighter_status = StatusModule::status_kind(module_accessor);
         let boss_kind = if boss_boma.is_null() {
@@ -1363,6 +1365,19 @@ pub unsafe fn is_hidden_host(module_accessor: *mut BattleObjectModuleAccessor) -
         && ModelModule::scale(module_accessor) <= HIDDEN_HOST_ENTRY_STAGE2_SCALE
 }
 
+/// Boss items created with `have_item` on a hidden Mario host can inherit the
+/// 0.0001 host scale. Restore a visible battle scale without touching the host.
+#[inline(always)]
+pub unsafe fn ensure_boss_item_visible(boss_boma: *mut BattleObjectModuleAccessor) {
+    if boss_boma.is_null() {
+        return;
+    }
+    if ModelModule::scale(boss_boma) <= HIDDEN_HOST_ENTRY_STAGE2_SCALE {
+        ModelModule::set_scale(boss_boma, 1.0);
+    }
+    VisibilityModule::set_whole(boss_boma, true);
+}
+
 #[inline(always)]
 fn within_epsilon(value: f32, expected: f32, epsilon: f32) -> bool {
     (expected - epsilon..=expected + epsilon).contains(&value)
@@ -1462,33 +1477,70 @@ pub unsafe fn stop_hidden_host_mario_result_sfx(module_accessor: *mut BattleObje
 }
 
 #[inline(always)]
+fn is_mario_ko_status(status: i32) -> bool {
+    status == *FIGHTER_STATUS_KIND_DEAD
+        || status == *FIGHTER_STATUS_KIND_STANDBY
+        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY
+        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_ROLL
+        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_METEOR
+        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_REFLECT_D
+        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_REFLECT_U
+        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_REFLECT_LR
+        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_REFLECT_JUMP_BOARD
+}
+
+#[inline(always)]
+unsafe fn stop_mario_death_voice_hashes(module_accessor: *mut BattleObjectModuleAccessor) {
+    const DEATH_VOICE_HASHES: &[&str] = &[
+        "death",
+        "dead",
+        "hp_battle_damage_reaction",
+        "hp_battle_knockout_dead_frame",
+        "hp_battle_knockout_reaction",
+        "hp_battle_knockout_slow_frame",
+        "hp_battle_knockout_slow_mag",
+        "vc_mario_damage01",
+        "vc_mario_damage02",
+        "vc_mario_damagefly01",
+        "vc_mario_damagefly02",
+        "vc_mario_ottotto",
+        "vc_mario_furafura",
+        "vc_mario_missfoot01",
+        "vc_mario_missfoot02",
+        "se_mario_damage_s",
+        "se_mario_damage_m",
+        "se_mario_damage_l",
+        "se_mario_down",
+        "se_common_blowaway_s",
+        "se_common_blowaway_m",
+        "se_common_blowaway_l",
+    ];
+    for hash in DEATH_VOICE_HASHES {
+        SoundModule::stop_se(module_accessor, Hash40::new(hash), 0);
+    }
+}
+
+#[inline(always)]
 pub unsafe fn stop_hidden_host_knockout_sfx(module_accessor: *mut BattleObjectModuleAccessor) {
     if !is_hidden_host(module_accessor) {
         return;
     }
-    SoundModule::stop_se(module_accessor, Hash40::new("death"), 0);
-    SoundModule::stop_se(module_accessor, Hash40::new("dead"), 0);
-    SoundModule::stop_se(module_accessor, Hash40::new("hp_battle_damage_reaction"), 0);
-    SoundModule::stop_se(
-        module_accessor,
-        Hash40::new("hp_battle_knockout_dead_frame"),
-        0,
-    );
-    SoundModule::stop_se(
-        module_accessor,
-        Hash40::new("hp_battle_knockout_reaction"),
-        0,
-    );
-    SoundModule::stop_se(
-        module_accessor,
-        Hash40::new("hp_battle_knockout_slow_frame"),
-        0,
-    );
-    SoundModule::stop_se(
-        module_accessor,
-        Hash40::new("hp_battle_knockout_slow_mag"),
-        0,
-    );
+    stop_mario_death_voice_hashes(module_accessor);
+}
+
+/// Mute Mario's stamina/stock KO scream on a boss host. Scale is not required:
+/// death can reset the hidden-host scale before the voice finishes.
+#[inline(always)]
+pub unsafe fn suppress_boss_mario_death_voice(module_accessor: *mut BattleObjectModuleAccessor) {
+    if module_accessor.is_null() {
+        return;
+    }
+    stop_mario_death_voice_hashes(module_accessor);
+    if !is_mario_ko_status(StatusModule::status_kind(module_accessor)) {
+        return;
+    }
+    SoundModule::stop_status_se(module_accessor);
+    SoundModule::stop_all_sound(module_accessor);
 }
 
 #[inline(always)]
@@ -1558,7 +1610,7 @@ pub unsafe fn request_hidden_host_stock_drain(
             *FIGHTER_STATUS_KIND_DEAD,
             true,
         );
-        stop_hidden_host_knockout_sfx(module_accessor);
+        suppress_boss_mario_death_voice(module_accessor);
     }
     if stock_count_entry(fighter_manager, entry_id) == 0 {
         *stop = true;
@@ -1636,9 +1688,16 @@ mod tests {
         is_kiila_darz_first_attack_status, item_trait_has_boss, should_discard_tracked_boss,
         should_force_generic_wait, should_intercept_kiila_darz_spawn_status,
         should_restore_staged_entry, staged_boss_ready_for_activation, staged_intro_reached_end,
-        trait_flag_without_boss,
+        trait_flag_without_boss, HIDDEN_HOST_ENTRY_STAGE2_SCALE, HIDDEN_HOST_SCALE,
     };
     use smash::lib::lua_const::*;
+
+    #[test]
+    fn inherited_hidden_host_scale_is_treated_as_an_invisible_boss_item() {
+        assert!(HIDDEN_HOST_SCALE <= HIDDEN_HOST_ENTRY_STAGE2_SCALE);
+        assert!(0.0001 <= HIDDEN_HOST_ENTRY_STAGE2_SCALE);
+        assert!(0.08 > HIDDEN_HOST_ENTRY_STAGE2_SCALE);
+    }
 
     #[test]
     fn battle_tracking_requires_the_expected_kind_and_an_explicit_preparation_phase() {
