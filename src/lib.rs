@@ -204,6 +204,7 @@ unsafe fn reset_stale_match_generation_if_new_round(
 #[inline(always)]
 unsafe fn reset_boss_runtime_bookkeeping(entry_id: usize) {
     boss_runtime::reset_all_for_entry(entry_id);
+    boss_helpers::clear_boss_mario_host_latch(entry_id);
     playable_masterhand::reset_match_state(entry_id);
     mastercrazy::reset_match_state(entry_id);
     galeem::reset_match_state(entry_id);
@@ -284,11 +285,18 @@ unsafe fn is_boss_mario_host(module_accessor: *mut smash::app::BattleObjectModul
     if module_accessor.is_null() {
         return false;
     }
-    boss_helpers::is_hidden_host(module_accessor)
+    if boss_helpers::is_marked_boss_mario_host(module_accessor) {
+        return true;
+    }
+    let hidden = boss_helpers::is_hidden_host(module_accessor)
         || boss_helpers::is_hidden_host_entry_prep(module_accessor)
         || boss_helpers::is_hidden_host_entry_stage_two(module_accessor)
-        || boss_helpers::is_hidden_host_baseline(module_accessor)
-        || selection::selected_css_boss_selector_id(module_accessor).is_some()
+        || boss_helpers::is_hidden_host_baseline(module_accessor);
+    if hidden {
+        boss_helpers::mark_boss_mario_host(module_accessor);
+        return true;
+    }
+    selection::selected_css_boss_selector_id(module_accessor).is_some()
 }
 
 unsafe fn suppress_hidden_host_result_audio(
@@ -1118,6 +1126,7 @@ extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
             log_hidden_host_transition_snapshot(module_accessor);
             log_boss_presentation_snapshot(module_accessor);
         }
+        suppress_boss_mario_host_death_voice(module_accessor);
     }
 }
 

@@ -19,6 +19,7 @@ static mut LAST_NATIVE_DRIFT_STATUS: [i32; 8] = [i32::MIN; 8];
 static mut LAST_NATIVE_DRIFT_READY_GO: [u8; 8] = [0xff; 8];
 static mut PRE_GO_ACQUIRED_TRAIT_FLAG: [i32; 8] = [i32::MIN; 8];
 static mut LAST_CATEGORY_PROBE_SIGNATURE: u64 = u64::MAX;
+static mut BOSS_MARIO_HOST_LATCH: [bool; 8] = [false; 8];
 
 pub const HIDDEN_HOST_SCALE: f32 = 0.0001;
 pub const HIDDEN_HOST_ENTRY_PREP_SCALE: f32 = 0.001;
@@ -1476,22 +1477,15 @@ pub unsafe fn stop_hidden_host_mario_result_sfx(module_accessor: *mut BattleObje
     SoundModule::stop_se(module_accessor, Hash40::new("se_mario_landing02"), 0);
 }
 
-#[inline(always)]
-fn is_mario_ko_status(status: i32) -> bool {
-    status == *FIGHTER_STATUS_KIND_DEAD
-        || status == *FIGHTER_STATUS_KIND_STANDBY
-        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY
-        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_ROLL
-        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_METEOR
-        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_REFLECT_D
-        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_REFLECT_U
-        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_REFLECT_LR
-        || status == *FIGHTER_STATUS_KIND_DAMAGE_FLY_REFLECT_JUMP_BOARD
-}
+const MARIO_STAMINA_KNOCKOUT_VOICE: &str = "vc_mario_knockout";
 
 #[inline(always)]
 unsafe fn stop_mario_death_voice_hashes(module_accessor: *mut BattleObjectModuleAccessor) {
     const DEATH_VOICE_HASHES: &[&str] = &[
+        MARIO_STAMINA_KNOCKOUT_VOICE,
+        "seq_mario_rnd_knockout",
+        "seq_mario_rnd_dead",
+        "seq_mario_rnd_furafura",
         "death",
         "dead",
         "hp_battle_damage_reaction",
@@ -1507,6 +1501,11 @@ unsafe fn stop_mario_death_voice_hashes(module_accessor: *mut BattleObjectModule
         "vc_mario_furafura",
         "vc_mario_missfoot01",
         "vc_mario_missfoot02",
+        "vc_mario_001",
+        "vc_mario_002",
+        "vc_mario_005",
+        "vc_mario_006",
+        "vc_mario_007",
         "se_mario_damage_s",
         "se_mario_damage_m",
         "se_mario_damage_l",
@@ -1514,9 +1513,31 @@ unsafe fn stop_mario_death_voice_hashes(module_accessor: *mut BattleObjectModule
         "se_common_blowaway_s",
         "se_common_blowaway_m",
         "se_common_blowaway_l",
+        "se_common_spirits_damage",
+        "se_common_spirits_end",
     ];
     for hash in DEATH_VOICE_HASHES {
         SoundModule::stop_se(module_accessor, Hash40::new(hash), 0);
+    }
+}
+
+#[inline(always)]
+pub unsafe fn mark_boss_mario_host(module_accessor: *mut BattleObjectModuleAccessor) {
+    if module_accessor.is_null() {
+        return;
+    }
+    BOSS_MARIO_HOST_LATCH[entry_id(module_accessor).min(7)] = true;
+}
+
+#[inline(always)]
+pub unsafe fn is_marked_boss_mario_host(module_accessor: *mut BattleObjectModuleAccessor) -> bool {
+    !module_accessor.is_null() && BOSS_MARIO_HOST_LATCH[entry_id(module_accessor).min(7)]
+}
+
+#[inline(always)]
+pub unsafe fn clear_boss_mario_host_latch(entry: usize) {
+    if entry < 8 {
+        BOSS_MARIO_HOST_LATCH[entry] = false;
     }
 }
 
@@ -1536,9 +1557,6 @@ pub unsafe fn suppress_boss_mario_death_voice(module_accessor: *mut BattleObject
         return;
     }
     stop_mario_death_voice_hashes(module_accessor);
-    if !is_mario_ko_status(StatusModule::status_kind(module_accessor)) {
-        return;
-    }
     SoundModule::stop_status_se(module_accessor);
     SoundModule::stop_all_sound(module_accessor);
 }
@@ -1689,6 +1707,7 @@ mod tests {
         should_force_generic_wait, should_intercept_kiila_darz_spawn_status,
         should_restore_staged_entry, staged_boss_ready_for_activation, staged_intro_reached_end,
         trait_flag_without_boss, HIDDEN_HOST_ENTRY_STAGE2_SCALE, HIDDEN_HOST_SCALE,
+        MARIO_STAMINA_KNOCKOUT_VOICE,
     };
     use smash::lib::lua_const::*;
 
@@ -1697,6 +1716,11 @@ mod tests {
         assert!(HIDDEN_HOST_SCALE <= HIDDEN_HOST_ENTRY_STAGE2_SCALE);
         assert!(0.0001 <= HIDDEN_HOST_ENTRY_STAGE2_SCALE);
         assert!(0.08 > HIDDEN_HOST_ENTRY_STAGE2_SCALE);
+    }
+
+    #[test]
+    fn stamina_knockout_uses_the_dedicated_mario_knockout_voice() {
+        assert_eq!(MARIO_STAMINA_KNOCKOUT_VOICE, "vc_mario_knockout");
     }
 
     #[test]

@@ -1,6 +1,10 @@
 use crate::config::CONFIG;
 use crate::config::CONFIG_DIR;
 use once_cell::sync::Lazy;
+use skyline::nn::hid::{
+    GetNpadFullKeyState, GetNpadGcState, GetNpadHandheldState, GetNpadJoyDualState,
+    GetNpadJoyLeftState, GetNpadJoyRightState, GetNpadStyleSet, NpadGcState, NpadHandheldState,
+};
 use skyline::nn::oe::{DisplayVersion, GetDisplayVersion, Initialize};
 use smash::app::lua_bind::*;
 use smash::app::sv_battle_object;
@@ -1070,8 +1074,6 @@ const CONDENSED_WOL_ALTERNATE_COLOR: u64 = 0;
 const CONDENSED_WOL_LOGICAL_INDEX: usize = 8;
 const CONDENSED_GALLEOM_ALTERNATE_COLOR: u64 = 4;
 const CONDENSED_GALLEOM_LOGICAL_INDEX: usize = 9;
-const CONDENSED_SECONDARY_CAPTURE_MOTION_FRAMES: f32 = 3.0;
-const CONDENSED_SECONDARY_CAPTURE_MAX_CALLS: u16 = 128;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum CondensedSecondarySelection {
@@ -1119,7 +1121,6 @@ enum CondensedSelectionFailure {
     ColorMismatch,
     LogicalIndexOutOfRange,
     CarrierCallbackUnconfirmed,
-    SecondaryInputCapturePending,
 }
 
 impl CondensedSelectionFailure {
@@ -1131,7 +1132,6 @@ impl CondensedSelectionFailure {
             Self::ColorMismatch => "host_and_fighter_color_mismatch",
             Self::LogicalIndexOutOfRange => "logical_index_out_of_range",
             Self::CarrierCallbackUnconfirmed => "carrier_callback_unconfirmed",
-            Self::SecondaryInputCapturePending => "secondary_input_capture_pending",
         }
     }
 }
@@ -1148,9 +1148,6 @@ struct CondensedSelectionLatch {
     host_work_color: i32,
     fighter_color: u64,
     decision: Option<CondensedSelectionDecision>,
-    secondary_capture_start_motion_frame_bits: u32,
-    secondary_capture_calls: u16,
-    secondary_capture_active: bool,
     last_status_was_entry: bool,
     initialized: bool,
 }
@@ -1160,9 +1157,6 @@ impl CondensedSelectionLatch {
         host_work_color: i32::MIN,
         fighter_color: u64::MAX,
         decision: None,
-        secondary_capture_start_motion_frame_bits: 0,
-        secondary_capture_calls: 0,
-        secondary_capture_active: false,
         last_status_was_entry: false,
         initialized: false,
     };
@@ -1171,10 +1165,7 @@ impl CondensedSelectionLatch {
         !self.initialized
             || self.host_work_color != observation.host_work_color
             || self.fighter_color != observation.fighter_color
-            || (self.decision.is_none()
-                && !self.secondary_capture_active
-                && status_is_entry
-                && !self.last_status_was_entry)
+            || (self.decision.is_none() && status_is_entry && !self.last_status_was_entry)
     }
 
     fn latch(
@@ -1186,44 +1177,8 @@ impl CondensedSelectionLatch {
         self.host_work_color = observation.host_work_color;
         self.fighter_color = observation.fighter_color;
         self.decision = decision;
-        self.secondary_capture_start_motion_frame_bits = 0;
-        self.secondary_capture_calls = 0;
-        self.secondary_capture_active = false;
         self.last_status_was_entry = status_is_entry;
         self.initialized = true;
-    }
-
-    fn begin_secondary_capture(
-        &mut self,
-        observation: CondensedColorObservation,
-        status_is_entry: bool,
-        motion_frame: f32,
-    ) {
-        self.host_work_color = observation.host_work_color;
-        self.fighter_color = observation.fighter_color;
-        self.decision = None;
-        self.secondary_capture_start_motion_frame_bits = motion_frame.to_bits();
-        self.secondary_capture_calls = 0;
-        self.secondary_capture_active = true;
-        self.last_status_was_entry = status_is_entry;
-        self.initialized = true;
-    }
-
-    fn captures(self, observation: CondensedColorObservation) -> bool {
-        self.secondary_capture_active
-            && self.host_work_color == observation.host_work_color
-            && self.fighter_color == observation.fighter_color
-    }
-
-    fn secondary_capture_expired(&mut self, motion_frame: f32) -> bool {
-        self.secondary_capture_calls = self.secondary_capture_calls.saturating_add(1);
-        let start = f32::from_bits(self.secondary_capture_start_motion_frame_bits);
-        let motion_window_expired = start.is_finite()
-            && motion_frame.is_finite()
-            && motion_frame >= start
-            && motion_frame - start >= CONDENSED_SECONDARY_CAPTURE_MOTION_FRAMES;
-        motion_window_expired
-            || self.secondary_capture_calls >= CONDENSED_SECONDARY_CAPTURE_MAX_CALLS
     }
 
     fn observe_status(&mut self, status_is_entry: bool) {
@@ -1299,6 +1254,7 @@ fn condensed_secondary_selection(color: u64, shield_held: bool) -> CondensedSeco
     }
 }
 
+#[cfg(test)]
 fn condensed_color_has_secondary_choice(color: u64) -> bool {
     matches!(
         color,
@@ -1334,6 +1290,118 @@ fn confirmed_condensed_color(
         return Err(CondensedSelectionFailure::ColorMismatch);
     }
     Ok(host_color)
+}
+
+const NPAD_BUTTON_L: u64 = 1 << 6;
+const NPAD_BUTTON_R: u64 = 1 << 7;
+const NPAD_ID_HANDHELD: u32 = 0x20;
+const NPAD_STYLE_FULLKEY: u32 = 0x1;
+const NPAD_STYLE_HANDHELD: u32 = 0x2;
+const NPAD_STYLE_JOYDUAL: u32 = 0x4;
+const NPAD_STYLE_JOYLEFT: u32 = 0x8;
+const NPAD_STYLE_JOYRIGHT: u32 = 0x10;
+const NPAD_STYLE_GC: u32 = 0x20;
+const NPAD_GC_TRIGGER_SHIELD: u32 = 0x80;
+
+#[inline(always)]
+fn npad_buttons_include_shoulder(buttons: u64) -> bool {
+    buttons & (NPAD_BUTTON_L | NPAD_BUTTON_R) != 0
+}
+
+#[inline(always)]
+fn gc_triggers_include_shield(l_trigger: u32, r_trigger: u32) -> bool {
+    l_trigger >= NPAD_GC_TRIGGER_SHIELD || r_trigger >= NPAD_GC_TRIGGER_SHIELD
+}
+
+#[inline(always)]
+fn npad_ids_for_entry(entry: usize) -> [Option<u32>; 2] {
+    if entry == 0 {
+        [Some(0), Some(NPAD_ID_HANDHELD)]
+    } else if entry < MAX_FIGHTERS {
+        [Some(entry as u32), None]
+    } else {
+        [None, None]
+    }
+}
+
+#[inline(always)]
+unsafe fn npad_empty_state() -> NpadHandheldState {
+    NpadHandheldState {
+        updateCount: 0,
+        Buttons: 0,
+        LStickX: 0,
+        LStickY: 0,
+        RStickX: 0,
+        RStickY: 0,
+        Flags: 0,
+    }
+}
+
+#[inline(always)]
+unsafe fn npad_style_buttons(id: u32) -> (u64, u32, u32) {
+    let style = GetNpadStyleSet(&id).flags;
+    let probe = if style == 0 {
+        NPAD_STYLE_FULLKEY | NPAD_STYLE_HANDHELD | NPAD_STYLE_JOYDUAL
+    } else {
+        style
+    };
+    let mut state = npad_empty_state();
+    let mut buttons = 0u64;
+    let mut l_trigger = 0u32;
+    let mut r_trigger = 0u32;
+    if probe & NPAD_STYLE_FULLKEY != 0 {
+        GetNpadFullKeyState(&mut state, &id);
+        buttons |= state.Buttons;
+    }
+    if probe & NPAD_STYLE_HANDHELD != 0 {
+        GetNpadHandheldState(&mut state, &id);
+        buttons |= state.Buttons;
+    }
+    if probe & NPAD_STYLE_JOYDUAL != 0 {
+        GetNpadJoyDualState(&mut state, &id);
+        buttons |= state.Buttons;
+    }
+    if probe & NPAD_STYLE_JOYLEFT != 0 {
+        GetNpadJoyLeftState(&mut state, &id);
+        buttons |= state.Buttons;
+    }
+    if probe & NPAD_STYLE_JOYRIGHT != 0 {
+        GetNpadJoyRightState(&mut state, &id);
+        buttons |= state.Buttons;
+    }
+    if probe & NPAD_STYLE_GC != 0 {
+        let mut gc = NpadGcState::default();
+        GetNpadGcState(&mut gc, &id);
+        buttons |= gc.Buttons;
+        l_trigger = gc.LTrigger;
+        r_trigger = gc.RTrigger;
+    }
+    (buttons, l_trigger, r_trigger)
+}
+
+#[inline(always)]
+unsafe fn npad_shield_held(entry: usize) -> bool {
+    for id in npad_ids_for_entry(entry).into_iter().flatten() {
+        let (buttons, l_trigger, r_trigger) = npad_style_buttons(id);
+        if npad_buttons_include_shoulder(buttons)
+            || gc_triggers_include_shield(l_trigger, r_trigger)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+#[inline(always)]
+unsafe fn condensed_shield_held(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    entry: usize,
+) -> bool {
+    if module_accessor.is_null() {
+        return false;
+    }
+    ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD)
+        || npad_shield_held(entry)
 }
 
 #[inline(always)]
@@ -1389,115 +1457,24 @@ unsafe fn condensed_boss_selector_id(
     let summon_boss_id = smash::app::lua_bind::FighterInformation::summon_boss_id(info);
     let status = StatusModule::status_kind(module_accessor);
     let status_is_entry = status == *FIGHTER_STATUS_KIND_ENTRY;
-    let motion_frame = MotionModule::frame(module_accessor);
     let latch = &mut CONDENSED_SELECTION_LATCHES[entry_idx];
 
-    // Ganon and Master Hand each have one same-slot alternate. The host's controller
-    // state can become readable after the first selector query, so defer only
-    // those two native decisions for a short, bounded startup window. This
-    // prevents an early Ganon/Master Hand latch from hiding a held Shield.
-    if latch.captures(observation) {
-        let (color, failure) = match confirmed_condensed_color(observation) {
-            Ok(color) => (Some(color), None),
-            Err(failure) => (None, Some(failure)),
-        };
-
-        if let Some(color) = color {
-            let shield_held =
-                ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD);
-            if shield_held {
-                let secondary_override = condensed_secondary_selection(color, true);
-                let selection = condensed_selection_decision(true, true, color, secondary_override);
-                let failure = selection
-                    .is_none()
-                    .then_some(CondensedSelectionFailure::LogicalIndexOutOfRange);
-                latch.latch(observation, selection, status_is_entry);
-                LAST_LOGGED_CONDENSED_SELECTION[entry_idx] = u64::MAX;
-                log_condensed_selection(
-                    entry,
-                    true,
-                    observation,
-                    summon_boss_id,
-                    selection,
-                    failure,
-                );
-            } else if latch.secondary_capture_expired(motion_frame) {
-                let selection = condensed_selection_decision(
-                    true,
-                    true,
-                    color,
-                    CondensedSecondarySelection::None,
-                );
-                let failure = selection
-                    .is_none()
-                    .then_some(CondensedSelectionFailure::LogicalIndexOutOfRange);
-                latch.latch(observation, selection, status_is_entry);
-                LAST_LOGGED_CONDENSED_SELECTION[entry_idx] = u64::MAX;
-                log_condensed_selection(
-                    entry,
-                    true,
-                    observation,
-                    summon_boss_id,
-                    selection,
-                    failure,
-                );
-            } else {
-                latch.observe_status(status_is_entry);
-                log_condensed_selection(
-                    entry,
-                    true,
-                    observation,
-                    summon_boss_id,
-                    None,
-                    Some(CondensedSelectionFailure::SecondaryInputCapturePending),
-                );
-                return CondensedSelectorResolution::Unresolved;
-            }
-        } else {
-            latch.latch(observation, None, status_is_entry);
-            LAST_LOGGED_CONDENSED_SELECTION[entry_idx] = u64::MAX;
-            log_condensed_selection(entry, true, observation, summon_boss_id, None, failure);
-        }
-    }
-
+    // L/R are readable during load. Latch immediately: Shield selects the
+    // same-slot alternate, otherwise the picked Master Hand / Ganon variant
+    // must spawn for entry instead of waiting on a missed chord.
     let needs_latch = latch.needs_latch(observation, status_is_entry);
 
     if needs_latch {
         let (selection, failure) = match confirmed_condensed_color(observation) {
             Ok(color) => {
                 let shield_held =
-                    ControlModule::check_button_on(module_accessor, *CONTROL_PAD_BUTTON_GUARD);
+                    condensed_mode_enabled() && condensed_shield_held(module_accessor, entry_idx);
                 let secondary_override = condensed_secondary_selection(color, shield_held);
-                if secondary_override != CondensedSecondarySelection::None {
-                    let selection =
-                        condensed_selection_decision(true, true, color, secondary_override);
-                    let failure = selection
-                        .is_none()
-                        .then_some(CondensedSelectionFailure::LogicalIndexOutOfRange);
-                    (selection, failure)
-                } else if condensed_color_has_secondary_choice(color) {
-                    latch.begin_secondary_capture(observation, status_is_entry, motion_frame);
-                    log_condensed_selection(
-                        entry,
-                        true,
-                        observation,
-                        summon_boss_id,
-                        None,
-                        Some(CondensedSelectionFailure::SecondaryInputCapturePending),
-                    );
-                    return CondensedSelectorResolution::Unresolved;
-                } else {
-                    let selection = condensed_selection_decision(
-                        true,
-                        true,
-                        color,
-                        CondensedSecondarySelection::None,
-                    );
-                    let failure = selection
-                        .is_none()
-                        .then_some(CondensedSelectionFailure::LogicalIndexOutOfRange);
-                    (selection, failure)
-                }
+                let selection = condensed_selection_decision(true, true, color, secondary_override);
+                let failure = selection
+                    .is_none()
+                    .then_some(CondensedSelectionFailure::LogicalIndexOutOfRange);
+                (selection, failure)
             }
             Err(failure) => (None, Some(failure)),
         };
@@ -2313,6 +2290,26 @@ mod condensed_tests {
     }
 
     #[test]
+    fn npad_shoulder_bits_are_physical_l_and_r() {
+        assert_eq!(NPAD_BUTTON_L, 0x40);
+        assert_eq!(NPAD_BUTTON_R, 0x80);
+        assert!(npad_buttons_include_shoulder(NPAD_BUTTON_L));
+        assert!(npad_buttons_include_shoulder(NPAD_BUTTON_R));
+        assert!(npad_buttons_include_shoulder(NPAD_BUTTON_L | NPAD_BUTTON_R));
+        assert!(!npad_buttons_include_shoulder(0));
+        assert!(
+            !npad_buttons_include_shoulder(1 << 8),
+            "ZL is grab, not shield"
+        );
+        assert!(gc_triggers_include_shield(NPAD_GC_TRIGGER_SHIELD, 0));
+        assert!(gc_triggers_include_shield(0, NPAD_GC_TRIGGER_SHIELD));
+        assert!(!gc_triggers_include_shield(0, 0));
+        assert_eq!(npad_ids_for_entry(0), [Some(0), Some(NPAD_ID_HANDHELD)]);
+        assert_eq!(npad_ids_for_entry(1), [Some(1), None]);
+        assert_eq!(npad_ids_for_entry(7), [Some(7), None]);
+    }
+
+    #[test]
     fn shield_secondary_selection_is_scoped_to_ganon_and_master_hand() {
         assert_eq!(
             condensed_secondary_selection(CONDENSED_GALLEOM_ALTERNATE_COLOR, true),
@@ -2359,41 +2356,40 @@ mod condensed_tests {
     }
 
     #[test]
-    fn secondary_capture_accepts_shield_after_the_first_selector_query() {
+    fn missed_shield_latches_the_picked_master_hand_or_ganon() {
+        assert!(condensed_color_has_secondary_choice(
+            CONDENSED_WOL_ALTERNATE_COLOR
+        ));
+        assert!(condensed_color_has_secondary_choice(
+            CONDENSED_GALLEOM_ALTERNATE_COLOR
+        ));
+        assert!(!condensed_color_has_secondary_choice(2));
+
         let observation = CondensedColorObservation {
             host_work_color: CONDENSED_WOL_ALTERNATE_COLOR as i32,
             fighter_color: CONDENSED_WOL_ALTERNATE_COLOR,
         };
         let mut latch = CondensedSelectionLatch::EMPTY;
-        latch.begin_secondary_capture(observation, true, 10.0);
-
-        assert!(latch.captures(observation));
-        assert_eq!(latch.resolved_hash(), None);
-        assert!(!latch.secondary_capture_expired(12.99));
-
-        let secondary = condensed_secondary_selection(CONDENSED_WOL_ALTERNATE_COLOR, true);
         latch.latch(
             observation,
-            condensed_selection_for_color(CONDENSED_WOL_ALTERNATE_COLOR, secondary),
+            condensed_selection_for_color(
+                CONDENSED_WOL_ALTERNATE_COLOR,
+                CondensedSecondarySelection::None,
+            ),
             true,
         );
-        assert_eq!(latch.resolved_hash(), Some(UI_CHARA_MEWTWO_MASTERHAND_HASH));
-        assert!(!latch.secondary_capture_active);
-    }
+        assert_eq!(latch.resolved_hash(), Some(UI_CHARA_MASTERHAND_HASH));
+        assert_eq!(
+            latch.decision.unwrap().secondary_override,
+            CondensedSecondarySelection::None
+        );
 
-    #[test]
-    fn secondary_capture_expires_to_the_native_variant_without_shield() {
-        let observation = CondensedColorObservation {
+        let ganon = CondensedColorObservation {
             host_work_color: CONDENSED_GALLEOM_ALTERNATE_COLOR as i32,
             fighter_color: CONDENSED_GALLEOM_ALTERNATE_COLOR,
         };
-        let mut latch = CondensedSelectionLatch::EMPTY;
-        latch.begin_secondary_capture(observation, true, 4.0);
-
-        assert!(!latch.secondary_capture_expired(6.99));
-        assert!(latch.secondary_capture_expired(7.0));
         latch.latch(
-            observation,
+            ganon,
             condensed_selection_for_color(
                 CONDENSED_GALLEOM_ALTERNATE_COLOR,
                 CondensedSecondarySelection::None,
@@ -2401,25 +2397,70 @@ mod condensed_tests {
             true,
         );
         assert_eq!(latch.resolved_hash(), Some(UI_CHARA_GANONBOSS_HASH));
-        assert_eq!(
-            latch.decision.unwrap().secondary_override,
-            CondensedSecondarySelection::None
-        );
     }
 
     #[test]
-    fn secondary_capture_has_a_hard_call_bound_if_motion_stalls() {
+    fn shield_on_first_query_selects_wol_or_galleom() {
         let observation = CondensedColorObservation {
             host_work_color: CONDENSED_WOL_ALTERNATE_COLOR as i32,
             fighter_color: CONDENSED_WOL_ALTERNATE_COLOR,
         };
         let mut latch = CondensedSelectionLatch::EMPTY;
-        latch.begin_secondary_capture(observation, true, 0.0);
+        let secondary = condensed_secondary_selection(CONDENSED_WOL_ALTERNATE_COLOR, true);
+        latch.latch(
+            observation,
+            condensed_selection_for_color(CONDENSED_WOL_ALTERNATE_COLOR, secondary),
+            true,
+        );
+        assert_eq!(latch.resolved_hash(), Some(UI_CHARA_MEWTWO_MASTERHAND_HASH));
+    }
 
-        for _ in 1..CONDENSED_SECONDARY_CAPTURE_MAX_CALLS {
-            assert!(!latch.secondary_capture_expired(0.0));
-        }
-        assert!(latch.secondary_capture_expired(0.0));
+    #[test]
+    fn shield_alternates_require_condensed_single_slot() {
+        assert!(condensed_selection_decision(
+            false,
+            true,
+            CONDENSED_WOL_ALTERNATE_COLOR,
+            CondensedSecondarySelection::WolMasterHand,
+        )
+        .is_none());
+        assert!(condensed_selection_decision(
+            false,
+            true,
+            CONDENSED_GALLEOM_ALTERNATE_COLOR,
+            CondensedSecondarySelection::Galleom,
+        )
+        .is_none());
+        assert_eq!(
+            condensed_selection_decision(
+                true,
+                true,
+                CONDENSED_WOL_ALTERNATE_COLOR,
+                CondensedSecondarySelection::WolMasterHand,
+            )
+            .map(|decision| decision.boss_hash),
+            Some(UI_CHARA_MEWTWO_MASTERHAND_HASH)
+        );
+        assert_eq!(
+            condensed_selection_decision(
+                true,
+                true,
+                CONDENSED_GALLEOM_ALTERNATE_COLOR,
+                CondensedSecondarySelection::Galleom,
+            )
+            .map(|decision| decision.boss_hash),
+            Some(UI_CHARA_GALLEOM_HASH)
+        );
+        assert_eq!(
+            condensed_selection_decision(
+                true,
+                true,
+                CONDENSED_WOL_ALTERNATE_COLOR,
+                CondensedSecondarySelection::None,
+            )
+            .map(|decision| decision.boss_hash),
+            Some(UI_CHARA_MASTERHAND_HASH)
+        );
     }
 
     #[test]
