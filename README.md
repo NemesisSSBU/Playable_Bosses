@@ -460,3 +460,132 @@ Dracula has **two completely different phases** depending on HP.
 
 - Uses **default fighter moveset**
 - No custom boss-specific input mapping
+
+---
+
+# How to Use Boss Amiibos  
+
+Competitive Playable Bosses adds unique Amiibo identities for the supported bosses.
+
+You can go to amiibo.toml located within the ultimate/Bosses mod folder and change it to an already existing amiibo value (you can find their amiibo values online)
+
+You can also scan the unique amiibo ID's found within amiibo.toml onto a NTAG215 to truly scan them in just as if they were real amiibos!
+
+Below will be how to implement the unique amiibo ID's for virtual amiibo scanning.
+
+## Ryujinx:
+
+Navigate to Ryujinx/system/amiibo/Amiibo.json
+
+Just before the closing square bracket, go one by one and replicate the way they're added (you can always ask an AI to follow this process, they're very good at doing this) add the amiibo ID's found within amiibo.toml.
+
+After this, you will have the bosses located in your amiibo section for Ryujinx (be aware you may need to turn off the WiFi or prevent Ryujinx from grabbing refreshed amiibo data from where it fetches information.
+
+For Switch virtual amiibo emulation if you're unable to do a NTAG215:
+
+Going with emuiibo:
+
+## Step 1 — Locate Your emuiibo Folder
+
+Insert your Nintendo Switch SD card into your computer.
+
+Navigate to:
+
+```text
+SD:/emuiibo/amiibo/
+```
+
+This is where emuiibo stores virtual Amiibos. 
+
+## Step 2 — Copy the Boss Amiibos
+
+Copy the provided Boss Amiibo folders into:
+
+```text
+SD:/emuiibo/amiibo/
+```
+
+You may also place them inside their own folder to keep things organized, for example:
+
+```text
+SD:/emuiibo/amiibo/Playable Bosses/
+```
+
+emuiibo supports Amiibos inside subfolders. 
+
+Your folders should look similar to:
+
+```text
+SD:/
+└── emuiibo/
+    └── amiibo/
+        └── Playable Bosses/
+            ├── Master Hand/
+            ├── Crazy Hand/
+            ├── Dharkon/
+            ├── Galeem/
+            ├── Ganon/
+            ├── Rathalos/
+            ├── Marx/
+            └── etc...
+```
+
+Each individual virtual Amiibo folder should contain the required emuiibo files, including:
+
+```text
+amiibo.json
+amiibo.flag
+```
+
+Those files are what allow emuiibo to recognize the folder as a virtual Amiibo. 
+
+## Step 3 — Start Your Switch
+
+Put the SD card back into your Nintendo Switch and boot into your normal modded setup.
+
+Make sure:
+
+- Competitive Playable Bosses is enabled.
+- emuiibo is enabled.
+- Super Smash Bros. Ultimate is running with the mod loaded.
+
+## Step 4 — Open the Amiibo Menu in Smash
+
+From the Super Smash Bros. Ultimate main menu, go to the game's **Amiibo** section.
+
+Once Smash is waiting for an Amiibo, open your emuiibo overlay.
+
+## Step 5 — Select a Boss Amiibo
+
+Inside emuiibo:
+
+1. Make sure Amiibo emulation is enabled.
+2. Open the Amiibo list.
+3. Navigate to the **Playable Bosses** folder if you created one.
+4. Select the boss you want.
+5. Connect the virtual Amiibo.
+
+Connecting a virtual Amiibo through emuiibo acts like placing a physical Amiibo onto the controller's NFC reader. 
+
+Smash should now recognize the Boss Amiibo using the unique ID provided by Competitive Playable Bosses. (Remember, Dracula is the only minor exception, only visually, but he has his own amiibo still just like the other bosses).
+
+## Troubleshooting
+
+If your Boss Amiibo does not appear:
+
+- Make sure the newest Competitive Playable Bosses is installed.
+- Make sure the Amiibo folder is somewhere inside:
+
+```text
+SD:/emuiibo/amiibo/
+```
+
+- Make sure the individual Amiibo folder contains both:
+
+```text
+amiibo.json
+amiibo.flag
+```
+
+- Make sure emuiibo is enabled before attempting to scan the Amiibo.
+- Restart Smash after installing the Boss Amiibo files if necessary.
