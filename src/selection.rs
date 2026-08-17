@@ -669,9 +669,24 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
             CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] = origin;
             log_css_selection_transition(entry_idx as u32, Some(entry_idx), ui_hash, ui_hash);
         }
-        OpaqueSelectionCommit::Clear { .. } => {
-            CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx] = 0;
-            CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] = OpaqueSelectionCacheOrigin::None;
+        OpaqueSelectionCommit::Clear { reason } => {
+            // Menu navigation constantly emits selection transactions carrying
+            // no named UI identity (`no_named_ui_identity`). Before 3.1.0 that
+            // was harmless, but the persisted-selection restore now seeds this
+            // cache at plugin init, and the first such transaction wiped it --
+            // so a cold launch straight into Spirit Board resolved to the Mario
+            // host until the Fighter tab was visited (issue #89).
+            //
+            // Identity-free noise must not destroy a restored selection. A
+            // genuine Mario pick still reports `named_mario_selection`, and an
+            // ambiguous lookup still reports its own reason, so both continue
+            // to clear normally.
+            let restored_selection_pending = CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx]
+                == OpaqueSelectionCacheOrigin::RestoredPersistedSelection;
+            if !(restored_selection_pending && reason == "no_named_ui_identity") {
+                CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx] = 0;
+                CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] = OpaqueSelectionCacheOrigin::None;
+            }
         }
     }
     log_condensed_carrier_transition(pending, commit);
@@ -1887,6 +1902,43 @@ pub unsafe fn clear_boss_selection_suppression_if_ready_go(
                 preview_stage,
                 CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx]
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod persisted_selection_tests {
+    use super::*;
+
+    /// Issue #89. The restored persisted selection must survive identity-free
+    /// menu traffic but still yield to a genuine Mario pick. Both paths reach
+    /// `finish_opaque_selection_candidate` as `Clear`, so they are only
+    /// separable by reason -- this locks those two reasons apart.
+    #[test]
+    fn menu_noise_and_a_real_mario_pick_clear_for_different_reasons() {
+        let noise = PendingOpaqueSelection::EMPTY;
+        match pending_selection_commit(false, noise) {
+            OpaqueSelectionCommit::Clear { reason } => {
+                assert_eq!(
+                    reason, "no_named_ui_identity",
+                    "identity-free menu traffic must stay distinguishable so a \
+                     restored persisted selection is not wiped by it"
+                );
+            }
+            other => panic!("identity-free traffic must clear, got {other:?}"),
+        }
+
+        let mut mario_pick = PendingOpaqueSelection::EMPTY;
+        mario_pick.saw_mario = true;
+        match pending_selection_commit(false, mario_pick) {
+            OpaqueSelectionCommit::Clear { reason } => {
+                assert_eq!(
+                    reason, "named_mario_selection",
+                    "a real Mario pick must still clear a restored selection"
+                );
+                assert_ne!(reason, "no_named_ui_identity");
+            }
+            other => panic!("a named Mario pick must clear, got {other:?}"),
         }
     }
 }

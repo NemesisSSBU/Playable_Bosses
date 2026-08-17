@@ -281,24 +281,6 @@ unsafe fn any_boss_active() -> bool {
         || ganon::check_status()
 }
 
-unsafe fn is_boss_mario_host(module_accessor: *mut smash::app::BattleObjectModuleAccessor) -> bool {
-    if module_accessor.is_null() {
-        return false;
-    }
-    if boss_helpers::is_marked_boss_mario_host(module_accessor) {
-        return true;
-    }
-    let hidden = boss_helpers::is_hidden_host(module_accessor)
-        || boss_helpers::is_hidden_host_entry_prep(module_accessor)
-        || boss_helpers::is_hidden_host_entry_stage_two(module_accessor)
-        || boss_helpers::is_hidden_host_baseline(module_accessor);
-    if hidden {
-        boss_helpers::mark_boss_mario_host(module_accessor);
-        return true;
-    }
-    selection::selected_css_boss_selector_id(module_accessor).is_some()
-}
-
 unsafe fn suppress_hidden_host_result_audio(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
 ) {
@@ -312,10 +294,46 @@ unsafe fn suppress_hidden_host_result_audio(
     boss_helpers::stop_hidden_host_mario_result_sfx(module_accessor);
 }
 
+/// Narrow predicate for AUDIO suppression only.
+///
+/// `is_boss_mario_host` intentionally falls back to "this entry has a boss CSS
+/// selection", which is correct for identity work but far too broad to hang
+/// `stop_all_sound` on. Since 3.1.0 the persisted-selection restore populates
+/// that selection cache at plugin init, so on a cold launch a *plain* Mario
+/// sitting at that entry answered true and had `stop_all_sound` called twice
+/// per frame, forever -- reported as "most of Mario's sound effects are
+/// completely silent, just Mario, as both player and CPU".
+///
+/// Audio suppression therefore requires physical evidence that this fighter is
+/// actually acting as a boss host right now: the per-entry latch (set the first
+/// frame a hidden-host scale is observed, long before any death voice) or a
+/// live hidden-host scale. A CSS/persisted selection alone is never enough.
+unsafe fn is_boss_mario_host_for_audio(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+) -> bool {
+    if module_accessor.is_null() {
+        return false;
+    }
+    if boss_helpers::is_marked_boss_mario_host(module_accessor) {
+        return true;
+    }
+    // Latch on the first hidden-host frame, exactly as the previous predicate
+    // did, so the death voice stays muted even after death resets the scale.
+    let hidden = boss_helpers::is_hidden_host(module_accessor)
+        || boss_helpers::is_hidden_host_entry_prep(module_accessor)
+        || boss_helpers::is_hidden_host_entry_stage_two(module_accessor)
+        || boss_helpers::is_hidden_host_baseline(module_accessor);
+    if hidden {
+        boss_helpers::mark_boss_mario_host(module_accessor);
+        return true;
+    }
+    false
+}
+
 unsafe fn suppress_boss_mario_host_death_voice(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
 ) {
-    if !is_boss_mario_host(module_accessor) {
+    if !is_boss_mario_host_for_audio(module_accessor) {
         return;
     }
     boss_helpers::suppress_boss_mario_death_voice(module_accessor);
