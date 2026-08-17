@@ -205,6 +205,7 @@ unsafe fn reset_stale_match_generation_if_new_round(
 unsafe fn reset_boss_runtime_bookkeeping(entry_id: usize) {
     boss_runtime::reset_all_for_entry(entry_id);
     boss_helpers::clear_boss_mario_host_latch(entry_id);
+    selection::reset_selector_authority_log(entry_id);
     playable_masterhand::reset_match_state(entry_id);
     mastercrazy::reset_match_state(entry_id);
     galeem::reset_match_state(entry_id);
@@ -538,6 +539,9 @@ unsafe fn update_result_transition_state(
     let selected_ui_hash = if result_mode {
         0
     } else {
+        // Read-only, latched once per entry: proves which candidate supplies the
+        // battle selector when a restored selection fails to take over (#89).
+        selection::log_selector_authority(module_accessor);
         selection::selected_css_boss_selector_id(module_accessor).unwrap_or(0)
     };
     let had_ready_go = BOSS_HAD_READY_GO[entry_id];
@@ -560,7 +564,9 @@ unsafe fn update_result_transition_state(
         // remembering across a reboot. Browsing the CSS without starting a
         // match never reaches here and therefore never overwrites the saved
         // value. Writes only when the boss actually changed.
-        selection::persist_selection_for_started_battle(entry_id);
+        // Pass the RESOLVED identity so a condensed Shield alternate
+        // (WOL Master Hand / Galleom) confirms as the boss that actually loaded.
+        selection::persist_selection_for_started_battle(entry_id, selected_ui_hash);
         BOSS_MATCH_STARTED[entry_id] = true;
         POST_MATCH_PRE_RESULT[entry_id] = false;
         POST_MATCH_TRACKING_INVALIDATED[entry_id] = false;
