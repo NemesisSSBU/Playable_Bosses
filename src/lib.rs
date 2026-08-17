@@ -882,6 +882,11 @@ pub unsafe fn any_post_match_pre_result() -> bool {
     false
 }
 
+#[inline(always)]
+pub unsafe fn boss_lifecycle_generation(entry_id: usize) -> u32 {
+    BOSS_LIFECYCLE_GENERATION[entry_id.min(MAX_FIGHTERS - 1)]
+}
+
 static mut EARLY_TAKEOVER_LAST_SIGNATURE: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 /// Consecutive qualifying frames observed for the Spirit-Replay new-round
 /// boundary. Bounded, plugin-owned, no engine reads.

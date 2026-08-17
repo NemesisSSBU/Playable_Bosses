@@ -23,6 +23,21 @@ static mut LAST_LOGGED_SELECTION_LOG_SELECTOR_ID: [u64; MAX_FIGHTERS] = [u64::MA
 static mut LAST_LOGGED_CACHE_SELECTOR_ID: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut LOG_INT_SELECTOR_KEY: [Option<(i32, i32, i32)>; MAX_FIGHTERS] = [None; MAX_FIGHTERS];
 static mut CACHED_BOSS_UI_HASH_GLOBAL: u64 = 0;
+/// Provenance capture only. Monotonic transaction counter, and the last
+/// entry/hash pair seen by the shared `update_css_cache` callback, so a commit
+/// can report whether an entry-specific callback corroborated the same identity.
+static mut SELECTION_TXN_SEQUENCE: u32 = 0;
+static mut LAST_CSS_CACHE_TXN_SEQUENCE: u32 = u32::MAX;
+static mut SELECTION_TXN_LOG_BUDGET: u32 = 400;
+
+#[inline(always)]
+unsafe fn selection_txn_budget_take() -> bool {
+    if !crate::debug::enabled() || SELECTION_TXN_LOG_BUDGET == 0 {
+        return false;
+    }
+    SELECTION_TXN_LOG_BUDGET -= 1;
+    true
+}
 static mut CACHED_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
 static mut CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY: [OpaqueSelectionCacheOrigin; MAX_FIGHTERS] =
     [OpaqueSelectionCacheOrigin::None; MAX_FIGHTERS];
@@ -48,11 +63,19 @@ static mut LAST_SELECTION_BISECT_SIGNATURE: [u64; 8] = [u64::MAX; 8];
 enum OpaqueSelectionCacheOrigin {
     None,
     TentativeUiSelection,
+    /// Named boss lookup nested in an owned selected-fighter transaction.
+    /// Observational only: Smash's startup/entry sync produces this without a
+    /// user pick. Must not persist, must not apply to a CPU, and must not
+    /// outrank Restored until an independent corroboration signal exists.
+    CandidateUiLookup,
     ConfirmedUiLookup,
     ConfirmedCondensedCarrier,
-    /// Restored from disk at plugin load. Authoritative like a confirmed
-    /// lookup, but kept distinct so its provenance stays visible in logs and
-    /// so a live confirmation can be told apart from a restored one.
+    /// Restored from disk at plugin load. Bootstrap fallback only: weaker than
+    /// any positively resolved current-session identity (corroborated CSS
+    /// selection, character name, live summon/log selector). Kept distinct so
+    /// logs can tell a live confirmation from a restored one, and so
+    /// consumption can refuse to apply leftover persist to whoever later
+    /// occupies the slot.
     RestoredPersistedSelection,
 }
 
@@ -61,8 +84,23 @@ struct PendingOpaqueSelection {
     entry_idx: usize,
     fallback_hash: u64,
     observed_boss_hash: u64,
+    /// Transaction sequence that produced `observed_boss_hash`. Zero means no
+    /// named boss lookup has been observed while this transaction was active.
+    /// That stamp proves nesting, not user selection. `fallback_hash` never
+    /// writes it.
+    observed_at_sequence: u32,
     saw_mario: bool,
     ambiguous: bool,
+    // Provenance capture only. None of these influence any decision; they exist
+    // so an A/B hardware capture can separate a genuine per-entry selection from
+    // a generic roster enumeration pass. Hash equality with a restored slot is
+    // also not a substitute for these fields.
+    outer_hook: u8,
+    outer_player_id: u32,
+    outer_info_ptr: u64,
+    sequence: u32,
+    observation_count: u16,
+    first_raw_lookup: u64,
 }
 
 impl PendingOpaqueSelection {
@@ -70,8 +108,15 @@ impl PendingOpaqueSelection {
         entry_idx: usize::MAX,
         fallback_hash: 0,
         observed_boss_hash: 0,
+        observed_at_sequence: 0,
         saw_mario: false,
         ambiguous: false,
+        outer_hook: 0,
+        outer_player_id: u32::MAX,
+        outer_info_ptr: 0,
+        sequence: 0,
+        observation_count: 0,
+        first_raw_lookup: 0,
     };
 
     const fn begin(entry_idx: usize, fallback_hash: u64) -> Self {
@@ -79,8 +124,17 @@ impl PendingOpaqueSelection {
             entry_idx,
             fallback_hash,
             observed_boss_hash: 0,
+            observed_at_sequence: 0,
             saw_mario: false,
             ambiguous: false,
+            outer_hook: 0,
+            outer_player_id: u32::MAX,
+            outer_info_ptr: 0,
+            // Non-zero so an open transaction is distinguishable from EMPTY.
+            // Production overwrites this with the monotonic counter in `arm`.
+            sequence: 1,
+            observation_count: 0,
+            first_raw_lookup: 0,
         }
     }
 
@@ -97,6 +151,7 @@ impl PendingOpaqueSelection {
         }
         if self.observed_boss_hash == 0 || self.observed_boss_hash == ui_hash {
             self.observed_boss_hash = ui_hash;
+            self.observed_at_sequence = self.sequence;
         } else {
             self.ambiguous = true;
         }
@@ -372,13 +427,14 @@ unsafe fn selected_boss_selector_id_from_runtime_sources(
                 selected = v;
             }
         }
-        let mut cache_selector_id = None;
-        if !is_known_boss_selector_value(selected) {
-            cache_selector_id = cached_css_boss_hash(module_accessor, idx);
-            if let Some(v) = cache_selector_id {
-                selected = v;
-            }
-        }
+        // Cache is not a live fighter-info source. Including it here made
+        // `runtime_sources` report a restored persist hash and then beat
+        // `name_detection` in `selected_css_boss_selector_id`. Log it only.
+        let cache_selector_id = if !is_known_boss_selector_value(selected) {
+            cached_css_boss_hash(module_accessor, idx)
+        } else {
+            None
+        };
         log_context = Some((idx, log_selector_id, cache_selector_id));
     }
 
@@ -416,11 +472,15 @@ unsafe fn selected_boss_selector_id_from_runtime_sources(
             }
         }
     }
-    if resolved_selected == 0 {
-        None
-    } else {
-        Some(resolved_selected)
-    }
+    resolved_live_boss_hash(resolved_selected)
+}
+
+/// Live fighter-info may only supply a recognised boss CSS identity.
+/// The 0x50000000 "no summon" sentinel, raw zeros, and other non-boss
+/// scalars are absence of current evidence — not an identity that can
+/// outrank name detection or a restored fallback.
+fn resolved_live_boss_hash(resolved_selected: u64) -> Option<u64> {
+    is_boss_css_hash(resolved_selected).then_some(resolved_selected)
 }
 
 fn hash_for_ui_chara_selector_id(selector: i32) -> Option<u64> {
@@ -467,6 +527,26 @@ fn normalize_ui_hash_candidate(raw: u64) -> Option<u64> {
     normalize_known_ui_hash_candidate(raw).filter(|hash| is_boss_css_hash(*hash))
 }
 
+/// A named boss observation counts as in-transaction evidence only when it was
+/// stamped with this transaction's sequence. That is not enough for Confirmed*:
+/// Smash's generic entry sync nests lookups in owned selected-fighter
+/// callbacks. `fallback_hash` is seeded at `begin` from the pre-transaction
+/// global and must never take this path.
+fn named_observation_belongs_to_this_transaction(pending: &PendingOpaqueSelection) -> bool {
+    pending.observed_boss_hash != 0
+        && pending.sequence != 0
+        && pending.observed_at_sequence == pending.sequence
+}
+
+/// Second, independent selection signal required before Confirmed* / disk /
+/// CPU authority. Hardware 2026-08-17: `observed_at_sequence == sequence`
+/// was true for an automatic Rathalos confirm on Spirit CPU Mario
+/// (`css_cache_corroborated=false`). Do not gate on css-cache corroboration
+/// until an explicit CPU pick A/B exists. Fail closed until then.
+fn independent_selection_corroborated() -> bool {
+    false
+}
+
 fn pending_selection_commit(
     condensed_enabled: bool,
     pending: PendingOpaqueSelection,
@@ -477,16 +557,23 @@ fn pending_selection_commit(
         };
     }
 
-    if pending.observed_boss_hash != 0 {
-        let origin = if condensed_enabled && pending.observed_boss_hash == UI_CHARA_MASTERHAND_HASH
-        {
-            OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
-        } else {
-            OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-        };
+    if named_observation_belongs_to_this_transaction(&pending) {
+        if independent_selection_corroborated() {
+            let origin = if condensed_enabled
+                && pending.observed_boss_hash == UI_CHARA_MASTERHAND_HASH
+            {
+                OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
+            } else {
+                OpaqueSelectionCacheOrigin::ConfirmedUiLookup
+            };
+            return OpaqueSelectionCommit::Cached {
+                ui_hash: pending.observed_boss_hash,
+                origin,
+            };
+        }
         return OpaqueSelectionCommit::Cached {
             ui_hash: pending.observed_boss_hash,
-            origin,
+            origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
         };
     }
 
@@ -529,7 +616,13 @@ unsafe fn log_selection_hook(
         ^ info_ptr.rotate_left(47);
     let slot = slot.min(7);
     if LAST_SELECTION_BISECT_SIGNATURE[slot] == signature {
-        return;
+        // Nested lookups during an owned txn must remain visible. An ambient
+        // lookup of the same hash would otherwise suppress the SelectionHook
+        // line that proves the observation happened after begin.
+        let txn_open = PENDING_OPAQUE_SELECTION.entry_idx < MAX_FIGHTERS;
+        if !txn_open || (slot != 4 && slot != 5) {
+            return;
+        }
     }
     LAST_SELECTION_BISECT_SIGNATURE[slot] = signature;
 
@@ -558,8 +651,32 @@ unsafe fn arm_opaque_selection_candidate(player_id: u32, payload_ptr: u64, hook:
     SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] = false;
     SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] = i32::MIN;
     reset_condensed_selection(entry_idx);
+    // Pre-transaction ambient identity. Stored only as `fallback_hash`.
+    // It must not populate `observed_boss_hash`; that field is written only
+    // by a nested lookup after this transaction is already in PENDING.
     let fallback_hash = CACHED_BOSS_UI_HASH_GLOBAL;
-    PENDING_OPAQUE_SELECTION = PendingOpaqueSelection::begin(entry_idx, fallback_hash);
+    SELECTION_TXN_SEQUENCE = SELECTION_TXN_SEQUENCE.wrapping_add(1);
+    if SELECTION_TXN_SEQUENCE == 0 {
+        SELECTION_TXN_SEQUENCE = 1;
+    }
+    let mut pending = PendingOpaqueSelection::begin(entry_idx, fallback_hash);
+    pending.outer_hook = if hook.ends_with("3310760") { 1 } else { 2 };
+    pending.outer_player_id = player_id;
+    pending.outer_info_ptr = payload_ptr;
+    pending.sequence = SELECTION_TXN_SEQUENCE;
+    PENDING_OPAQUE_SELECTION = pending;
+    if selection_txn_budget_take() {
+        let seq = SELECTION_TXN_SEQUENCE;
+        crate::boss_log!(
+            "[PB][SelectionTxn] phase=begin entry={} outer_hook={} outer_player_id={} outer_info_ptr=0x{:x} transaction_sequence={} fallback_hash=0x{:010x}",
+            entry_idx,
+            hook,
+            player_id,
+            payload_ptr,
+            seq,
+            fallback_hash
+        );
+    }
 
     if crate::debug::enabled() && LAST_LOGGED_SELECTION_INFO_HASH[entry_idx] != fallback_hash {
         LAST_LOGGED_SELECTION_INFO_HASH[entry_idx] = fallback_hash;
@@ -576,12 +693,33 @@ unsafe fn arm_opaque_selection_candidate(player_id: u32, payload_ptr: u64, hook:
 
 #[inline(always)]
 unsafe fn observe_pending_opaque_selection_lookup(raw_ui_hash: u64) {
+    // Sole producer of `observation_count` and of in-txn `observed_boss_hash`.
+    // Called only from `capture_lookup_fighter_kind_from_ui_hash`. If no owned
+    // transaction is armed, this returns without writing either field.
     if PENDING_OPAQUE_SELECTION.entry_idx >= MAX_FIGHTERS {
         return;
     }
     let mut pending = PENDING_OPAQUE_SELECTION;
-    pending.observe_named_lookup(normalize_known_ui_hash_candidate(raw_ui_hash));
+    let normalized = normalize_known_ui_hash_candidate(raw_ui_hash);
+    pending.observation_count = pending.observation_count.saturating_add(1);
+    if pending.first_raw_lookup == 0 {
+        pending.first_raw_lookup = raw_ui_hash;
+    }
+    pending.observe_named_lookup(normalized);
     PENDING_OPAQUE_SELECTION = pending;
+    if selection_txn_budget_take() {
+        crate::boss_log!(
+            "[PB][SelectionTxn] phase=observe entry={} transaction_sequence={} observed_at_sequence={} raw_lookup_hash=0x{:x} normalized_lookup_hash=0x{:010x} observed_boss_hash=0x{:010x} observation_count={} boss={}",
+            pending.entry_idx,
+            pending.sequence,
+            pending.observed_at_sequence,
+            raw_ui_hash,
+            normalized.unwrap_or(0),
+            pending.observed_boss_hash,
+            pending.observation_count,
+            css_identity_label(normalized.unwrap_or(0))
+        );
+    }
 }
 
 #[inline(always)]
@@ -610,6 +748,15 @@ unsafe fn log_condensed_carrier_transition(
             ui_hash,
             false,
             "not_master_hand_selection",
+            "selected_fighter_named_ui_lookup",
+        ),
+        OpaqueSelectionCommit::Cached {
+            ui_hash,
+            origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
+        } => (
+            ui_hash,
+            false,
+            "named_observation_candidate_not_corroborated",
             "selected_fighter_named_ui_lookup",
         ),
         OpaqueSelectionCommit::Cached {
@@ -663,6 +810,38 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
     let pending = PENDING_OPAQUE_SELECTION;
     PENDING_OPAQUE_SELECTION = PendingOpaqueSelection::EMPTY;
     let commit = pending_selection_commit(condensed_mode_enabled(), pending);
+    if selection_txn_budget_take() {
+        let (proposed_origin, proposed_hash) = match commit {
+            OpaqueSelectionCommit::Cached { ui_hash, origin } => (origin_label(origin), ui_hash),
+            OpaqueSelectionCommit::Clear { reason } => (reason, 0u64),
+        };
+        // Corroboration: did the shared entry-specific CSS callback run inside
+        // this exact transaction window?
+        let css_cache_corroborated = LAST_CSS_CACHE_TXN_SEQUENCE == pending.sequence;
+        crate::boss_log!(
+            "[PB][SelectionTxn] phase=commit entry={} outer_hook={} outer_player_id={} outer_info_ptr=0x{:x} transaction_sequence={} observed_at_sequence={} raw_lookup_hash=0x{:x} observed_boss_hash=0x{:010x} fallback_hash=0x{:010x} observation_count={} saw_mario={} ambiguous={} proposed_origin={} proposed_hash=0x{:010x} boss={} css_cache_corroborated={} independent_corroboration={} would_persist={}",
+            pending.entry_idx,
+            if pending.outer_hook == 1 { "3310760" } else { "3311190" },
+            pending.outer_player_id,
+            pending.outer_info_ptr,
+            pending.sequence,
+            pending.observed_at_sequence,
+            pending.first_raw_lookup,
+            pending.observed_boss_hash,
+            pending.fallback_hash,
+            pending.observation_count,
+            pending.saw_mario,
+            pending.ambiguous,
+            proposed_origin,
+            proposed_hash,
+            css_identity_label(proposed_hash),
+            css_cache_corroborated,
+            independent_selection_corroborated(),
+            matches!(commit, OpaqueSelectionCommit::Cached { ui_hash, origin }
+                if origin_is_authoritative_selection(origin)
+                    && is_persistable_host_boss_hash(ui_hash))
+        );
+    }
     match commit {
         OpaqueSelectionCommit::Cached { ui_hash, origin } => {
             // `arm_opaque_selection_candidate` seeds every transaction with the
@@ -674,13 +853,18 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
             // the observed `cache_selector=None` and the lost takeover (#89).
             //
             // A weaker origin may never replace a stronger one for an entry.
-            let existing_rank =
-                origin_authority_rank(CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx]);
-            let has_existing = is_boss_css_hash(CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx]);
+            let existing_hash = CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx];
+            let existing_origin = CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx];
+            let existing_rank = origin_authority_rank(existing_origin);
+            let has_existing = is_boss_css_hash(existing_hash);
             if has_existing && origin_authority_rank(origin) < existing_rank {
                 log_condensed_carrier_transition(pending, commit);
                 return;
             }
+            // Nested named lookups are Candidate until an independent
+            // corroboration signal exists. Candidate cannot outrank Restored,
+            // cannot persist, and cannot apply to a CPU. Hash equality is
+            // not a veto and not a promotion.
             CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx] = ui_hash;
             CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] = origin;
             // Authoritative named/carrier selections reach disk immediately.
@@ -844,6 +1028,11 @@ unsafe fn capture_lookup_fighter_kind_from_ui_hash(database: u64, hash: u64) -> 
 
 #[skyline::hook(offset = SELECTION_UPDATE_CSS_13_0_1_PLUS)]
 unsafe fn update_css_cache(unk: u64) {
+    // Provenance capture only: note that this shared callback ran inside the
+    // currently-open transaction, so a commit can report corroboration.
+    if PENDING_OPAQUE_SELECTION.entry_idx < MAX_FIGHTERS {
+        LAST_CSS_CACHE_TXN_SEQUENCE = PENDING_OPAQUE_SELECTION.sequence;
+    }
     log_selection_hook(6, "update_css_cache", "begin", u32::MAX, 0, None, unk);
     // This callback is shared with WOL and has no stable payload contract at
     // startup. Its pointer remains opaque; the lookup hook carries identity.
@@ -864,12 +1053,19 @@ unsafe fn cached_css_boss_hash(
     }
     match CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] {
         OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-        | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
-        // Restored from disk: the last selection that actually entered a boss
-        // battle. Authoritative so a cold launch straight into Spirit Board or
-        // the World of Light map resolves the boss instead of falling back to
-        // the Mario host.
-        | OpaqueSelectionCacheOrigin::RestoredPersistedSelection => Some(by_entry),
+        | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => Some(by_entry),
+        // Restored persist is a cold-launch fallback for the human player
+        // who never revisited Fighter Selection. It must not transform an
+        // unrelated fighter that later occupies this entry index — including
+        // a Spirit CPU Mario sitting in a slot that last stored a CPU boss.
+        // Genuine this-session CPU bosses arrive as Confirmed* above.
+        origin @ OpaqueSelectionCacheOrigin::RestoredPersistedSelection => {
+            if cache_visible_on_battle_stage(origin, entry_operation_cpu(entry_idx)) {
+                Some(by_entry)
+            } else {
+                None
+            }
+        }
         // The previous lookup can be used for WOL only after a real Mario host
         // exists.  Raw UI callbacks never query this stage value.
         OpaqueSelectionCacheOrigin::TentativeUiSelection
@@ -877,7 +1073,8 @@ unsafe fn cached_css_boss_hash(
         {
             Some(by_entry)
         }
-        OpaqueSelectionCacheOrigin::None | OpaqueSelectionCacheOrigin::TentativeUiSelection => None,
+        OpaqueSelectionCacheOrigin::None | OpaqueSelectionCacheOrigin::TentativeUiSelection
+        | OpaqueSelectionCacheOrigin::CandidateUiLookup => None,
     }
 }
 
@@ -957,12 +1154,19 @@ fn is_persistable_host_boss_hash(value: u64) -> bool {
 /// lower rank, which is what stops generic menu enumeration from overwriting a
 /// restored or confirmed selection.
 ///
-/// Confirmed (current process) > RestoredPersistedSelection (bootstrap)
-///   > TentativeUiSelection (global-fallback guess) > None
+/// Confirmed (current process, independently corroborated)
+///   > RestoredPersistedSelection (bootstrap fallback)
+///   > CandidateUiLookup / TentativeUiSelection (observational / global guess)
+///   > None
+///
+/// Rank is not consumption eligibility. Restored can still lose to a live
+/// character name or summon. A nested named lookup without independent
+/// corroboration is Candidate, not Confirmed, even when the hash is new.
 fn origin_authority_rank(origin: OpaqueSelectionCacheOrigin) -> u8 {
     match origin {
         OpaqueSelectionCacheOrigin::None => 0,
-        OpaqueSelectionCacheOrigin::TentativeUiSelection => 1,
+        OpaqueSelectionCacheOrigin::TentativeUiSelection
+        | OpaqueSelectionCacheOrigin::CandidateUiLookup => 1,
         OpaqueSelectionCacheOrigin::RestoredPersistedSelection => 2,
         OpaqueSelectionCacheOrigin::ConfirmedUiLookup
         | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => 3,
@@ -970,14 +1174,48 @@ fn origin_authority_rank(origin: OpaqueSelectionCacheOrigin) -> u8 {
 }
 
 /// True for origins that represent an authoritative selection made in THIS
-/// process. `TentativeUiSelection` is a provisional fallback guess and
-/// `RestoredPersistedSelection` is bootstrapping, so neither may write disk.
+/// process. Candidate, Tentative, and Restored must not write disk.
 fn origin_is_authoritative_selection(origin: OpaqueSelectionCacheOrigin) -> bool {
     matches!(
         origin,
         OpaqueSelectionCacheOrigin::ConfirmedUiLookup
             | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
     )
+}
+
+/// Restored persist is eligible only for a human-controlled occupant. CPU
+/// entries need a this-session Confirmed* origin; they must not inherit a
+/// stale slot from last_boss_selection.txt. This is provenance, not a CPU
+/// boss blacklist. Missing fighter-info fails closed (treated as ineligible).
+unsafe fn entry_operation_cpu(entry_idx: usize) -> bool {
+    let info = fighter_information_for_entry(entry_idx as i32);
+    info.is_null() || smash::app::lua_bind::FighterInformation::is_operation_cpu(info)
+}
+
+/// Whether a cached origin is visible to the battle resolver for this occupant.
+fn cache_visible_on_battle_stage(origin: OpaqueSelectionCacheOrigin, operation_cpu: bool) -> bool {
+    match origin {
+        OpaqueSelectionCacheOrigin::ConfirmedUiLookup
+        | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => true,
+        OpaqueSelectionCacheOrigin::RestoredPersistedSelection => !operation_cpu,
+        OpaqueSelectionCacheOrigin::None
+        | OpaqueSelectionCacheOrigin::TentativeUiSelection
+        | OpaqueSelectionCacheOrigin::CandidateUiLookup => false,
+    }
+}
+
+/// Current-session evidence outranks restored persist. Live summon/log, then
+/// character name, then eligible cache. Non-boss values (sentinel, Mario) are
+/// absence of evidence, not identities.
+fn resolve_current_boss_identity(
+    live_runtime: Option<u64>,
+    name_detection: Option<u64>,
+    cache: Option<u64>,
+) -> Option<u64> {
+    live_runtime
+        .filter(|hash| is_boss_css_hash(*hash))
+        .or_else(|| name_detection.filter(|hash| is_boss_css_hash(*hash)))
+        .or_else(|| cache.filter(|hash| is_boss_css_hash(*hash)))
 }
 
 fn css_identity_label(value: u64) -> &'static str {
@@ -1706,8 +1944,9 @@ fn persisted_selection_path() -> Option<String> {
 }
 
 /// Restores the last battle-confirmed selection for every entry. Called once at
-/// plugin load, before any battle can query the resolver. Never overwrites a
-/// live selection because nothing has been captured yet at this point.
+/// plugin load, before any battle can query the resolver. Occupancy is unknown
+/// at this point, so every valid line is armed as Restored; consumption later
+/// refuses to apply that bootstrap state to an unrelated occupant of the slot.
 pub unsafe fn restore_persisted_selections() {
     let Some(path) = persisted_selection_path() else {
         return;
@@ -1902,17 +2141,15 @@ pub unsafe fn log_selector_authority(module_accessor: *mut BattleObjectModuleAcc
     let carrier_confirmed = is_confirmed_condensed_masterhand_carrier(idx);
     let chosen = selected_css_boss_selector_id(module_accessor);
 
-    let chosen_reason = if !condensed_mode_enabled() {
-        "condensed_disabled_passthrough"
-    } else if carrier_confirmed {
-        "condensed_carrier_resolution"
-    } else if runtime_hash == Some(UI_CHARA_MASTERHAND_HASH)
-        || name_hash == Some(UI_CHARA_MASTERHAND_HASH)
-    {
-        "not_carrier_master_hand_failed_closed"
-    } else {
-        "not_carrier_passthrough_non_master_hand"
-    };
+    let chosen_reason = selector_choice_reason(
+        condensed_mode_enabled(),
+        carrier_confirmed,
+        runtime_hash,
+        name_hash,
+        cache_selector,
+        cache_origin,
+        chosen,
+    );
 
     crate::boss_log!(
         "[PB][SelectorAuthority] entry={} stage=0x{:x} host_kind={} raw_summon_boss_id=0x{:x} decoded_summon_selector={:?} log_selector={:?} current_cache_hash=0x{:010x} current_cache_origin={} cache_selector={:?} restored_hash=0x{:010x} global_hash=0x{:010x} name_detection={:?} runtime_sources={:?} condensed_enabled={} carrier_confirmed={} chosen_hash={:?} chosen_reason={} boss={}",
@@ -1941,6 +2178,7 @@ fn origin_label(origin: OpaqueSelectionCacheOrigin) -> &'static str {
     match origin {
         OpaqueSelectionCacheOrigin::None => "none",
         OpaqueSelectionCacheOrigin::TentativeUiSelection => "tentative_ui_selection",
+        OpaqueSelectionCacheOrigin::CandidateUiLookup => "candidate_ui_lookup",
         OpaqueSelectionCacheOrigin::ConfirmedUiLookup => "confirmed_ui_lookup",
         OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => "confirmed_condensed_carrier",
         OpaqueSelectionCacheOrigin::RestoredPersistedSelection => "restored_persisted_selection",
@@ -1954,11 +2192,62 @@ pub unsafe fn reset_selector_authority_log(entry_id: usize) {
     }
 }
 
+fn selector_choice_reason(
+    condensed_enabled: bool,
+    carrier_confirmed: bool,
+    live: Option<u64>,
+    name: Option<u64>,
+    cache: Option<u64>,
+    cache_origin: OpaqueSelectionCacheOrigin,
+    chosen: Option<u64>,
+) -> &'static str {
+    if condensed_enabled {
+        if carrier_confirmed {
+            return "condensed_carrier_resolution";
+        }
+        if live == Some(UI_CHARA_MASTERHAND_HASH) || name == Some(UI_CHARA_MASTERHAND_HASH) {
+            return "not_carrier_master_hand_failed_closed";
+        }
+        return "not_carrier_passthrough_non_master_hand";
+    }
+    if chosen.is_some() && chosen == live {
+        return "live_fighter_info";
+    }
+    if chosen.is_some() && chosen == name {
+        if cache.is_some() && cache != name {
+            return "current_name_outranks_cache";
+        }
+        return "name_detection";
+    }
+    if chosen.is_some() && chosen == cache {
+        return match cache_origin {
+            OpaqueSelectionCacheOrigin::RestoredPersistedSelection => "restored_fallback",
+            OpaqueSelectionCacheOrigin::ConfirmedUiLookup => "confirmed_ui_lookup",
+            OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => "confirmed_condensed_carrier",
+            OpaqueSelectionCacheOrigin::CandidateUiLookup => "candidate_ui_lookup",
+            _ => "cache_fallback",
+        };
+    }
+    "no_boss_identity"
+}
+
 pub unsafe fn selected_css_boss_selector_id(
     module_accessor: *mut BattleObjectModuleAccessor,
 ) -> Option<u64> {
-    let selected = selected_boss_selector_id_from_runtime_sources(module_accessor)
-        .or_else(|| selected_boss_selector_id_from_character_name(module_accessor));
+    if module_accessor.is_null() {
+        return None;
+    }
+    let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID);
+    let cache = if entry_id >= 0 && (entry_id as usize) < MAX_FIGHTERS {
+        cached_css_boss_hash(module_accessor, entry_id as usize)
+    } else {
+        None
+    };
+    let selected = resolve_current_boss_identity(
+        selected_boss_selector_id_from_runtime_sources(module_accessor),
+        selected_boss_selector_id_from_character_name(module_accessor),
+        cache,
+    );
 
     if !condensed_mode_enabled() {
         return selected;
@@ -2230,27 +2519,25 @@ mod condensed_tests {
         assert_eq!(parse(&format!("0=0x{:010x}", carrier)), None);
     }
 
-    /// A restored selection is authoritative, exactly like a live confirmation.
-    /// Tentative state stays non-authoritative regardless.
+    /// A restored selection is bootstrap fallback, not this-process authority.
+    /// Live Confirmed* origins remain the only identities that may write disk.
     #[test]
-    fn restored_persisted_origin_is_authoritative() {
-        fn authoritative(origin: OpaqueSelectionCacheOrigin) -> bool {
-            matches!(
-                origin,
-                OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-                    | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
-                    | OpaqueSelectionCacheOrigin::RestoredPersistedSelection
-            )
-        }
-        assert!(authoritative(
+    fn restored_persisted_origin_is_bootstrap_not_this_session_authority() {
+        assert!(!origin_is_authoritative_selection(
             OpaqueSelectionCacheOrigin::RestoredPersistedSelection
         ));
-        assert!(authoritative(OpaqueSelectionCacheOrigin::ConfirmedUiLookup));
-        assert!(!authoritative(
+        assert!(origin_is_authoritative_selection(
+            OpaqueSelectionCacheOrigin::ConfirmedUiLookup
+        ));
+        assert!(!origin_is_authoritative_selection(
+            OpaqueSelectionCacheOrigin::CandidateUiLookup
+        ));
+        assert!(!origin_is_authoritative_selection(
             OpaqueSelectionCacheOrigin::TentativeUiSelection
         ));
-        assert!(!authoritative(OpaqueSelectionCacheOrigin::None));
-        // Provenance stays distinguishable from a live confirmation.
+        assert!(!origin_is_authoritative_selection(
+            OpaqueSelectionCacheOrigin::None
+        ));
         assert_ne!(
             OpaqueSelectionCacheOrigin::RestoredPersistedSelection,
             OpaqueSelectionCacheOrigin::ConfirmedUiLookup
@@ -2339,14 +2626,14 @@ mod condensed_tests {
             pending_selection_commit(true, pending),
             OpaqueSelectionCommit::Cached {
                 ui_hash: UI_CHARA_MASTERHAND_HASH,
-                origin: OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier,
+                origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
             }
         );
         assert_eq!(
             pending_selection_commit(false, pending),
             OpaqueSelectionCommit::Cached {
                 ui_hash: UI_CHARA_MASTERHAND_HASH,
-                origin: OpaqueSelectionCacheOrigin::ConfirmedUiLookup,
+                origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
             }
         );
     }
@@ -2955,6 +3242,20 @@ mod persistence_semantics_tests {
         fn apply(&mut self, pending: PendingOpaqueSelection, condensed: bool) {
             match pending_selection_commit(condensed, pending) {
                 OpaqueSelectionCommit::Cached { ui_hash, origin } => {
+                    let existing_origin = if self.restored_pending {
+                        OpaqueSelectionCacheOrigin::RestoredPersistedSelection
+                    } else if self.origin_authoritative {
+                        OpaqueSelectionCacheOrigin::ConfirmedUiLookup
+                    } else if is_boss_css_hash(self.cache) {
+                        OpaqueSelectionCacheOrigin::TentativeUiSelection
+                    } else {
+                        OpaqueSelectionCacheOrigin::None
+                    };
+                    if is_boss_css_hash(self.cache)
+                        && origin_authority_rank(origin) < origin_authority_rank(existing_origin)
+                    {
+                        return;
+                    }
                     self.cache = ui_hash;
                     self.restored_pending = false;
                     self.origin_authoritative = origin_is_authoritative_selection(origin);
@@ -2990,20 +3291,20 @@ mod persistence_semantics_tests {
 
     fn named(entry: usize, hash: u64) -> PendingOpaqueSelection {
         let mut p = PendingOpaqueSelection::begin(entry, 0);
-        p.observed_boss_hash = hash;
+        p.observe_named_lookup(Some(hash));
         p
     }
     fn mario(entry: usize) -> PendingOpaqueSelection {
         let mut p = PendingOpaqueSelection::begin(entry, 0);
-        p.saw_mario = true;
+        p.observe_named_lookup(Some(UI_CHARA_MARIO_HASH));
         p
     }
     fn noise(entry: usize) -> PendingOpaqueSelection {
         PendingOpaqueSelection::begin(entry, 0)
     }
 
-    /// TEST 1 - the exact hardware sequence: a battle-stale Giga Bowser must not
-    /// survive a later explicit Master Hand pick.
+    /// TEST 1 - a nested named lookup without corroboration must not persist.
+    /// Ready-Go still writes a positively resolved identity.
     #[test]
     fn stale_giga_bowser_is_replaced_by_a_later_named_selection() {
         // Giga Bowser is not even persistable, so the stale line fails closed.
@@ -3012,6 +3313,8 @@ mod persistence_semantics_tests {
         assert_eq!(m.disk, 0, "stale koopag line is dropped on restore");
 
         m.apply(named(0, UI_CHARA_MASTERHAND_HASH), false);
+        assert_eq!(m.disk, 0, "candidate must not write disk");
+        m.ready_go(UI_CHARA_MASTERHAND_HASH);
         assert_eq!(m.disk, UI_CHARA_MASTERHAND_HASH);
 
         // Reboot.
@@ -3019,17 +3322,19 @@ mod persistence_semantics_tests {
         assert_eq!(after.cache, UI_CHARA_MASTERHAND_HASH);
     }
 
-    /// TEST 2 - CRITICAL: persistence no longer depends on Ready-Go. Selecting a
-    /// boss without starting a match must still survive a reboot.
+    /// TEST 2 - nested named lookup is observational. It must not persist
+    /// without independent corroboration.
     #[test]
     fn explicit_selection_persists_without_entering_a_battle() {
         let mut m = Model::restore(UI_CHARA_CRAZYHAND_HASH);
         assert_eq!(m.cache, UI_CHARA_CRAZYHAND_HASH);
 
         m.apply(named(0, UI_CHARA_MASTERHAND_HASH), false);
-        assert_eq!(m.disk, UI_CHARA_MASTERHAND_HASH, "no Ready-Go occurred");
-
-        assert_eq!(Model::restore(m.disk).cache, UI_CHARA_MASTERHAND_HASH);
+        assert_eq!(
+            m.disk, UI_CHARA_CRAZYHAND_HASH,
+            "candidate must not clobber restored disk"
+        );
+        assert_eq!(m.cache, UI_CHARA_CRAZYHAND_HASH);
     }
 
     /// TEST 3 - explicitly picking Mario clears the saved boss.
@@ -3053,14 +3358,15 @@ mod persistence_semantics_tests {
         assert_eq!(m.disk, UI_CHARA_MASTERHAND_HASH);
     }
 
-    /// TEST 5 - an authoritative selection outranks a restored one, on disk too.
+    /// TEST 5 - a nested named lookup without corroboration cannot replace
+    /// restored persist on disk or in cache.
     #[test]
     fn authoritative_selection_replaces_a_restored_one() {
         let mut m = Model::restore(UI_CHARA_MASTERHAND_HASH);
         m.apply(named(0, UI_CHARA_CRAZYHAND_HASH), false);
-        assert_eq!(m.cache, UI_CHARA_CRAZYHAND_HASH);
-        assert_eq!(m.disk, UI_CHARA_CRAZYHAND_HASH);
-        assert!(!m.restored_pending, "restored bootstrap is superseded");
+        assert_eq!(m.cache, UI_CHARA_MASTERHAND_HASH);
+        assert_eq!(m.disk, UI_CHARA_MASTERHAND_HASH);
+        assert!(m.restored_pending, "candidate must not supersede restore");
     }
 
     /// TEST 6 - Giga Bowser never produces a host-backed restored selection.
@@ -3100,13 +3406,20 @@ mod persistence_semantics_tests {
         }
     }
 
-    /// TEST 8 - entries are independent.
+    /// TEST 8 - entries are independent. Candidate cache stays per-entry;
+    /// Ready-Go persist stays per-entry.
     #[test]
     fn per_entry_persistence_is_isolated() {
         let mut e0 = Model::default();
         let mut e1 = Model::default();
         e0.apply(named(0, UI_CHARA_MASTERHAND_HASH), false);
         e1.apply(named(1, UI_CHARA_CRAZYHAND_HASH), false);
+        assert_eq!(e0.cache, UI_CHARA_MASTERHAND_HASH);
+        assert_eq!(e1.cache, UI_CHARA_CRAZYHAND_HASH);
+        assert_eq!(e0.disk, 0, "candidate must not persist");
+        assert_eq!(e1.disk, 0, "candidate must not persist");
+        e0.ready_go(UI_CHARA_MASTERHAND_HASH);
+        e1.ready_go(UI_CHARA_CRAZYHAND_HASH);
         assert_eq!(e0.disk, UI_CHARA_MASTERHAND_HASH);
         assert_eq!(e1.disk, UI_CHARA_CRAZYHAND_HASH);
         e0.apply(mario(0), false);
@@ -3114,31 +3427,32 @@ mod persistence_semantics_tests {
         assert_eq!(e1.disk, UI_CHARA_CRAZYHAND_HASH, "entry 1 unaffected");
     }
 
-    /// TEST 9 - Ready-Go is an idempotent confirmation, not a semantic change.
+    /// TEST 9 - Ready-Go is an idempotent confirmation of a resolved identity.
     #[test]
     fn ready_go_confirmation_is_idempotent() {
         let mut m = Model::default();
         m.apply(named(0, UI_CHARA_MASTERHAND_HASH), false);
+        m.ready_go(UI_CHARA_MASTERHAND_HASH);
         let before = m;
         m.ready_go(UI_CHARA_MASTERHAND_HASH);
         assert_eq!(m, before, "same value must not change any state");
     }
 
-    /// TEST 10 - condensed Shield alternates resolve at load, so the Ready-Go
-    /// confirmation upgrades the persisted identity to the boss that loaded.
+    /// TEST 10 - condensed Shield alternates resolve at load, so Ready-Go
+    /// persists the boss that loaded. Nested named lookup is not Confirmed.
     #[test]
     fn condensed_shield_alternates_persist_the_resolved_boss() {
         // Master Hand carrier + Shield -> WOL Master Hand.
         let mut m = Model::default();
         m.apply(named(0, UI_CHARA_MASTERHAND_HASH), true);
-        assert_eq!(m.disk, UI_CHARA_MASTERHAND_HASH, "carrier persists first");
+        assert_eq!(m.disk, 0, "candidate carrier must not persist");
         m.ready_go(UI_CHARA_MEWTWO_MASTERHAND_HASH);
         assert_eq!(m.disk, UI_CHARA_MEWTWO_MASTERHAND_HASH);
 
         // Ganon carrier + Shield -> Galleom.
         let mut g = Model::default();
         g.apply(named(0, UI_CHARA_GANONBOSS_HASH), true);
-        assert_eq!(g.disk, UI_CHARA_GANONBOSS_HASH);
+        assert_eq!(g.disk, 0);
         g.ready_go(UI_CHARA_GALLEOM_HASH);
         assert_eq!(g.disk, UI_CHARA_GALLEOM_HASH);
     }
@@ -3161,8 +3475,8 @@ mod restore_consumption_tests {
     use super::*;
 
     /// Models the cache exactly as `finish_opaque_selection_candidate` now does,
-    /// including the authority-rank guard, plus `cached_css_boss_hash`'s
-    /// origin gating and the Ready-Go contract.
+    /// including the authority-rank guard (weaker origins cannot clobber),
+    /// plus `cached_css_boss_hash`'s origin gating and the Ready-Go contract.
     #[derive(Clone, Copy, Debug)]
     struct Entry {
         hash: u64,
@@ -3175,6 +3489,13 @@ mod restore_consumption_tests {
             Self {
                 hash,
                 origin: OpaqueSelectionCacheOrigin::RestoredPersistedSelection,
+                disk: hash,
+            }
+        }
+        fn confirmed(hash: u64) -> Self {
+            Self {
+                hash,
+                origin: OpaqueSelectionCacheOrigin::ConfirmedUiLookup,
                 disk: hash,
             }
         }
@@ -3218,15 +3539,14 @@ mod restore_consumption_tests {
         }
 
         /// Mirror of `cached_css_boss_hash` on an ordinary battle stage.
-        fn cache_selector_on_battle_stage(&self) -> Option<u64> {
+        fn cache_selector_on_battle_stage(&self, operation_cpu: bool) -> Option<u64> {
             if !is_boss_css_hash(self.hash) {
                 return None;
             }
-            match self.origin {
-                OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-                | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
-                | OpaqueSelectionCacheOrigin::RestoredPersistedSelection => Some(self.hash),
-                _ => None,
+            if cache_visible_on_battle_stage(self.origin, operation_cpu) {
+                Some(self.hash)
+            } else {
+                None
             }
         }
 
@@ -3245,18 +3565,24 @@ mod restore_consumption_tests {
     }
     fn named(entry: usize, hash: u64) -> PendingOpaqueSelection {
         let mut p = PendingOpaqueSelection::begin(entry, 0);
-        p.observed_boss_hash = hash;
+        p.observe_named_lookup(Some(hash));
         p
     }
 
-    /// TEST 1 - a restored identity must be visible to the battle resolver.
+    /// TEST 1 - a restored identity must be visible to the human player's
+    /// battle resolver, and must not be visible to a CPU occupant of the slot.
     #[test]
     fn restored_identity_is_consumed_by_the_battle_resolver() {
         let e = Entry::restored(UI_CHARA_MASTERHAND_HASH);
         assert_eq!(
-            e.cache_selector_on_battle_stage(),
+            e.cache_selector_on_battle_stage(false),
             Some(UI_CHARA_MASTERHAND_HASH),
-            "restored Master Hand must reach the resolver on a battle stage"
+            "restored Master Hand must reach the human player's resolver"
+        );
+        assert_eq!(
+            e.cache_selector_on_battle_stage(true),
+            None,
+            "a CPU occupant must not inherit restored persist for this slot"
         );
     }
 
@@ -3274,7 +3600,7 @@ mod restore_consumption_tests {
         // With no valid raw selector, the restored identity supplies the answer.
         let e = Entry::restored(UI_CHARA_MASTERHAND_HASH);
         assert_eq!(
-            e.cache_selector_on_battle_stage(),
+            e.cache_selector_on_battle_stage(false),
             Some(UI_CHARA_MASTERHAND_HASH)
         );
     }
@@ -3293,7 +3619,7 @@ mod restore_consumption_tests {
             OpaqueSelectionCacheOrigin::RestoredPersistedSelection
         );
         assert_eq!(
-            e.cache_selector_on_battle_stage(),
+            e.cache_selector_on_battle_stage(false),
             Some(UI_CHARA_MASTERHAND_HASH),
             "resolver must still see Master Hand, not cache_selector=None"
         );
@@ -3328,16 +3654,132 @@ mod restore_consumption_tests {
         assert_eq!(e0.hash, UI_CHARA_MASTERHAND_HASH);
         assert_eq!(e0.disk, UI_CHARA_MASTERHAND_HASH);
         assert_eq!(e4.hash, UI_CHARA_DARZ_HASH, "entry 4 keeps its own choice");
+        assert_eq!(e4.origin, OpaqueSelectionCacheOrigin::CandidateUiLookup);
+        assert_eq!(e4.disk, 0);
+        assert_eq!(e4.cache_selector_on_battle_stage(true), None);
     }
 
-    /// TEST 7 - a real current-process selection still outranks a restore.
+    /// TEST 7 - a nested named lookup without corroboration cannot outrank
+    /// a restore. That was the automatic Rathalos/MH false confirm.
     #[test]
     fn authoritative_selection_still_outranks_restore() {
         let mut e = Entry::restored(UI_CHARA_CRAZYHAND_HASH);
         e.commit(named(0, UI_CHARA_MASTERHAND_HASH), false);
-        assert_eq!(e.hash, UI_CHARA_MASTERHAND_HASH);
-        assert_eq!(e.origin, OpaqueSelectionCacheOrigin::ConfirmedUiLookup);
-        assert_eq!(e.disk, UI_CHARA_MASTERHAND_HASH);
+        assert_eq!(e.hash, UI_CHARA_CRAZYHAND_HASH);
+        assert_eq!(
+            e.origin,
+            OpaqueSelectionCacheOrigin::RestoredPersistedSelection
+        );
+        assert_eq!(e.disk, UI_CHARA_CRAZYHAND_HASH);
+    }
+
+    /// Same-hash nested lookup is still only a candidate. Restored stays
+    /// Restored; CPU cannot consume it.
+    #[test]
+    fn same_hash_named_lookup_does_not_promote_restored() {
+        let mut e = Entry::restored(UI_CHARA_DARZ_HASH);
+        e.commit(named(1, UI_CHARA_DARZ_HASH), false);
+        assert_eq!(e.hash, UI_CHARA_DARZ_HASH);
+        assert_eq!(
+            e.origin,
+            OpaqueSelectionCacheOrigin::RestoredPersistedSelection
+        );
+        assert_eq!(e.disk, UI_CHARA_DARZ_HASH);
+        assert_eq!(e.cache_selector_on_battle_stage(true), None);
+    }
+
+    /// Ambient Dracula in the global, then an owned txn with no nested named
+    /// lookup: Tentative only. Must not Confirm or write disk.
+    #[test]
+    fn ambient_fallback_without_in_txn_observe_is_not_confirmed() {
+        let pending = PendingOpaqueSelection::begin(0, UI_CHARA_DRACULA_HASH);
+        assert_eq!(pending.observed_boss_hash, 0);
+        assert_eq!(pending.observed_at_sequence, 0);
+        assert_eq!(pending.observation_count, 0);
+        assert_eq!(
+            pending_selection_commit(false, pending),
+            OpaqueSelectionCommit::Cached {
+                ui_hash: UI_CHARA_DRACULA_HASH,
+                origin: OpaqueSelectionCacheOrigin::TentativeUiSelection,
+            }
+        );
+        let mut e = Entry::restored(UI_CHARA_MEWTWO_MASTERHAND_HASH);
+        e.commit(pending, false);
+        assert_eq!(e.hash, UI_CHARA_MEWTWO_MASTERHAND_HASH);
+        assert_eq!(
+            e.origin,
+            OpaqueSelectionCacheOrigin::RestoredPersistedSelection
+        );
+        assert_eq!(e.disk, UI_CHARA_MEWTWO_MASTERHAND_HASH);
+    }
+
+    /// Copying a pre-txn hash into `observed_boss_hash` without an in-txn
+    /// sequence stamp must not Confirm. That is the fallback-upgrade hole.
+    #[test]
+    fn unstamped_observed_hash_cannot_confirm() {
+        let mut leaked = PendingOpaqueSelection::begin(0, UI_CHARA_DRACULA_HASH);
+        leaked.observed_boss_hash = UI_CHARA_DRACULA_HASH;
+        assert_eq!(leaked.observed_at_sequence, 0);
+        assert!(!named_observation_belongs_to_this_transaction(&leaked));
+        assert_eq!(
+            pending_selection_commit(false, leaked),
+            OpaqueSelectionCommit::Cached {
+                ui_hash: UI_CHARA_DRACULA_HASH,
+                origin: OpaqueSelectionCacheOrigin::TentativeUiSelection,
+            }
+        );
+    }
+
+    /// Global-fallback Tentative repeating the restored hash is ambient, not
+    /// a named selected-fighter commit. Rank keeps Restored; CPU still cannot
+    /// consume it.
+    #[test]
+    fn same_hash_tentative_fallback_does_not_promote_restored() {
+        let mut e = Entry::restored(UI_CHARA_DARZ_HASH);
+        e.commit(global_fallback(1, UI_CHARA_DARZ_HASH), false);
+        assert_eq!(e.hash, UI_CHARA_DARZ_HASH);
+        assert_eq!(
+            e.origin,
+            OpaqueSelectionCacheOrigin::RestoredPersistedSelection
+        );
+        assert_eq!(e.cache_selector_on_battle_stage(true), None);
+    }
+
+    /// A different nested named identity is still Candidate, not Confirmed.
+    /// Restored wins on rank; CPU still cannot consume it.
+    #[test]
+    fn different_hash_named_lookup_does_not_confirm_over_restore() {
+        let mut e = Entry::restored(UI_CHARA_DARZ_HASH);
+        e.commit(named(1, UI_CHARA_DRACULA_HASH), false);
+        assert_eq!(e.hash, UI_CHARA_DARZ_HASH);
+        assert_eq!(
+            e.origin,
+            OpaqueSelectionCacheOrigin::RestoredPersistedSelection
+        );
+        assert_eq!(e.disk, UI_CHARA_DARZ_HASH);
+        assert_eq!(e.cache_selector_on_battle_stage(true), None);
+    }
+
+    #[test]
+    fn confirmed_cpu_boss_is_visible_on_battle_stage() {
+        let e = Entry::confirmed(UI_CHARA_DARZ_HASH);
+        assert_eq!(
+            e.cache_selector_on_battle_stage(true),
+            Some(UI_CHARA_DARZ_HASH)
+        );
+    }
+
+    /// Hardware 2026-08-17: nested Rathalos in an empty CPU slot must stay
+    /// Candidate, must not persist, and must not spawn on that CPU.
+    #[test]
+    fn nested_named_lookup_on_empty_cpu_slot_is_candidate_only() {
+        let mut e = Entry::empty();
+        e.commit(named(1, UI_CHARA_LIOLEUS_HASH), false);
+        assert_eq!(e.hash, UI_CHARA_LIOLEUS_HASH);
+        assert_eq!(e.origin, OpaqueSelectionCacheOrigin::CandidateUiLookup);
+        assert_eq!(e.disk, 0);
+        assert_eq!(e.cache_selector_on_battle_stage(true), None);
+        assert_eq!(e.cache_selector_on_battle_stage(false), None);
     }
 
     /// Authority ordering is total and correctly ranked.
@@ -3356,6 +3798,266 @@ mod restore_consumption_tests {
             origin_authority_rank(RestoredPersistedSelection)
                 > origin_authority_rank(TentativeUiSelection)
         );
+        assert_eq!(
+            origin_authority_rank(CandidateUiLookup),
+            origin_authority_rank(TentativeUiSelection)
+        );
         assert!(origin_authority_rank(TentativeUiSelection) > origin_authority_rank(None));
+    }
+}
+
+/// Hardware 2026-08-17: last_boss_selection.txt was
+/// `0=WOL Master Hand, 1=Dharkon, 2=Rathalos, 3=Marx`. Selecting Dracula vs a
+/// Spirit CPU Mario spawned WOL vs Dharkon because restored persist was folded
+/// into runtime sources (outranking live name detection) and then consumed by
+/// whoever occupied the raw entry index.
+#[cfg(test)]
+mod persisted_slot_contamination_tests {
+    use super::*;
+
+    const FIXTURE_ENTRY0_WOL: u64 = 0x1AA4AF9031;
+    const FIXTURE_ENTRY1_DHARKON: u64 = 0x0D65ACCD76;
+    const FIXTURE_ENTRY2_RATHALOS: u64 = 0x10E9EFB8D1;
+    const FIXTURE_ENTRY3_MARX: u64 = 0x0DF6AAE3D0;
+    const LIVE_DRACULA: u64 = 0x1020DDD1F9;
+    const SENTINEL: u64 = 0x5000_0000;
+
+    fn human_restored(hash: u64) -> Option<u64> {
+        cache_visible_on_battle_stage(
+            OpaqueSelectionCacheOrigin::RestoredPersistedSelection,
+            false,
+        )
+        .then_some(hash)
+    }
+
+    fn cpu_restored(hash: u64) -> Option<u64> {
+        cache_visible_on_battle_stage(OpaqueSelectionCacheOrigin::RestoredPersistedSelection, true)
+            .then_some(hash)
+    }
+
+    #[test]
+    fn fixture_matches_the_hardware_persist_file() {
+        assert_eq!(FIXTURE_ENTRY0_WOL, UI_CHARA_MEWTWO_MASTERHAND_HASH);
+        assert_eq!(FIXTURE_ENTRY1_DHARKON, UI_CHARA_DARZ_HASH);
+        assert_eq!(FIXTURE_ENTRY2_RATHALOS, UI_CHARA_LIOLEUS_HASH);
+        assert_eq!(FIXTURE_ENTRY3_MARX, UI_CHARA_MARX_HASH);
+        assert_eq!(LIVE_DRACULA, UI_CHARA_DRACULA_HASH);
+        assert_eq!(LIVE_DRACULA, 69270884857);
+    }
+
+    #[test]
+    fn live_dracula_name_outranks_restored_wol() {
+        let cache = human_restored(FIXTURE_ENTRY0_WOL);
+        assert_eq!(cache, Some(UI_CHARA_MEWTWO_MASTERHAND_HASH));
+        assert_eq!(
+            resolve_current_boss_identity(None, Some(LIVE_DRACULA), cache),
+            Some(UI_CHARA_DRACULA_HASH)
+        );
+        assert_eq!(
+            selector_choice_reason(
+                false,
+                false,
+                None,
+                Some(LIVE_DRACULA),
+                cache,
+                OpaqueSelectionCacheOrigin::RestoredPersistedSelection,
+                Some(LIVE_DRACULA),
+            ),
+            "current_name_outranks_cache"
+        );
+    }
+
+    #[test]
+    fn cpu_mario_does_not_consume_restored_dharkon() {
+        assert_eq!(cpu_restored(FIXTURE_ENTRY1_DHARKON), None);
+        assert_eq!(resolve_current_boss_identity(None, None, None), None);
+        assert_eq!(
+            selector_choice_reason(
+                false,
+                false,
+                None,
+                None,
+                None,
+                OpaqueSelectionCacheOrigin::RestoredPersistedSelection,
+                None,
+            ),
+            "no_boss_identity"
+        );
+    }
+
+    #[test]
+    fn human_cold_launch_still_restores_the_player_boss() {
+        let cache = human_restored(FIXTURE_ENTRY0_WOL);
+        assert_eq!(
+            resolve_current_boss_identity(None, None, cache),
+            Some(UI_CHARA_MEWTWO_MASTERHAND_HASH)
+        );
+        assert_eq!(
+            selector_choice_reason(
+                false,
+                false,
+                None,
+                None,
+                cache,
+                OpaqueSelectionCacheOrigin::RestoredPersistedSelection,
+                cache,
+            ),
+            "restored_fallback"
+        );
+    }
+
+    #[test]
+    fn confirmed_cpu_dharkon_still_applies() {
+        assert!(cache_visible_on_battle_stage(
+            OpaqueSelectionCacheOrigin::ConfirmedUiLookup,
+            true
+        ));
+        assert_eq!(
+            resolve_current_boss_identity(None, None, Some(FIXTURE_ENTRY1_DHARKON)),
+            Some(UI_CHARA_DARZ_HASH)
+        );
+        assert_eq!(
+            selector_choice_reason(
+                false,
+                false,
+                None,
+                None,
+                Some(FIXTURE_ENTRY1_DHARKON),
+                OpaqueSelectionCacheOrigin::ConfirmedUiLookup,
+                Some(FIXTURE_ENTRY1_DHARKON),
+            ),
+            "confirmed_ui_lookup"
+        );
+    }
+
+    #[test]
+    fn cpu_slots_two_and_three_do_not_inject_rathalos_or_marx() {
+        for hash in [FIXTURE_ENTRY2_RATHALOS, FIXTURE_ENTRY3_MARX] {
+            assert_eq!(cpu_restored(hash), None, "{hash:#x}");
+        }
+        assert_eq!(resolve_current_boss_identity(None, None, None), None);
+    }
+
+    #[test]
+    fn summon_sentinel_is_absence_of_live_evidence() {
+        assert_eq!(resolved_live_boss_hash(SENTINEL), None);
+        assert_eq!(resolved_live_boss_hash(0), None);
+        assert_eq!(resolved_live_boss_hash(UI_CHARA_MARIO_HASH), None);
+        assert_eq!(
+            resolved_live_boss_hash(UI_CHARA_DRACULA_HASH),
+            Some(UI_CHARA_DRACULA_HASH)
+        );
+        assert_eq!(
+            resolve_current_boss_identity(
+                resolved_live_boss_hash(SENTINEL),
+                Some(LIVE_DRACULA),
+                Some(FIXTURE_ENTRY0_WOL)
+            ),
+            Some(UI_CHARA_DRACULA_HASH)
+        );
+    }
+
+    #[test]
+    fn named_unique_lookup_is_candidate_not_confirmed() {
+        let mut same = PendingOpaqueSelection::begin(1, FIXTURE_ENTRY1_DHARKON);
+        same.observe_named_lookup(Some(FIXTURE_ENTRY1_DHARKON));
+        assert_eq!(
+            pending_selection_commit(false, same),
+            OpaqueSelectionCommit::Cached {
+                ui_hash: FIXTURE_ENTRY1_DHARKON,
+                origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
+            }
+        );
+        let mut different = PendingOpaqueSelection::begin(1, 0);
+        different.observe_named_lookup(Some(LIVE_DRACULA));
+        assert_eq!(
+            pending_selection_commit(false, different),
+            OpaqueSelectionCommit::Cached {
+                ui_hash: LIVE_DRACULA,
+                origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
+            }
+        );
+        let tentative = PendingOpaqueSelection::begin(1, FIXTURE_ENTRY1_DHARKON);
+        assert_eq!(
+            pending_selection_commit(false, tentative),
+            OpaqueSelectionCommit::Cached {
+                ui_hash: FIXTURE_ENTRY1_DHARKON,
+                origin: OpaqueSelectionCacheOrigin::TentativeUiSelection,
+            }
+        );
+        assert!(!independent_selection_corroborated());
+        assert!(!origin_is_authoritative_selection(
+            OpaqueSelectionCacheOrigin::CandidateUiLookup
+        ));
+        assert!(
+            origin_authority_rank(OpaqueSelectionCacheOrigin::TentativeUiSelection)
+                < origin_authority_rank(OpaqueSelectionCacheOrigin::RestoredPersistedSelection)
+        );
+        assert!(
+            origin_authority_rank(OpaqueSelectionCacheOrigin::ConfirmedUiLookup)
+                > origin_authority_rank(OpaqueSelectionCacheOrigin::RestoredPersistedSelection)
+        );
+    }
+
+    /// Hardware 2026-08-17: startup sweep nested Rathalos in owned entry 1
+    /// and Confirmed it onto a Spirit CPU Mario. Candidate must not persist
+    /// or apply to that CPU.
+    #[test]
+    fn startup_nested_rathalos_on_empty_cpu_slot_is_candidate_only() {
+        let mut pending = PendingOpaqueSelection::begin(1, 0);
+        pending.observe_named_lookup(Some(FIXTURE_ENTRY2_RATHALOS));
+        assert_eq!(
+            pending_selection_commit(false, pending),
+            OpaqueSelectionCommit::Cached {
+                ui_hash: FIXTURE_ENTRY2_RATHALOS,
+                origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
+            }
+        );
+        assert!(!origin_is_authoritative_selection(
+            OpaqueSelectionCacheOrigin::CandidateUiLookup
+        ));
+        assert!(!cache_visible_on_battle_stage(
+            OpaqueSelectionCacheOrigin::CandidateUiLookup,
+            true
+        ));
+        assert!(!cache_visible_on_battle_stage(
+            OpaqueSelectionCacheOrigin::CandidateUiLookup,
+            false
+        ));
+        assert_eq!(resolve_current_boss_identity(None, None, None), None);
+    }
+
+    /// Hardware 2026-08-17: startup sweep nested Master Hand in owned entry 2
+    /// over Restored Rathalos and saved it. Candidate must not overwrite or
+    /// persist.
+    #[test]
+    fn startup_nested_master_hand_cannot_overwrite_restored() {
+        let mut pending = PendingOpaqueSelection::begin(2, 0);
+        pending.observe_named_lookup(Some(UI_CHARA_MASTERHAND_HASH));
+        match pending_selection_commit(false, pending) {
+            OpaqueSelectionCommit::Cached { ui_hash, origin } => {
+                assert_eq!(ui_hash, UI_CHARA_MASTERHAND_HASH);
+                assert_eq!(origin, OpaqueSelectionCacheOrigin::CandidateUiLookup);
+                assert!(
+                    origin_authority_rank(origin)
+                        < origin_authority_rank(
+                            OpaqueSelectionCacheOrigin::RestoredPersistedSelection
+                        )
+                );
+                assert!(!origin_is_authoritative_selection(origin));
+            }
+            other => panic!("expected candidate, got {other:?}"),
+        }
+        assert_eq!(cpu_restored(FIXTURE_ENTRY2_RATHALOS), None);
+    }
+
+    #[test]
+    fn cache_must_not_be_folded_into_live_runtime() {
+        // Production runtime sources return None for the sentinel. Name then
+        // beats restored WOL. Folding cache into live was the hardware miss.
+        assert_eq!(
+            resolve_current_boss_identity(None, Some(LIVE_DRACULA), Some(FIXTURE_ENTRY0_WOL)),
+            Some(UI_CHARA_DRACULA_HASH)
+        );
     }
 }

@@ -360,12 +360,31 @@ unsafe fn log_playable_masterhand_transition_snapshot(
 }
 
 #[inline(always)]
+unsafe fn log_wol_acquire_trace(step: &'static str, acquire_null: Option<bool>) {
+    if !crate::debug::enabled() {
+        return;
+    }
+    let entry = core::ptr::addr_of!(ENTRY_ID).read().min(7);
+    crate::boss_log!(
+        "[PB][WOLAcquireTrace] step={} entry={} selected=true tracked_id=0x{:x} exists_public={} acquire_null={:?} generation={}",
+        step,
+        entry,
+        BOSS_ID[entry],
+        core::ptr::addr_of!(EXISTS_PUBLIC).read(),
+        acquire_null,
+        crate::boss_lifecycle_generation(entry)
+    );
+}
+
+#[inline(always)]
 unsafe fn acquire_cpu_world_masterhand(
     module_accessor: *mut BattleObjectModuleAccessor,
     boss_intensity: f32,
 ) -> *mut BattleObjectModuleAccessor {
+    log_wol_acquire_trace("before_acquire", None);
     let boss_boma =
         boss_helpers::acquire_boss_item(module_accessor, &raw mut BOSS_ID, *ITEM_KIND_MASTERHAND);
+    log_wol_acquire_trace("after_acquire", Some(boss_boma.is_null()));
     WorkModule::set_float(boss_boma, boss_intensity, *ITEM_INSTANCE_WORK_FLOAT_LEVEL);
     WorkModule::set_float(boss_boma, 1.0, *ITEM_INSTANCE_WORK_FLOAT_STRENGTH);
     WorkModule::on_flag(boss_boma, *ITEM_INSTANCE_WORK_FLAG_ANGRY);
@@ -396,14 +415,18 @@ unsafe fn acquire_cpu_world_masterhand(
 unsafe fn acquire_player_world_masterhand(
     module_accessor: *mut BattleObjectModuleAccessor,
 ) -> *mut BattleObjectModuleAccessor {
+    log_wol_acquire_trace("before_acquire", None);
     let boss_boma = boss_helpers::acquire_boss_item(
         module_accessor,
         &raw mut BOSS_ID,
         *ITEM_KIND_PLAYABLE_MASTERHAND,
     );
+    log_wol_acquire_trace("after_acquire", Some(boss_boma.is_null()));
     WorkModule::set_float(boss_boma, 9999.0, *ITEM_INSTANCE_WORK_FLOAT_HP_MAX);
     WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
+    log_wol_acquire_trace("before_hide_host", Some(boss_boma.is_null()));
     ModelModule::set_scale(module_accessor, HIDDEN_HOST_SCALE);
+    log_wol_acquire_trace("after_hide_host", Some(boss_boma.is_null()));
     crate::boss_log!(
         "[PB][WOL_MH][Acquire] mode=player entry={} requested_kind={} tracked_id=0x{:x} boss_kind={} boss_status={} host_scale={:.4}",
         core::ptr::addr_of!(ENTRY_ID).read(),
@@ -764,6 +787,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         &raw const BOSS_ID,
                         ENTRY_ID,
                     ) {
+                        log_wol_acquire_trace("before_init", None);
                         let entry_id = WorkModule::get_int(
                             module_accessor,
                             *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID,
