@@ -148,9 +148,42 @@ unsafe fn reset_stale_match_generation_if_new_round(
     let stale_result_state = POST_MATCH_PRE_RESULT[entry]
         || POST_MATCH_TRACKING_INVALIDATED[entry]
         || RESULT_MODE_SEEN[entry];
-    if !stale_result_state || (!entry_status && !rebirth_after_result) {
+
+    // Spirit "Replay" reuses the scene: it never enters result mode, so
+    // RESULT_MODE_SEEN stays false and the next battle's host is never seen in
+    // ENTRY. Hardware showed it sitting in FIGHTER_STATUS_KIND_WAIT (0x0) with
+    // ready_go=false, result_mode=false and the previous match's latches still
+    // set, which left `transition_phase=post_match_pre_result` and blocked
+    // acquisition with `transition_quarantine` until Ready-Go cleared it.
+    //
+    // Accept that boundary, but only once the finished match's own teardown has
+    // completed (POST_MATCH_TRACKING_INVALIDATED) and the host has been settled
+    // in that idle status for several consecutive frames. The genuine
+    // finished-match window is a brief transition heading into results, so it
+    // cannot hold this state; a real result scene sets result_mode first and is
+    // excluded by the caller's guard above.
+    let idle_pre_match = fighter_status == *FIGHTER_STATUS_KIND_WAIT
+        && POST_MATCH_TRACKING_INVALIDATED[entry]
+        && !RESULT_MODE_SEEN[entry];
+    if idle_pre_match {
+        NEW_ROUND_IDLE_FRAMES[entry] = NEW_ROUND_IDLE_FRAMES[entry].saturating_add(1);
+    } else {
+        NEW_ROUND_IDLE_FRAMES[entry] = 0;
+    }
+    let replay_boundary =
+        idle_pre_match && NEW_ROUND_IDLE_FRAMES[entry] >= NEW_ROUND_IDLE_FRAMES_REQUIRED;
+
+    if !stale_result_state || (!entry_status && !rebirth_after_result && !replay_boundary) {
         return false;
     }
+    NEW_ROUND_IDLE_FRAMES[entry] = 0;
+    let reset_reason = if entry_status {
+        "new_round_entry"
+    } else if rebirth_after_result {
+        "rebirth_after_result"
+    } else {
+        "replay_idle_pre_match"
+    };
 
     let previous_phase = lifecycle_phase_name(BOSS_LIFECYCLE_PHASE[entry]);
     // Clear the previous match's per-entry WOL secondary-selection latch
@@ -179,6 +212,13 @@ unsafe fn reset_stale_match_generation_if_new_round(
     BOSS_LIFECYCLE_LAST_SIGNATURE[entry] = u64::MAX;
     boss_summon::reset_result_roster_diagnostics();
 
+    crate::boss_log!(
+        "[PB][NewRoundReset] entry={} generation={} reason={} fighter_status={} stale_cleared=true quarantine_released=true",
+        entry,
+        BOSS_LIFECYCLE_GENERATION[entry],
+        reset_reason,
+        fighter_status
+    );
     crate::boss_log!(
         "[PB][MatchLifecycle] new_generation entry={} generation={} previous_phase={} reset_reason=new_round_entry stage=0x{:x} fighter_status={} selected_ui_hash=0x{:010x} selected_identity_preserved=true",
         entry,
@@ -842,6 +882,119 @@ pub unsafe fn any_post_match_pre_result() -> bool {
     false
 }
 
+static mut EARLY_TAKEOVER_LAST_SIGNATURE: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
+/// Consecutive qualifying frames observed for the Spirit-Replay new-round
+/// boundary. Bounded, plugin-owned, no engine reads.
+static mut NEW_ROUND_IDLE_FRAMES: [u8; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
+/// Frames of settled pre-Ready-Go idle required before the replay boundary is
+/// accepted. Long enough that the finished match's own transition cannot be
+/// mistaken for it, short enough that acquisition still precedes Ready-Go.
+const NEW_ROUND_IDLE_FRAMES_REQUIRED: u8 = 6;
+
+/// MINIMUM-SAFE pre-Ready-Go trace.
+///
+/// A previous revision of this diagnostic crashed on cold launch before it could
+/// emit anything. Every field that required an additional engine lookup has been
+/// removed; what remains is the caller's already-computed phase plus plugin-owned
+/// statics and the three engine reads this exact callback provably already makes
+/// on every frame (see the safety note per call below).
+///
+/// Deliberately absent, and not to be re-added without proof:
+///   `any_boss_active()`      - fans out to 10 boss-module `check_status()` calls,
+///                              each dereferencing a tracked battle object.
+///   `ItemModule::get_have_item_id`, `ModelModule::scale`, `is_hidden_host`
+///   `FighterInformation::{stock_count, dead_count, is_on_rebirth}` and the
+///   `fighter_information_entry` lookup that produces the pointer they need.
+unsafe fn log_early_takeover(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+    phase: BossTransitionPhase,
+    entry_id: usize,
+    fighter_status: i32,
+    ready_go: bool,
+    result_mode: bool,
+) {
+    if !crate::debug::enabled() || module_accessor.is_null() {
+        return;
+    }
+    let entry = entry_id.min(MAX_FIGHTERS - 1);
+
+    // Plugin-owned statics only.
+    let post_match_pre_result = POST_MATCH_PRE_RESULT[entry];
+    let post_match_tracking_invalidated = POST_MATCH_TRACKING_INVALIDATED[entry];
+    let result_mode_seen = RESULT_MODE_SEEN[entry];
+    let had_ready_go = BOSS_HAD_READY_GO[entry];
+    let match_started = BOSS_MATCH_STARTED[entry];
+    let generation = BOSS_LIFECYCLE_GENERATION[entry];
+
+    // Derived from the caller's already-computed phase; no re-invocation of
+    // `update_result_transition_state` (which mutates).
+    let result_quarantine = matches!(
+        phase,
+        BossTransitionPhase::PostMatchPreResult
+            | BossTransitionPhase::ResultReady
+            | BossTransitionPhase::SceneExit
+    );
+
+    // Sub-conditions of the EXISTING `reset_stale_match_generation_if_new_round`
+    // predicate, recomputed from the values above only.
+    let entry_status = fighter_status == *FIGHTER_STATUS_KIND_ENTRY;
+    let rebirth_after_result = result_mode_seen && fighter_status == *FIGHTER_STATUS_KIND_REBIRTH;
+    let stale_result_state =
+        post_match_pre_result || post_match_tracking_invalidated || result_mode_seen;
+    let new_round_would_fire =
+        !ready_go && !result_mode && stale_result_state && (entry_status || rebirth_after_result);
+
+    let signature = (fighter_status as u32 as u64)
+        ^ ((ready_go as u64) << 8)
+        ^ ((result_mode as u64) << 9)
+        ^ ((post_match_pre_result as u64) << 10)
+        ^ ((had_ready_go as u64) << 11)
+        ^ ((match_started as u64) << 12)
+        ^ ((post_match_tracking_invalidated as u64) << 13)
+        ^ ((result_mode_seen as u64) << 14)
+        ^ ((result_quarantine as u64) << 15)
+        ^ ((entry_status as u64) << 16)
+        ^ ((stale_result_state as u64) << 17)
+        ^ ((new_round_would_fire as u64) << 18)
+        ^ ((generation as u64) << 32);
+    if EARLY_TAKEOVER_LAST_SIGNATURE[entry] == signature {
+        return;
+    }
+    EARLY_TAKEOVER_LAST_SIGNATURE[entry] = signature;
+
+    crate::boss_log!(
+        "[PB][EarlyTakeover] entry={} generation={} fighter_status={} ready_go={} result_mode={} post_match_pre_result={} post_match_tracking_invalidated={} result_mode_seen={} had_ready_go={} match_started={} entry_status={} rebirth_after_result={} stale_result_state={} new_round_would_fire={} transition_phase={} result_quarantine={} acquire_allowed={} acquire_block_reason={}",
+        entry,
+        generation,
+        fighter_status,
+        ready_go,
+        result_mode,
+        post_match_pre_result,
+        post_match_tracking_invalidated,
+        result_mode_seen,
+        had_ready_go,
+        match_started,
+        entry_status,
+        rebirth_after_result,
+        stale_result_state,
+        new_round_would_fire,
+        match phase {
+            BossTransitionPhase::NotApplicable => "not_applicable",
+            BossTransitionPhase::Battle => "battle",
+            BossTransitionPhase::PostMatchPreResult => "post_match_pre_result",
+            BossTransitionPhase::ResultReady => "result_ready",
+            BossTransitionPhase::SceneExit => "scene_exit",
+        },
+        result_quarantine,
+        !result_quarantine,
+        if result_quarantine {
+            "transition_quarantine"
+        } else {
+            "none"
+        }
+    );
+}
+
 /// Dedicated fighter agents do not pass through the Mario-host dispatcher.
 /// Give them the same read-only result quarantine without exposing the
 /// transition implementation or allowing them to inspect native item slots.
@@ -1107,6 +1260,25 @@ extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
         }
 
         let transition_phase = update_result_transition_state(module_accessor);
+        // State-transition-only; the per-frame `EarlyTakeoverProbe` breadcrumbs
+        // are removed now that the boundary is understood. Still lifecycle-safe:
+        // four caller-local primitives, no battle-object/FighterInformation/
+        // item/model access.
+        if crate::debug::enabled() {
+            let et_entry = boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1);
+            let et_status = StatusModule::status_kind(module_accessor);
+            let et_ready_go = smash::app::sv_information::is_ready_go();
+            let et_fm = boss_helpers::fighter_manager();
+            let et_result_mode = !et_fm.is_null() && FighterManager::is_result_mode(et_fm);
+            log_early_takeover(
+                module_accessor,
+                transition_phase,
+                et_entry,
+                et_status,
+                et_ready_go,
+                et_result_mode,
+            );
+        }
         suppress_boss_mario_host_death_voice(module_accessor);
         let battle_active = matches!(
             transition_phase,
