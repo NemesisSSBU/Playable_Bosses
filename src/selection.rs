@@ -559,13 +559,12 @@ fn pending_selection_commit(
 
     if named_observation_belongs_to_this_transaction(&pending) {
         if independent_selection_corroborated() {
-            let origin = if condensed_enabled
-                && pending.observed_boss_hash == UI_CHARA_MASTERHAND_HASH
-            {
-                OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
-            } else {
-                OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-            };
+            let origin =
+                if condensed_enabled && pending.observed_boss_hash == UI_CHARA_MASTERHAND_HASH {
+                    OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
+                } else {
+                    OpaqueSelectionCacheOrigin::ConfirmedUiLookup
+                };
             return OpaqueSelectionCommit::Cached {
                 ui_hash: pending.observed_boss_hash,
                 origin,
@@ -1073,7 +1072,8 @@ unsafe fn cached_css_boss_hash(
         {
             Some(by_entry)
         }
-        OpaqueSelectionCacheOrigin::None | OpaqueSelectionCacheOrigin::TentativeUiSelection
+        OpaqueSelectionCacheOrigin::None
+        | OpaqueSelectionCacheOrigin::TentativeUiSelection
         | OpaqueSelectionCacheOrigin::CandidateUiLookup => None,
     }
 }
@@ -2322,16 +2322,6 @@ pub unsafe fn is_selected_css_boss(
     module_accessor: *mut BattleObjectModuleAccessor,
     expected_selector_id: i32,
 ) -> bool {
-    if !module_accessor.is_null() {
-        let entry_idx =
-            WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
-        if expected_selector_id == *ITEM_KIND_PLAYABLE_MASTERHAND
-            && entry_idx < MAX_FIGHTERS
-            && SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx]
-        {
-            return false;
-        }
-    }
     let Some(found) = selected_css_boss_selector_id(module_accessor) else {
         return false;
     };
@@ -2371,6 +2361,7 @@ pub unsafe fn suppress_boss_selection_until_ready_go(entry_idx: usize) {
     }
 }
 
+#[allow(dead_code)]
 pub unsafe fn is_boss_selection_suppressed(
     module_accessor: *mut BattleObjectModuleAccessor,
 ) -> bool {

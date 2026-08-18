@@ -442,6 +442,12 @@ pub unsafe fn acquire_boss_item(
     }
     if crate::debug::enabled() {
         reset_transition_block_log(entry);
+        crate::boss_log!(
+            "[PB][BossItem] before_have_item entry={} requested_kind={} stage=0x{:x}",
+            entry,
+            item_kind,
+            smash::app::stage::get_stage_id()
+        );
     }
     ItemModule::have_item(module_accessor, ItemKind(item_kind), 0, 0, false, false);
     SoundModule::stop_se(module_accessor, Hash40::new("se_item_item_get"), 0);
