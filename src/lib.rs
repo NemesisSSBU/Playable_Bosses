@@ -246,6 +246,7 @@ unsafe fn reset_boss_runtime_bookkeeping(entry_id: usize) {
     boss_runtime::reset_all_for_entry(entry_id);
     boss_helpers::clear_boss_mario_host_latch(entry_id);
     selection::reset_selector_authority_log(entry_id);
+    result_camera::reset_battle_identity(entry_id);
     playable_masterhand::reset_match_state(entry_id);
     mastercrazy::reset_match_state(entry_id);
     galeem::reset_match_state(entry_id);

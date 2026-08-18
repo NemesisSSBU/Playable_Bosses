@@ -385,6 +385,37 @@ fn result_profile_for_ui_hash(ui_chara_hash: u64) -> Option<&'static ResultBossP
         .find(|profile| crate::to_hash40(profile.ui_chara_id).0 == ui_chara_hash)
 }
 
+/// Result overlay identity is match-local. A persist/cache hash on a later
+/// vanilla Mario must not keep a previous boss (Marx, etc.) parked on that
+/// entry until results.
+#[inline(always)]
+fn next_result_identity(
+    current: ResultIdentity,
+    hosting: bool,
+    logical_ui_hash: u64,
+) -> ResultIdentity {
+    if hosting {
+        if result_profile_for_ui_hash(logical_ui_hash).is_some() {
+            return ResultIdentity {
+                logical_ui_hash,
+                last_log_signature: current.last_log_signature,
+            };
+        }
+        return current;
+    }
+    if current.logical_ui_hash == 0 {
+        return current;
+    }
+    ResultIdentity::empty()
+}
+
+pub unsafe fn reset_battle_identity(entry: usize) {
+    if entry >= MAX_FIGHTERS {
+        return;
+    }
+    *result_identity_ptr(entry) = ResultIdentity::empty();
+}
+
 #[inline(always)]
 unsafe fn winning_result_profile(entry: usize) -> Option<&'static ResultBossProfile> {
     if entry >= MAX_FIGHTERS {
@@ -764,9 +795,9 @@ pub unsafe fn observe_native_fighter_result_reference(
     );
 }
 
-/// Snapshot only the logical boss identity while the battle host is valid.
-/// Stage D never needs the mutable battle item, so this avoids per-frame slot
-/// scans, active-object checks, and result-host ownership assumptions.
+/// Snapshot only the logical boss identity while this Mario is actually hosting
+/// a boss. Persist/cache can still name a previous CSS boss for a later vanilla
+/// Mario; that must not become a results overlay.
 pub unsafe fn observe_battle_identity(module_accessor: *mut BattleObjectModuleAccessor) {
     if module_accessor.is_null() {
         return;
@@ -780,23 +811,25 @@ pub unsafe fn observe_battle_identity(module_accessor: *mut BattleObjectModuleAc
     if entry >= MAX_FIGHTERS {
         return;
     }
+    let hosting = boss_helpers::is_hidden_host(module_accessor);
     let logical_ui_hash = selection::selected_css_boss_selector_id(module_accessor).unwrap_or(0);
-    let Some(profile) = result_profile_for_ui_hash(logical_ui_hash) else {
-        return;
-    };
-
     let state_ptr = result_identity_ptr(entry);
-    let mut state = *state_ptr;
-    let signature = logical_ui_hash;
-    state.logical_ui_hash = logical_ui_hash;
+    let previous = *state_ptr;
+    let mut state = next_result_identity(previous, hosting, logical_ui_hash);
+    let signature = (state.logical_ui_hash) ^ ((hosting as u64) << 63);
     if crate::debug::enabled() && state.last_log_signature != signature {
         state.last_log_signature = signature;
+        let profile = result_profile_for_ui_hash(state.logical_ui_hash);
         crate::boss_log!(
-            "[PB][ResultResolve] phase=battle_identity entry={} logical_boss={} logical_ui_hash=0x{:010x} result_safe={}",
+            "[PB][ResultResolve] phase=battle_identity entry={} hosting={} logical_boss={} logical_ui_hash=0x{:010x} previous_ui_hash=0x{:010x} result_safe={}",
             entry,
-            profile.key,
-            logical_ui_hash,
-            profile.key != "galeem" && profile.key != "dharkon"
+            hosting,
+            profile.map(|profile| profile.key).unwrap_or("none"),
+            state.logical_ui_hash,
+            previous.logical_ui_hash,
+            profile
+                .map(|profile| profile.key != "galeem" && profile.key != "dharkon")
+                .unwrap_or(false)
         );
     }
     *state_ptr = state;
@@ -1277,9 +1310,10 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor) {
 mod tests {
     use super::{
         active_result_pipeline_stage_name, camera_type_as_i32, custom_result_pipeline_enabled,
-        result_idle_motion_for_profile, result_presentation_allowed, result_profile_for_ui_hash,
-        ResultIdentity, CUSTOM_RESULT_AUDIO_ENABLED, DEFAULT_GIGA_BOWSER_RESULT_CAMERA_TYPE,
-        RESULT_ITEM_CREATION_ENABLED, RESULT_PRESENTATION_SCALE,
+        next_result_identity, result_idle_motion_for_profile, result_presentation_allowed,
+        result_profile_for_ui_hash, ResultIdentity, CUSTOM_RESULT_AUDIO_ENABLED,
+        DEFAULT_GIGA_BOWSER_RESULT_CAMERA_TYPE, RESULT_ITEM_CREATION_ENABLED,
+        RESULT_PRESENTATION_SCALE,
     };
 
     #[test]
@@ -1320,6 +1354,30 @@ mod tests {
         assert_eq!(
             result_profile_for_ui_hash(identity.logical_ui_hash).map(|profile| profile.key),
             Some("master_hand")
+        );
+        let kept = next_result_identity(identity, true, 0);
+        assert_eq!(kept.logical_ui_hash, identity.logical_ui_hash);
+    }
+
+    #[test]
+    fn vanilla_mario_drops_stale_marx_result_identity() {
+        let mut identity = ResultIdentity::empty();
+        identity.logical_ui_hash = crate::to_hash40("ui_chara_marx").0;
+        let persist_marx = crate::to_hash40("ui_chara_marx").0;
+        let next = next_result_identity(identity, false, persist_marx);
+        assert_eq!(next.logical_ui_hash, 0);
+        assert!(result_profile_for_ui_hash(next.logical_ui_hash).is_none());
+    }
+
+    #[test]
+    fn hidden_host_replaces_stale_marx_with_current_boss() {
+        let mut identity = ResultIdentity::empty();
+        identity.logical_ui_hash = crate::to_hash40("ui_chara_marx").0;
+        let wol = crate::to_hash40("ui_chara_mewtwo_masterhand").0;
+        let next = next_result_identity(identity, true, wol);
+        assert_eq!(
+            result_profile_for_ui_hash(next.logical_ui_hash).map(|profile| profile.key),
+            Some("wol_master_hand")
         );
     }
 

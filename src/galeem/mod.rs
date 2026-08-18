@@ -1169,6 +1169,20 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
+                    if ModelModule::scale(module_accessor) == 0.0001
+                        && boss_helpers::is_tracked_boss_active(&raw const BOSS_ID, ENTRY_ID)
+                    {
+                        let boss_boma = sv_battle_object::module_accessor(
+                            BOSS_ID[boss_helpers::entry_id(module_accessor)],
+                        );
+                        if !boss_boma.is_null()
+                            && (StatusModule::status_kind(boss_boma) == *ITEM_STATUS_KIND_ENTRY
+                                || MotionModule::motion_kind(boss_boma) == smash::hash40("entry2"))
+                        {
+                            MotionModule::set_rate(boss_boma, 7.0);
+                        }
+                    }
+
                     // SET FIGHTER LOOP
 
                     if sv_information::is_ready_go() == true {
@@ -2020,6 +2034,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         };
                                         PostureModule::set_rot(boss_boma, &vec3, 0);
                                     }
+                                    MotionModule::set_rate(boss_boma, 1.0);
                                     StatusModule::change_status_request_from_script(
                                         boss_boma,
                                         *ITEM_KIILA_STATUS_KIND_MANAGER_WAIT,

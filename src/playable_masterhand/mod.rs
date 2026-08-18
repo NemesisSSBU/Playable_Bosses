@@ -547,7 +547,7 @@ unsafe fn restore_world_masterhand_after_item_wipe(
     StatusModule::change_status_request_from_script(
         boss_boma,
         if cpu_entry {
-            *ITEM_MASTERHAND_STATUS_KIND_WAIT_FEINT
+            *ITEM_STATUS_KIND_WAIT
         } else {
             *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_WAIT
         },
@@ -1582,23 +1582,30 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
-                        if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == true {
-                            if StatusModule::status_kind(boss_boma)
-                                == *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_HOLD
-                            {
-                                StatusModule::change_status_request_from_script(
-                                    boss_boma,
-                                    *ITEM_MASTERHAND_STATUS_KIND_PAA_TSUBUSHI_END,
-                                    true,
-                                );
-                            }
-                        }
-
                         if DEAD == false && sv_information::is_ready_go() == true && !JUMP_START {
                             JUMP_START = true;
-                            if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID)
-                                == false
-                            {
+                            if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) {
+                                // ITEM_KIND_MASTERHAND stays in FOR_BOSS_START after Go
+                                // unless we cut the entry animation. Native CPU AI only
+                                // starts from a wait status (WAIT_CHASE), which is why
+                                // stunning it previously "woke it up".
+                                CONTROLLABLE = false;
+                                StatusModule::change_status_request_from_script(
+                                    boss_boma,
+                                    *ITEM_STATUS_KIND_WAIT,
+                                    true,
+                                );
+                                MotionModule::change_motion(
+                                    boss_boma,
+                                    Hash40::new("wait"),
+                                    0.0,
+                                    1.0,
+                                    false,
+                                    0.0,
+                                    false,
+                                    false,
+                                );
+                            } else {
                                 StatusModule::change_status_request_from_script(
                                     boss_boma,
                                     *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_WAIT,
