@@ -216,12 +216,18 @@ unsafe fn ensure_preview_masterhand(module_accessor: *mut BattleObjectModuleAcce
         || !ItemModule::is_have_item(module_accessor, 0)
     {
         ItemModule::remove_all(module_accessor);
-        ModelModule::set_scale(module_accessor, HIDDEN_HOST_SCALE);
+        // 3.0.3 order: acquire the presentation item while the host is still at
+        // its normal scale, and only then hide the host. 3.1.0 swapped these, so
+        // `have_item` ran on an already-shrunk host and the new item inherited
+        // the 0.0001 scale (see `ensure_boss_item_visible`), adding a rescale +
+        // visibility cycle to every preview spawn -- including the Classic Mode
+        // staffroll, where this function runs as the credits begin.
         let boss_boma = boss_helpers::acquire_boss_item(
             module_accessor,
             &raw mut BOSS_ID,
             *ITEM_KIND_MASTERHAND,
         );
+        ModelModule::set_scale(module_accessor, HIDDEN_HOST_SCALE);
         ModelModule::set_scale(boss_boma, PREVIEW_MASTERHAND_SCALE);
         MotionModule::change_motion(
             boss_boma,

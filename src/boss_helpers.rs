@@ -1368,8 +1368,22 @@ pub unsafe fn clear_owned_boss_item_slot(
 
 #[inline(always)]
 pub unsafe fn is_hidden_host(module_accessor: *mut BattleObjectModuleAccessor) -> bool {
-    !module_accessor.is_null()
-        && ModelModule::scale(module_accessor) <= HIDDEN_HOST_ENTRY_STAGE2_SCALE
+    if module_accessor.is_null() {
+        return false;
+    }
+    scale_is_hidden_host(ModelModule::scale(module_accessor))
+}
+
+/// A real hidden host always sits at one of the deliberate hidden scales
+/// (0.0001 host, 0.001/0.002 staged entry) -- never exactly 0. `ModelModule::
+/// scale` reports 0.0 on frames where the model is not yet initialised, and the
+/// previous unbounded `<=` test accepted that as "hidden". One such frame on an
+/// ordinary Mario latched `BOSS_MARIO_HOST_LATCH` for the rest of the match,
+/// which runs `stop_all_sound` every frame -- the intermittent "Mario's sound
+/// effects and voices go silent" report. Require a positive scale.
+#[inline(always)]
+fn scale_is_hidden_host(scale: f32) -> bool {
+    scale > 0.0 && scale <= HIDDEN_HOST_ENTRY_STAGE2_SCALE
 }
 
 /// Boss items created with `have_item` on a hidden Mario host can inherit the
@@ -1709,10 +1723,11 @@ pub fn is_boss_nonbattle_stage(stage_id: i32) -> bool {
 mod tests {
     use super::{
         generic_item_status_name, hidden_kiila_darz_cpu_is_quarantined,
-        is_kiila_darz_first_attack_status, item_trait_has_boss, should_discard_tracked_boss,
-        should_force_generic_wait, should_intercept_kiila_darz_spawn_status,
-        should_restore_staged_entry, staged_boss_ready_for_activation, staged_intro_reached_end,
-        trait_flag_without_boss, HIDDEN_HOST_ENTRY_STAGE2_SCALE, HIDDEN_HOST_SCALE,
+        is_kiila_darz_first_attack_status, item_trait_has_boss, scale_is_hidden_host,
+        should_discard_tracked_boss, should_force_generic_wait,
+        should_intercept_kiila_darz_spawn_status, should_restore_staged_entry,
+        staged_boss_ready_for_activation, staged_intro_reached_end, trait_flag_without_boss,
+        HIDDEN_HOST_ENTRY_PREP_SCALE, HIDDEN_HOST_ENTRY_STAGE2_SCALE, HIDDEN_HOST_SCALE,
         MARIO_STAMINA_KNOCKOUT_VOICE,
     };
     use smash::lib::lua_const::*;
@@ -1765,6 +1780,24 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn uninitialised_model_scale_is_not_a_hidden_host() {
+        // The regression: 0.0 (model not yet initialised) used to pass the
+        // unbounded `<=` test and latched a plain Mario as a boss audio host.
+        assert!(!scale_is_hidden_host(0.0));
+        assert!(!scale_is_hidden_host(-1.0));
+        // Ordinary fighters, including shrunk ones, stay out.
+        assert!(!scale_is_hidden_host(1.0));
+        assert!(!scale_is_hidden_host(0.5));
+        assert!(!scale_is_hidden_host(
+            HIDDEN_HOST_ENTRY_STAGE2_SCALE + 0.001
+        ));
+        // Every deliberate hidden-host scale still qualifies.
+        assert!(scale_is_hidden_host(HIDDEN_HOST_SCALE));
+        assert!(scale_is_hidden_host(HIDDEN_HOST_ENTRY_PREP_SCALE));
+        assert!(scale_is_hidden_host(HIDDEN_HOST_ENTRY_STAGE2_SCALE));
+    }
+
     fn hidden_cpu_quarantine_requires_active_none() {
         assert!(hidden_kiila_darz_cpu_is_quarantined(
             true,
