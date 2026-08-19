@@ -4584,10 +4584,8 @@ mod tests {
 
     /// Giga Bowser is the one boss that needs no plugin presentation: it is a
     /// real fighter, so the native viewer builds it once `ui_chara_koopag`
-    /// carries `fighter_kind_koopag`. The CSS row is cloned from Bowser purely
-    /// for a complete selectable row, and `callback_koopag` restores
-    /// `fighter_kind` afterwards — without that restore every consumer of the
-    /// row builds koopa, which is what made the preview show plain Bowser.
+    /// carries `fighter_kind_koopag`. `callback_koopag` patches that genuine
+    /// row in place (selectable, not hidden) and must not clone Bowser over it.
     #[test]
     fn giga_bowser_is_viewer_owned_with_no_item_backing() {
         let giga_bowser = profile_for_ui_chara_id("ui_chara_koopag").unwrap();

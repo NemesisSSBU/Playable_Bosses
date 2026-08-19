@@ -2369,6 +2369,15 @@ fn callback_koopag_layout(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let target_layout_id = to_hash40("ui_chara_koopag_00");
     let target_chara_id = to_hash40("ui_chara_koopag");
 
+    if db_root_list
+        .0
+        .iter()
+        .any(|param| struct_hash40_field_matches(param, ui_layout_id_hash, target_layout_id))
+    {
+        crate::boss_log!("[PB][CSSLayout] kept existing ui_layout_db row ui_chara_koopag_00");
+        return Some(original_size);
+    }
+
     let Some(source_layout) = db_root_list
         .0
         .iter()
@@ -2397,21 +2406,10 @@ fn callback_koopag_layout(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         return Some(original_size);
     }
 
-    if let Some(target_param) = db_root_list
-        .0
-        .iter_mut()
-        .find(|param| struct_hash40_field_matches(param, ui_layout_id_hash, target_layout_id))
-    {
-        *target_param = ParamKind::Struct(cloned_layout);
-        crate::boss_log!(
-            "[PB][CSSLayout] replaced ui_layout_db row ui_chara_koopag_00 from Bowser template"
-        );
-    } else {
-        db_root_list.0.push(ParamKind::Struct(cloned_layout));
-        crate::boss_log!(
-            "[PB][CSSLayout] appended ui_layout_db row ui_chara_koopag_00 from Bowser template"
-        );
-    }
+    db_root_list.0.push(ParamKind::Struct(cloned_layout));
+    crate::boss_log!(
+        "[PB][CSSLayout] appended ui_layout_db row ui_chara_koopag_00 from Bowser template"
+    );
 
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
@@ -2541,22 +2539,9 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
 
     let ui_chara_id_hash = to_hash40("ui_chara_id");
-    let source_chara_id = to_hash40("ui_chara_koopa");
     let target_chara_id = to_hash40("ui_chara_koopag");
-    let color_num_hash = to_hash40("color_num");
-    let color_start_index_hash = to_hash40("color_start_index");
-    let original_ui_chara_hash_hash = to_hash40("original_ui_chara_hash");
-
-    let Some(source_row) = db_root_list
-        .0
-        .iter()
-        .find(|param| struct_hash40_field_matches(param, ui_chara_id_hash, source_chara_id))
-        .and_then(|param| param.try_into_ref::<ParamStruct>().ok())
-        .cloned()
-    else {
-        crate::boss_log!("[PB][CSSChara] ui_chara_db missing Bowser template row ui_chara_koopa");
-        return Some(original_size);
-    };
+    let fighter_kind_hash = to_hash40("fighter_kind");
+    let fighter_kind_koopag = to_hash40("fighter_kind_koopag");
 
     let Some(target_index) = db_root_list
         .0
@@ -2567,7 +2552,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         return Some(original_size);
     };
 
-    let Some(target_row) = db_root_list
+    let Some(mut target_row) = db_root_list
         .0
         .get(target_index)
         .and_then(|param| param.try_into_ref::<ParamStruct>().ok())
@@ -2579,76 +2564,50 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         return Some(original_size);
     };
 
-    let source_color_num = read_u8_field(&source_row, color_num_hash).unwrap_or(8);
+    // 3.1.0 cloned Bowser's entire CSS row onto Giga Bowser, then tried to
+    // put fighter_kind_koopag back. CSS portraits still loaded, but the VS
+    // screen asked for Bowser costume slot 8 (`color_start_index` /
+    // `original_ui_chara_hash = ui_chara_koopa`) on a fighter that only has
+    // koopag c00. Hardware waits there forever; emulator often does not.
+    // Patch the genuine koopag row in place and leave his costume identity
+    // alone.
+    let existing_fighter_kind = read_hash40_field(&target_row, fighter_kind_hash);
+    let fighter_kind_source = if existing_fighter_kind == Some(fighter_kind_koopag) {
+        "target_row"
+    } else if patch_hash40_field(&mut target_row, fighter_kind_hash, fighter_kind_koopag) {
+        "explicit_fighter_kind_koopag"
+    } else {
+        "unresolved"
+    };
 
-    let mut cloned_row = source_row;
-    let patched_ui_chara_id =
-        patch_hash40_field(&mut cloned_row, ui_chara_id_hash, target_chara_id);
-    let copied_name_id = copy_field_from_struct(&target_row, &mut cloned_row, to_hash40("name_id"));
-    let copied_color_num =
-        copy_field_from_struct(&target_row, &mut cloned_row, to_hash40("color_num"));
-    let _ = copy_field_from_struct(&target_row, &mut cloned_row, to_hash40("result_pf0"));
-    let _ = copy_field_from_struct(&target_row, &mut cloned_row, to_hash40("result_pf1"));
-    let _ = copy_field_from_struct(&target_row, &mut cloned_row, to_hash40("result_pf2"));
-    // Bowser is cloned only to inherit a complete, selectable CSS row. Giga
-    // Bowser is a real fighter of its own, so `fighter_kind` must come back
-    // from the genuine ui_chara_koopag row instead of staying Bowser's —
-    // otherwise every consumer of this row builds koopa. That is why the
-    // amiibo viewer logged `Loaded koopa` and showed plain Bowser. Prefer the
-    // game's own value; fall back to the explicit label if the row lacks it.
-    let mut fighter_kind_source = "target_row";
-    if !copy_field_from_struct(&target_row, &mut cloned_row, to_hash40("fighter_kind")) {
-        fighter_kind_source = if patch_hash40_field(
-            &mut cloned_row,
-            to_hash40("fighter_kind"),
-            to_hash40("fighter_kind_koopag"),
-        ) {
-            "explicit_fighter_kind_koopag"
-        } else {
-            "unresolved"
-        };
-    }
-
-    patch_bool_field(&mut cloned_row, to_hash40("can_select"), true);
-    patch_bool_field(&mut cloned_row, to_hash40("is_boss"), true);
-    patch_bool_field(&mut cloned_row, to_hash40("is_hidden_boss"), false);
-    patch_i8_field(&mut cloned_row, to_hash40("disp_order"), 15);
-    patch_i8_field(&mut cloned_row, to_hash40("skill_list_order"), 15);
-    patch_i8_field(&mut cloned_row, to_hash40("save_no"), -1);
+    patch_bool_field(&mut target_row, to_hash40("can_select"), true);
+    patch_bool_field(&mut target_row, to_hash40("is_boss"), true);
+    patch_bool_field(&mut target_row, to_hash40("is_hidden_boss"), false);
+    patch_i8_field(&mut target_row, to_hash40("disp_order"), 15);
+    patch_i8_field(&mut target_row, to_hash40("skill_list_order"), 15);
+    patch_i8_field(&mut target_row, to_hash40("save_no"), -1);
     patch_hash40_field(
-        &mut cloned_row,
+        &mut target_row,
         to_hash40("characall_label_c00"),
         to_hash40("vc_narration_characall_koopa"),
     );
     patch_hash40_field(
-        &mut cloned_row,
+        &mut target_row,
         to_hash40("ui_series_id"),
         to_hash40("ui_series_mario"),
     );
     patch_hash40_field(
-        &mut cloned_row,
+        &mut target_row,
         to_hash40("fighter_type"),
         to_hash40("fighter_type_normal"),
     );
-    upsert_hash40_field(
-        &mut cloned_row,
-        original_ui_chara_hash_hash,
-        source_chara_id,
-    );
-    upsert_u8_field(&mut cloned_row, color_start_index_hash, source_color_num);
-    patch_css_selector_fields(&mut cloned_row, "ui_chara_koopag", 0x18E);
+    patch_css_selector_fields(&mut target_row, "ui_chara_koopag", 0x18E);
 
-    db_root_list.0[target_index] = ParamKind::Struct(cloned_row);
+    db_root_list.0[target_index] = ParamKind::Struct(target_row);
     crate::boss_log!(
-        "[PB][CSSChara] rebuilt ui_chara_koopag from Bowser template patched_ui_chara_id={} copied_name_id={} copied_color_num={} fighter_kind_source={} original_ui_chara_hash=ui_chara_koopa color_start_index={} save_no=-1",
-        patched_ui_chara_id,
-        copied_name_id,
-        copied_color_num,
-        fighter_kind_source,
-        source_color_num
+        "[PB][CSSChara] patched ui_chara_koopag in place fighter_kind_source={} color_start_index=unchanged original_ui_chara_hash=unchanged save_no=-1",
+        fighter_kind_source
     );
-    // Giga Bowser is the one boss the native viewer can build directly: it is
-    // a real fighter, so there is no Mario host and no presentation item.
     amiibo_preview::log_ui_chara_db_boundary(
         "ui_chara_koopag",
         "fighter_kind_koopag",
@@ -2657,7 +2616,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 
     let mut writer = std::io::Cursor::new(data);
     write_stream(&mut writer, &root).unwrap();
-    return Some(writer.position() as usize);
+    Some(writer.position() as usize)
 }
 
 // Master Hand
