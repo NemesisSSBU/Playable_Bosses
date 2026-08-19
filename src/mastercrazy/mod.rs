@@ -2949,6 +2949,15 @@ unsafe fn acquire_master_hand_item(
 }
 
 #[inline(always)]
+unsafe fn hide_defeated_hand(boss_boma: *mut BattleObjectModuleAccessor) {
+    if boss_boma.is_null() {
+        return;
+    }
+    VisibilityModule::set_whole(boss_boma, false);
+    ModelModule::set_scale(boss_boma, 0.0);
+}
+
+#[inline(always)]
 unsafe fn item_manager() -> *mut smash::app::ItemManager {
     if ITEM_MANAGER_ADDR == 0 {
         LookupSymbol(
@@ -3981,6 +3990,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     // Flags and new damage stuff
 
                     if sv_information::is_ready_go() == true
+                        && !DEAD
                         && BOSS_ID[boss_helpers::entry_id(module_accessor)] != 0
                     {
                         let boss_boma = sv_battle_object::module_accessor(
@@ -4427,9 +4437,10 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         SlowModule::clear_whole(module_accessor);
                                     }
                                     if MotionModule::frame(boss_boma)
-                                        >= MotionModule::end_frame(boss_boma) - 10.0
+                                        >= MotionModule::end_frame(boss_boma)
                                     {
                                         EXISTS_PUBLIC = false;
+                                        hide_defeated_hand(boss_boma);
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_STATUS_KIND_STANDBY,
@@ -4437,6 +4448,10 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         );
                                     }
                                 }
+                            } else if StatusModule::status_kind(boss_boma)
+                                == *ITEM_STATUS_KIND_STANDBY
+                            {
+                                hide_defeated_hand(boss_boma);
                             }
                         }
                     }
@@ -8503,6 +8518,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     // Flags and new damage stuff
 
                     if sv_information::is_ready_go() == true
+                        && !DEAD_2
                         && BOSS_ID_2[boss_helpers::entry_id(module_accessor)] != 0
                     {
                         let boss_boma = sv_battle_object::module_accessor(
@@ -8937,9 +8953,10 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         SlowModule::clear_whole(module_accessor);
                                     }
                                     if MotionModule::frame(boss_boma_2)
-                                        >= MotionModule::end_frame(boss_boma_2) - 10.0
+                                        >= MotionModule::end_frame(boss_boma_2)
                                     {
                                         EXISTS_PUBLIC = false;
+                                        hide_defeated_hand(boss_boma_2);
                                         StatusModule::change_status_request_from_script(
                                             boss_boma_2,
                                             *ITEM_STATUS_KIND_STANDBY,
@@ -8947,6 +8964,10 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                         );
                                     }
                                 }
+                            } else if StatusModule::status_kind(boss_boma_2)
+                                == *ITEM_STATUS_KIND_STANDBY
+                            {
+                                hide_defeated_hand(boss_boma_2);
                             }
                         }
                     }
