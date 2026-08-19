@@ -3,6 +3,7 @@ use crate::boss_runtime::{self, BossCommonRuntime, CommonRuntimeSyncGuard};
 use crate::config::CONFIG;
 use crate::selection;
 use skyline::hooks::InlineCtx;
+use skyline::nn::ro::LookupSymbol;
 use smash::app::lua_bind;
 use smash::app::lua_bind::*;
 use smash::app::sv_battle_object;
@@ -76,8 +77,11 @@ static mut EXISTS_PUBLIC: bool = false;
 static mut Y_POS: f32 = 0.0;
 static mut MASTER_TEAM: u64 = 99;
 static mut MASTER_LAST_IRON_BALL_ID: u32 = 0;
+static mut MASTER_IRON_BALL_IDS: [u32; 4] = [0; 4];
 static mut MASTER_IRON_BALL_OFFSTAGE_FRAMES: i32 = 0;
 static mut MASTER_IRON_BALL_SMOOTH_CANCEL: bool = false;
+static mut MASTER_IRON_BALL_PURGE_LEFT: i32 = 0;
+static mut ITEM_MANAGER_ADDR: usize = 0;
 static mut MASTER_KENZAN_SPAWNED: bool = false;
 static mut MASTER_CPU_IDLE_STALL_FRAMES: [i32; 8] = [0; 8];
 static mut MASTER_CPU_LAST_X: [f32; 8] = [0.0; 8];
@@ -281,6 +285,8 @@ const CRAZY_KUMO_GROUND_CLEARANCE: f32 = 0.1;
 const CRAZY_NOTAUTSU_GROUND_CLEARANCE: f32 = 0.1;
 const MASTER_IRON_BALL_OFFSTAGE_LIMIT: i32 = 30;
 const MASTER_IRON_BALL_END_TAIL_FRAMES: f32 = 40.0;
+const MASTER_IRON_BALL_TRACK_MAX: usize = 4;
+const MASTER_IRON_BALL_PURGE_DURATION: i32 = 12;
 const CRAZY_KUMO_END_TAIL_FRAMES: f32 = 45.0;
 const FINDER_HAND_SPACING: f32 = 24.0;
 const FINDER_HAND_HEIGHT: f32 = 10.0;
@@ -2638,8 +2644,10 @@ unsafe fn reset_master_runtime_for_spawn() {
     STOP = false;
     MULTIPLE_BULLETS = 0;
     MASTER_LAST_IRON_BALL_ID = 0;
+    MASTER_IRON_BALL_IDS = [0; 4];
     MASTER_IRON_BALL_OFFSTAGE_FRAMES = 0;
     MASTER_IRON_BALL_SMOOTH_CANCEL = false;
+    MASTER_IRON_BALL_PURGE_LEFT = 0;
     MASTER_KENZAN_SPAWNED = false;
     reset_master_cpu_idle_recovery(ENTRY_ID);
     if hand_entrance_authority_claimed() {
@@ -2720,8 +2728,10 @@ pub unsafe fn invalidate_transition_tracking(entry_id: usize) {
     Y_POS = 0.0;
     MASTER_TEAM = 99;
     MASTER_LAST_IRON_BALL_ID = 0;
+    MASTER_IRON_BALL_IDS = [0; 4];
     MASTER_IRON_BALL_OFFSTAGE_FRAMES = 0;
     MASTER_IRON_BALL_SMOOTH_CANCEL = false;
+    MASTER_IRON_BALL_PURGE_LEFT = 0;
     MASTER_KENZAN_SPAWNED = false;
     MASTER_CPU_IDLE_STALL_FRAMES = [0; 8];
     MASTER_CPU_LAST_X = [0.0; 8];
@@ -2891,8 +2901,10 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     Y_POS = 0.0;
     MASTER_TEAM = 99;
     MASTER_LAST_IRON_BALL_ID = 0;
+    MASTER_IRON_BALL_IDS = [0; 4];
     MASTER_IRON_BALL_OFFSTAGE_FRAMES = 0;
     MASTER_IRON_BALL_SMOOTH_CANCEL = false;
+    MASTER_IRON_BALL_PURGE_LEFT = 0;
     MASTER_KENZAN_SPAWNED = false;
     reset_master_cpu_idle_recovery(entry);
 
@@ -2937,6 +2949,263 @@ unsafe fn acquire_master_hand_item(
 }
 
 #[inline(always)]
+unsafe fn item_manager() -> *mut smash::app::ItemManager {
+    if ITEM_MANAGER_ADDR == 0 {
+        LookupSymbol(
+            &raw mut ITEM_MANAGER_ADDR,
+            "_ZN3lib9SingletonIN3app11ItemManagerEE9instance_E\0"
+                .as_bytes()
+                .as_ptr(),
+        );
+    }
+    if ITEM_MANAGER_ADDR == 0 {
+        return std::ptr::null_mut();
+    }
+    *(ITEM_MANAGER_ADDR as *mut *mut smash::app::ItemManager)
+}
+
+#[inline(always)]
+unsafe fn is_master_iron_ball(boma: *mut BattleObjectModuleAccessor) -> bool {
+    !boma.is_null() && smash::app::utility::get_kind(&mut *boma) == *ITEM_KIND_MASTERHANDIRONBALL
+}
+
+#[inline(always)]
+unsafe fn track_master_iron_ball(id: u32) {
+    if id == 0 {
+        return;
+    }
+    MASTER_LAST_IRON_BALL_ID = id;
+    for slot in 0..MASTER_IRON_BALL_TRACK_MAX {
+        if MASTER_IRON_BALL_IDS[slot] == id {
+            return;
+        }
+    }
+    for slot in 0..MASTER_IRON_BALL_TRACK_MAX {
+        if MASTER_IRON_BALL_IDS[slot] == 0
+            || !sv_battle_object::is_active(MASTER_IRON_BALL_IDS[slot])
+        {
+            MASTER_IRON_BALL_IDS[slot] = id;
+            return;
+        }
+    }
+    MASTER_IRON_BALL_IDS[0] = id;
+}
+
+#[inline(always)]
+unsafe fn clear_master_iron_ball_ids() {
+    MASTER_LAST_IRON_BALL_ID = 0;
+    MASTER_IRON_BALL_IDS = [0; 4];
+}
+
+#[inline(always)]
+unsafe fn despawn_tracked_master_iron_balls() {
+    despawn_master_iron_ball(MASTER_LAST_IRON_BALL_ID);
+    for slot in 0..MASTER_IRON_BALL_TRACK_MAX {
+        despawn_master_iron_ball(MASTER_IRON_BALL_IDS[slot]);
+    }
+    clear_master_iron_ball_ids();
+}
+
+#[inline(always)]
+unsafe fn despawn_master_iron_ball(id: u32) {
+    if id == 0 || !sv_battle_object::is_active(id) {
+        return;
+    }
+    let iron_ball_boma = sv_battle_object::module_accessor(id);
+    if !is_master_iron_ball(iron_ball_boma) {
+        return;
+    }
+    AttackModule::clear_all(iron_ball_boma);
+    LinkModule::remove_model_constraint(iron_ball_boma, true);
+    LinkModule::unlink_all(iron_ball_boma);
+    remove(iron_ball_boma);
+    if sv_battle_object::is_active(id) {
+        let manager = item_manager();
+        if !manager.is_null() {
+            ItemManager::remove_item_from_id(manager, id);
+        }
+    }
+}
+
+#[inline(always)]
+unsafe fn release_held_iron_balls(boma: *mut BattleObjectModuleAccessor) {
+    if boma.is_null() {
+        return;
+    }
+    for slot in 0..4 {
+        if !ItemModule::is_have_item(boma, slot) {
+            continue;
+        }
+        let held_item_id = ItemModule::get_have_item_id(boma, slot) as u32;
+        if held_item_id == 0 || !sv_battle_object::is_active(held_item_id) {
+            continue;
+        }
+        let held_item_boma = sv_battle_object::module_accessor(held_item_id);
+        if is_master_iron_ball(held_item_boma) {
+            track_master_iron_ball(held_item_id);
+            ItemModule::remove_item(boma, slot);
+        }
+    }
+}
+
+#[inline(always)]
+unsafe fn track_have_slot_iron_balls(boma: *mut BattleObjectModuleAccessor) {
+    if boma.is_null() {
+        return;
+    }
+    for slot in 0..4 {
+        if !ItemModule::is_have_item(boma, slot) {
+            continue;
+        }
+        let held_item_id = ItemModule::get_have_item_id(boma, slot) as u32;
+        if held_item_id == 0 || !sv_battle_object::is_active(held_item_id) {
+            continue;
+        }
+        let held_item_boma = sv_battle_object::module_accessor(held_item_id);
+        if is_master_iron_ball(held_item_boma) {
+            track_master_iron_ball(held_item_id);
+        }
+    }
+}
+
+#[inline(always)]
+unsafe fn track_linked_iron_balls(boss_boma: *mut BattleObjectModuleAccessor) {
+    if boss_boma.is_null() {
+        return;
+    }
+    let links = [
+        *ITEM_LINK_NO_HAVE,
+        *ITEM_LINK_NO_CREATEOWNER,
+        *ITEM_LINK_NO_TEAMOWNER,
+        *ITEM_LINK_NO_TARGET,
+    ];
+    for link in links {
+        if !LinkModule::is_linked(boss_boma, link) {
+            continue;
+        }
+        let node_id = LinkModule::get_node_object_id(boss_boma, link) as u32;
+        if node_id == 0 || !sv_battle_object::is_active(node_id) {
+            continue;
+        }
+        let node_boma = sv_battle_object::module_accessor(node_id);
+        if is_master_iron_ball(node_boma) {
+            track_master_iron_ball(node_id);
+        }
+    }
+}
+
+#[inline(always)]
+unsafe fn track_attached_master_iron_balls(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    boss_boma: *mut BattleObjectModuleAccessor,
+) {
+    track_have_slot_iron_balls(module_accessor);
+    track_have_slot_iron_balls(boss_boma);
+    track_linked_iron_balls(boss_boma);
+}
+
+#[inline(always)]
+unsafe fn collect_manager_iron_balls(
+    host_id: u32,
+    boss_id: u32,
+    ids: &mut [u32],
+    count: &mut usize,
+) {
+    let manager = item_manager();
+    if manager.is_null() {
+        return;
+    }
+    let active_count = ItemManager::get_num_of_active_item_all(manager).min(256u64);
+    for index in 0..active_count {
+        let item = ItemManager::get_active_item(manager, index) as *mut smash::app::Item;
+        if item.is_null() {
+            continue;
+        }
+        let id = Item::get_battle_object_id(item) as u32;
+        if id == 0 || !sv_battle_object::is_active(id) {
+            continue;
+        }
+        let item_boma = sv_battle_object::module_accessor(id);
+        if !is_master_iron_ball(item_boma) {
+            continue;
+        }
+        let owner = Item::owner_id(item) as u32;
+        if owner != 0 && owner != host_id && owner != boss_id {
+            continue;
+        }
+        if *count >= ids.len() {
+            break;
+        }
+        let mut already_tracked = false;
+        for tracked in ids.iter().take(*count) {
+            if *tracked == id {
+                already_tracked = true;
+                break;
+            }
+        }
+        if already_tracked {
+            continue;
+        }
+        ids[*count] = id;
+        *count += 1;
+    }
+}
+
+#[inline(always)]
+unsafe fn purge_master_iron_balls(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    boss_boma: *mut BattleObjectModuleAccessor,
+) {
+    track_attached_master_iron_balls(module_accessor, boss_boma);
+    release_held_iron_balls(module_accessor);
+    release_held_iron_balls(boss_boma);
+
+    let mut ids = [0u32; 12];
+    let mut count = 0usize;
+    if MASTER_LAST_IRON_BALL_ID != 0 {
+        ids[count] = MASTER_LAST_IRON_BALL_ID;
+        count += 1;
+    }
+    for slot in 0..MASTER_IRON_BALL_TRACK_MAX {
+        let id = MASTER_IRON_BALL_IDS[slot];
+        if id == 0 {
+            continue;
+        }
+        let mut already_tracked = false;
+        for tracked in ids.iter().take(count) {
+            if *tracked == id {
+                already_tracked = true;
+                break;
+            }
+        }
+        if already_tracked {
+            continue;
+        }
+        if count >= ids.len() {
+            break;
+        }
+        ids[count] = id;
+        count += 1;
+    }
+    let host_id = if module_accessor.is_null() {
+        0
+    } else {
+        (*module_accessor).battle_object_id
+    };
+    let boss_id = if boss_boma.is_null() {
+        0
+    } else {
+        (*boss_boma).battle_object_id
+    };
+    collect_manager_iron_balls(host_id, boss_id, &mut ids, &mut count);
+
+    for index in 0..count {
+        despawn_master_iron_ball(ids[index]);
+    }
+    clear_master_iron_ball_ids();
+}
+
+#[inline(always)]
 unsafe fn cancel_master_iron_ball(
     module_accessor: *mut BattleObjectModuleAccessor,
     boss_boma: *mut BattleObjectModuleAccessor,
@@ -2948,39 +3217,10 @@ unsafe fn cancel_master_iron_ball(
         "[PB][MasterHand][IronBall] cancel reason={} entry={} ball=0x{:x}",
         reason, entry_id, last_iron_ball_id,
     );
-    if !module_accessor.is_null() && ItemModule::is_have_item(module_accessor, 0) {
-        let held_item_id = ItemModule::get_have_item_id(module_accessor, 0) as u32;
-        if held_item_id != 0 && sv_battle_object::is_active(held_item_id) {
-            let held_item_boma = sv_battle_object::module_accessor(held_item_id);
-            if !held_item_boma.is_null()
-                && smash::app::utility::get_kind(&mut *held_item_boma)
-                    == *ITEM_KIND_MASTERHANDIRONBALL
-            {
-                ItemModule::remove_item(module_accessor, 0);
-            }
-        }
-    }
-    if !boss_boma.is_null() && ItemModule::is_have_item(boss_boma, 0) {
-        let held_item_id = ItemModule::get_have_item_id(boss_boma, 0) as u32;
-        if held_item_id != 0 && sv_battle_object::is_active(held_item_id) {
-            let held_item_boma = sv_battle_object::module_accessor(held_item_id);
-            if !held_item_boma.is_null()
-                && smash::app::utility::get_kind(&mut *held_item_boma)
-                    == *ITEM_KIND_MASTERHANDIRONBALL
-            {
-                ItemModule::remove_item(boss_boma, 0);
-            }
-        }
-    }
-    if MASTER_LAST_IRON_BALL_ID != 0 && sv_battle_object::is_active(MASTER_LAST_IRON_BALL_ID) {
-        let iron_ball_boma = sv_battle_object::module_accessor(MASTER_LAST_IRON_BALL_ID);
-        if !iron_ball_boma.is_null() {
-            remove(iron_ball_boma);
-        }
-    }
-    MASTER_LAST_IRON_BALL_ID = 0;
+    purge_master_iron_balls(module_accessor, boss_boma);
     MASTER_IRON_BALL_OFFSTAGE_FRAMES = 0;
     MASTER_IRON_BALL_SMOOTH_CANCEL = true;
+    MASTER_IRON_BALL_PURGE_LEFT = MASTER_IRON_BALL_PURGE_DURATION;
     if !boss_boma.is_null() {
         WorkModule::off_flag(
             boss_boma,
@@ -4787,7 +5027,10 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             );
                         }
                     }
-                    if MASTER_LAST_IRON_BALL_ID != 0 {
+                    if MASTER_IRON_BALL_PURGE_LEFT > 0 {
+                        purge_master_iron_balls(module_accessor, boss_boma);
+                        MASTER_IRON_BALL_PURGE_LEFT -= 1;
+                    } else if MASTER_LAST_IRON_BALL_ID != 0 {
                         if !sv_battle_object::is_active(MASTER_LAST_IRON_BALL_ID) {
                             MASTER_LAST_IRON_BALL_ID = 0;
                             MASTER_IRON_BALL_OFFSTAGE_FRAMES = 0;
@@ -6227,6 +6470,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL_PRE_MOVE)
                             && !DEAD
                         {
+                            track_attached_master_iron_balls(module_accessor, boss_boma);
                             if boss_floor_y(module_accessor, boss_boma).is_none() {
                                 MASTER_IRON_BALL_OFFSTAGE_FRAMES += 1;
                                 if MASTER_IRON_BALL_OFFSTAGE_FRAMES
@@ -6244,23 +6488,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if WorkModule::is_flag(
                                 boss_boma,
                                 *ITEM_MASTERHAND_INSTANCE_WORK_FLAG_IRON_BALL_THROW,
-                            ) {
-                                if ItemModule::is_have_item(module_accessor, 0) {
-                                    let held_item_id =
-                                        ItemModule::get_have_item_id(module_accessor, 0) as u32;
-                                    if held_item_id != 0
-                                        && sv_battle_object::is_active(held_item_id)
-                                    {
-                                        let held_item_boma =
-                                            sv_battle_object::module_accessor(held_item_id);
-                                        if !held_item_boma.is_null()
-                                            && smash::app::utility::get_kind(&mut *held_item_boma)
-                                                == *ITEM_KIND_MASTERHANDIRONBALL
-                                        {
-                                            ItemModule::remove_item(module_accessor, 0);
-                                        }
-                                    }
-                                }
+                            ) && MASTER_IRON_BALL_PURGE_LEFT == 0
+                            {
+                                release_held_iron_balls(module_accessor);
+                                release_held_iron_balls(boss_boma);
+                                despawn_tracked_master_iron_balls();
                                 let mut throw_joint = Vector3f {
                                     x: PostureModule::pos_x(boss_boma),
                                     y: PostureModule::pos_y(boss_boma),
@@ -6281,7 +6513,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     lua_bind::PostureModule::lr(boss_boma),
                                 ) as u32;
                                 if iron_ball_id != 0 && sv_battle_object::is_active(iron_ball_id) {
-                                    MASTER_LAST_IRON_BALL_ID = iron_ball_id;
+                                    track_master_iron_ball(iron_ball_id);
                                     let iron_ball_boma =
                                         sv_battle_object::module_accessor(iron_ball_id);
                                     if !iron_ball_boma.is_null() {
@@ -6300,8 +6532,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             true,
                                         );
                                     }
-                                } else {
-                                    MASTER_LAST_IRON_BALL_ID = 0;
                                 }
                                 WorkModule::off_flag(
                                     boss_boma,
