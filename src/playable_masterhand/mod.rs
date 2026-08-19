@@ -547,7 +547,7 @@ unsafe fn restore_world_masterhand_after_item_wipe(
     StatusModule::change_status_request_from_script(
         boss_boma,
         if cpu_entry {
-            *ITEM_STATUS_KIND_WAIT
+            *ITEM_MASTERHAND_STATUS_KIND_CHASE
         } else {
             *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_WAIT
         },
@@ -1589,10 +1589,13 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 // unless we cut the entry animation. Native CPU AI only
                                 // starts from a wait status (WAIT_CHASE), which is why
                                 // stunning it previously "woke it up".
+                                // Yes I wrote these comments to myself because it drives
+                                // me insane trying to remember all these things and
+                                // putting it through an LLM is borderline useless.
                                 CONTROLLABLE = false;
                                 StatusModule::change_status_request_from_script(
                                     boss_boma,
-                                    *ITEM_STATUS_KIND_WAIT,
+                                    *ITEM_MASTERHAND_STATUS_KIND_CHASE,
                                     true,
                                 );
                                 MotionModule::change_motion(
