@@ -1855,8 +1855,8 @@ unsafe fn apply_item_presentation(
     // correction after its native motion has initialized.
     let native_rotation_after_motion = presentation_rotation(item_boma);
     let native_lr_after_motion = PostureModule::lr(item_boma);
-        let position = desired_preview_position(state, profile);
-        PostureModule::set_pos(item_boma, &position);
+    let position = desired_preview_position(state, profile);
+    PostureModule::set_pos(item_boma, &position);
     if let Some(rotation) = profile.presentation_rotation {
         PostureModule::set_rot(
             item_boma,
@@ -2088,7 +2088,7 @@ unsafe fn log_transform_calibration(
     let host_root = root_joint_rotation(host_boma).unwrap_or([0.0; 3]);
     let item_posture = presentation_rotation(item_boma);
     let item_root = root_joint_rotation(item_boma).unwrap_or([0.0; 3]);
-                crate::boss_log!(
+    crate::boss_log!(
         "[PB][AmiiboTransformCalibration] generation={} logical_boss={} action={} target={} axis={} delta={:.0} override={:?} host_posture=({:.1},{:.1},{:.1}) host_root=({:.1},{:.1},{:.1}) item_posture=({:.1},{:.1},{:.1}) item_root=({:.1},{:.1},{:.1}) slot_still_held={}",
         state.viewer_generation,
                     profile.key,
@@ -2379,7 +2379,7 @@ unsafe fn observe_interactive_transform_probe(
     probe.last_host_posture = host_posture;
     probe.change_samples_remaining = probe.change_samples_remaining.saturating_sub(1);
     let sample = INTERACTIVE_TRANSFORM_CHANGE_SAMPLES - probe.change_samples_remaining;
-            crate::boss_log!(
+    crate::boss_log!(
         "[PB][AmiiboInteractiveTransform] generation={} logical_boss={} phase=host_posture_changed sample={}/{} presentation_object_id=0x{:x} ownership={} slot_still_held={} host_posture_rotation_before=({:.1},{:.1},{:.1}) host_posture_rotation=({:.1},{:.1},{:.1}) actual_host_root_joint_rotation=({:.1},{:.1},{:.1}) item_posture_rotation=({:.1},{:.1},{:.1}) item_root={:?} host_lr={:.3} item_lr={:.3} host_position=({:.3},{:.3},{:.3}) item_position=({:.3},{:.3},{:.3}) plugin_host_posture_write={} plugin_host_root_write={} plugin_item_posture_write={} plugin_item_root_write={} plugin_item_position_write={} stabilization_frames_remaining={}",
         state.viewer_generation,
                 profile.key,
@@ -3742,29 +3742,29 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
             // rather than on every Ready frame. Behavior is unchanged: nothing
             // outside this block reads these values.
             if !state.native_transform_reset_logged {
-            let before_position = Vector3f {
-                x: PostureModule::pos_x(presentation_boma),
-                y: PostureModule::pos_y(presentation_boma),
-                z: PostureModule::pos_z(presentation_boma),
-            };
-            let before_rotation = presentation_rotation(presentation_boma);
-            let before_scale = ModelModule::scale(presentation_boma);
-            let rotation_needs_stabilization = profile
-                .presentation_rotation
-                .map(|rotation| !rotation_matches(before_rotation, rotation))
-                .unwrap_or(false);
+                let before_position = Vector3f {
+                    x: PostureModule::pos_x(presentation_boma),
+                    y: PostureModule::pos_y(presentation_boma),
+                    z: PostureModule::pos_z(presentation_boma),
+                };
+                let before_rotation = presentation_rotation(presentation_boma);
+                let before_scale = ModelModule::scale(presentation_boma);
+                let rotation_needs_stabilization = profile
+                    .presentation_rotation
+                    .map(|rotation| !rotation_matches(before_rotation, rotation))
+                    .unwrap_or(false);
                 if !transform_matches(before_position.x, desired_position.x)
                     || !transform_matches(before_position.y, desired_position.y)
                     || !transform_matches(before_position.z, desired_position.z)
                     || !transform_matches(before_scale, desired_scale)
                     || rotation_needs_stabilization
-            {
-                state.native_transform_reset_logged = true;
-                if crate::debug::enabled() {
+                {
+                    state.native_transform_reset_logged = true;
+                    if crate::debug::enabled() {
                         let current_host_position = viewer_host_position(module_accessor);
                         let desired_presentation_rotation =
                             desired_item_presentation_rotation(profile, before_rotation);
-                    crate::boss_log!(
+                        crate::boss_log!(
                         "[PB][AmiiboPreviewRuntime] native_transform_reset_observed generation={} logical_boss={} presentation_object_id=0x{:x} initial_host_position=({:.3},{:.3},{:.3}) current_host_position=({:.3},{:.3},{:.3}) viewer_anchor_position=({:.3},{:.3},{:.3}) desired_position=({:.3},{:.3},{:.3}) observed_position=({:.3},{:.3},{:.3}) observed_presentation_rotation=({:.1},{:.1},{:.1}) presentation_rotation_override={} desired_presentation_rotation=({:.1},{:.1},{:.1}) desired_scale={:.4} observed_scale={:.4} stabilization_frames_remaining={}",
                         state.viewer_generation,
                         profile.key,
@@ -3830,8 +3830,8 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                 // static correction, calibration overrides) without touching
                 // any native host channel.
                 process_transform_calibration_input(
-                        state,
-                        profile,
+                    state,
+                    profile,
                     module_accessor,
                     presentation_boma,
                     slot_still_held,
@@ -3839,7 +3839,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                 let stable_item =
                     maintain_stable_item_presentation(state, profile, presentation_boma);
                 (stable_item.motion, stable_item)
-                };
+            };
             observe_presentation_visibility(
                 state,
                 profile,
@@ -3867,15 +3867,15 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor, stage_id: 
                     host_presentation.root_rotation_observed = root_joint_rotation(module_accessor);
                 }
                 observe_interactive_transform_probe(
-                state,
-                profile,
-                presentation_boma,
-                module_accessor,
+                    state,
+                    profile,
+                    presentation_boma,
+                    module_accessor,
                     presentation_id,
                     slot_still_held,
                     &host_presentation,
                     &stable_item,
-            );
+                );
             }
             state.host_hidden = true;
             observe_presentation_visibility(
@@ -5183,16 +5183,16 @@ mod tests {
                     AmiiboHostOrientationRecipe::NativeFighter
                 }
             };
-        assert_eq!(
+            assert_eq!(
                 profile.host_orientation_recipe, expected,
                 "boss {} must not use a WOL host recipe",
                 profile.key
-        );
+            );
             assert_eq!(profile.host_orientation_recipe.posture_rotation(), None);
             assert_eq!(profile.host_orientation_recipe.root_rotation(), None);
 
             if profile.preview_kind == BossAmiiboPreviewKind::ItemPresentation {
-        assert_eq!(
+                assert_eq!(
                     profile.presentation_rotation,
                     Some([0.0, 0.0, -90.0]),
                     "boss {} must use the proven upright item correction",
@@ -5215,10 +5215,10 @@ mod tests {
         // bosses whose recipes changed.
         for key in ["ui_chara_dracula", "ui_chara_lioleus"] {
             let profile = profile_for_ui_chara_id(key).unwrap();
-        assert_eq!(
+            assert_eq!(
                 profile.host_orientation_recipe,
                 AmiiboHostOrientationRecipe::NativeHost
-        );
+            );
             assert_eq!(profile.presentation_rotation, Some([0.0, 0.0, -90.0]));
             assert_eq!(profile.item_root_rotation, None);
             assert!(owns_boss_local_transform(profile));

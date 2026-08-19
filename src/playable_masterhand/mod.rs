@@ -547,7 +547,7 @@ unsafe fn restore_world_masterhand_after_item_wipe(
     StatusModule::change_status_request_from_script(
         boss_boma,
         if cpu_entry {
-            *ITEM_MASTERHAND_STATUS_KIND_CHASE
+            *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE
         } else {
             *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_WAIT
         },
@@ -778,6 +778,48 @@ unsafe fn apply_smoothed_playable_masterhand_input(
     PostureModule::add_pos(boss_boma, &pos);
 }
 
+#[inline(always)]
+unsafe fn is_cpu_world_masterhand_item_throw_status(status: i32) -> bool {
+    status == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL_PRE_MOVE
+        || status == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL_START
+        || status == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL
+        || status == *ITEM_MASTERHAND_STATUS_KIND_IRON_BALL_END
+        || status == *ITEM_MASTERHAND_STATUS_KIND_PAINT_BALL_START
+        || status == *ITEM_MASTERHAND_STATUS_KIND_PAINT_BALL
+        || status == *ITEM_MASTERHAND_STATUS_KIND_PAINT_BALL_END
+}
+
+#[inline(always)]
+unsafe fn skip_cpu_world_masterhand_item_throws(
+    fighter_manager: *mut smash::app::FighterManager,
+    boss_boma: *mut BattleObjectModuleAccessor,
+) {
+    if boss_boma.is_null() || DEAD || !sv_information::is_ready_go() {
+        return;
+    }
+    if !boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) {
+        return;
+    }
+    if !is_cpu_world_masterhand_item_throw_status(StatusModule::status_kind(boss_boma)) {
+        return;
+    }
+    StatusModule::change_status_request_from_script(
+        boss_boma,
+        *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
+        true,
+    );
+    MotionModule::change_motion(
+        boss_boma,
+        Hash40::new("wait"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+}
+
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
@@ -996,6 +1038,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         // println!("RATE: {}", MotionModule::rate(boss_boma));
                         JostleModule::set_status(module_accessor, false);
+                        skip_cpu_world_masterhand_item_throws(fighter_manager, boss_boma);
                     }
 
                     HitModule::set_whole(
@@ -1595,7 +1638,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 CONTROLLABLE = false;
                                 StatusModule::change_status_request_from_script(
                                     boss_boma,
-                                    *ITEM_MASTERHAND_STATUS_KIND_CHASE,
+                                    *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
                                     true,
                                 );
                                 MotionModule::change_motion(
