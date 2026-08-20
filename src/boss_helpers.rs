@@ -1810,19 +1810,38 @@ pub fn is_boss_nonbattle_stage(stage_id: i32) -> bool {
     is_boss_preview_stage(stage_id) || is_boss_passthrough_stage(stage_id)
 }
 
+#[inline(always)]
+pub fn is_classic_staffroll_stage(stage_id: i32) -> bool {
+    stage_id == STAGE_ID_CLASSIC_STAFFROLL
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         boss_mario_host_audio_decision, flying_boss_travel_box, generic_item_status_name,
-        hidden_kiila_darz_cpu_is_quarantined, is_kiila_darz_first_attack_status,
-        is_mario_death_audio_status, item_trait_has_boss, scale_is_hidden_host,
+        hidden_kiila_darz_cpu_is_quarantined, is_boss_preview_stage, is_classic_staffroll_stage,
+        is_kiila_darz_first_attack_status, is_mario_death_audio_status,
+        is_world_of_light_boss_preview_stage, item_trait_has_boss, scale_is_hidden_host,
         should_discard_tracked_boss, should_force_generic_wait,
         should_intercept_kiila_darz_spawn_status, should_restore_staged_entry,
         staged_boss_ready_for_activation, staged_intro_reached_end, trait_flag_without_boss,
         BossMarioHostAudioDecision, HIDDEN_HOST_ENTRY_PREP_SCALE, HIDDEN_HOST_ENTRY_STAGE2_SCALE,
-        HIDDEN_HOST_SCALE, MARIO_STAMINA_KNOCKOUT_VOICE,
+        HIDDEN_HOST_SCALE, MARIO_STAMINA_KNOCKOUT_VOICE, STAGE_ID_AMIIBO_PREVIEW,
+        STAGE_ID_BOSS_PREVIEW, STAGE_ID_CLASSIC_STAFFROLL,
     };
     use smash::lib::lua_const::*;
+
+    #[test]
+    fn classic_staffroll_is_preview_but_not_world_of_light() {
+        assert!(is_classic_staffroll_stage(STAGE_ID_CLASSIC_STAFFROLL));
+        assert!(is_boss_preview_stage(STAGE_ID_CLASSIC_STAFFROLL));
+        assert!(!is_world_of_light_boss_preview_stage(
+            STAGE_ID_CLASSIC_STAFFROLL
+        ));
+        assert!(is_world_of_light_boss_preview_stage(STAGE_ID_BOSS_PREVIEW));
+        assert!(!is_classic_staffroll_stage(STAGE_ID_BOSS_PREVIEW));
+        assert!(!is_classic_staffroll_stage(STAGE_ID_AMIIBO_PREVIEW));
+    }
 
     #[test]
     fn inherited_hidden_host_scale_is_treated_as_an_invisible_boss_item() {

@@ -364,9 +364,8 @@ unsafe fn is_boss_mario_host_for_audio(
         || boss_helpers::is_hidden_host_entry_stage_two(module_accessor)
         || boss_helpers::is_hidden_host_baseline(module_accessor);
     let latched = boss_helpers::is_marked_boss_mario_host(module_accessor);
-    let death_audio_status = boss_helpers::is_mario_death_audio_status(StatusModule::status_kind(
-        module_accessor,
-    ));
+    let death_audio_status =
+        boss_helpers::is_mario_death_audio_status(StatusModule::status_kind(module_accessor));
     match boss_helpers::boss_mario_host_audio_decision(hidden, latched, death_audio_status) {
         boss_helpers::BossMarioHostAudioDecision::Suppress => {
             if hidden {

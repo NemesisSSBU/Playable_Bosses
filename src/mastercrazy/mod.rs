@@ -3806,42 +3806,56 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         ItemModule::remove_all(module_accessor);
                         ModelModule::set_scale(module_accessor, 0.0001);
                         let boss_boma = acquire_master_hand_item(module_accessor, ENTRY_ID);
-                        ModelModule::set_scale(boss_boma, 0.08);
-                        MotionModule::change_motion(
-                            boss_boma,
-                            Hash40::new("wait"),
-                            0.0,
-                            1.0,
-                            false,
-                            0.0,
-                            false,
-                            false,
-                        );
+                        if boss_helpers::is_classic_staffroll_stage(stage_id) {
+                            crate::amiibo_preview::apply_classic_staffroll_item(
+                                boss_boma,
+                                "master_hand",
+                            );
+                        } else {
+                            ModelModule::set_scale(boss_boma, 0.08);
+                            MotionModule::change_motion(
+                                boss_boma,
+                                Hash40::new("wait"),
+                                0.0,
+                                1.0,
+                                false,
+                                0.0,
+                                false,
+                                false,
+                            );
+                        }
                     }
                     if ModelModule::scale(module_accessor) == 0.0001 {
-                        MotionModule::change_motion(
-                            module_accessor,
-                            Hash40::new("none"),
-                            0.0,
-                            1.0,
-                            false,
-                            0.0,
-                            false,
-                            false,
-                        );
-                        ModelModule::set_joint_rotate(
-                            module_accessor,
-                            Hash40::new("root"),
-                            &mut Vector3f {
-                                x: -270.0,
-                                y: 180.0,
-                                z: -90.0,
-                            },
-                            smash::app::MotionNodeRotateCompose {
-                                _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
-                            },
-                            ModelModule::rotation_order(module_accessor),
-                        );
+                        if boss_helpers::is_classic_staffroll_stage(stage_id) {
+                            crate::amiibo_preview::maintain_classic_staffroll_look(
+                                module_accessor,
+                                "master_hand",
+                            );
+                        } else {
+                            MotionModule::change_motion(
+                                module_accessor,
+                                Hash40::new("none"),
+                                0.0,
+                                1.0,
+                                false,
+                                0.0,
+                                false,
+                                false,
+                            );
+                            ModelModule::set_joint_rotate(
+                                module_accessor,
+                                Hash40::new("root"),
+                                &mut Vector3f {
+                                    x: -270.0,
+                                    y: 180.0,
+                                    z: -90.0,
+                                },
+                                smash::app::MotionNodeRotateCompose {
+                                    _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
+                                },
+                                ModelModule::rotation_order(module_accessor),
+                            );
+                        }
                     }
                 } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_master_hand_after_item_wipe(module_accessor, fighter_manager);
@@ -8335,42 +8349,56 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         ItemModule::remove_all(module_accessor);
                         ModelModule::set_scale(module_accessor, 0.0001);
                         let boss_boma_2 = acquire_crazy_hand_item(module_accessor, ENTRY_ID_2);
-                        ModelModule::set_scale(boss_boma_2, 0.08);
-                        MotionModule::change_motion(
-                            boss_boma_2,
-                            Hash40::new("wait"),
-                            0.0,
-                            1.0,
-                            false,
-                            0.0,
-                            false,
-                            false,
-                        );
+                        if boss_helpers::is_classic_staffroll_stage(stage_id) {
+                            crate::amiibo_preview::apply_classic_staffroll_item(
+                                boss_boma_2,
+                                "crazy_hand",
+                            );
+                        } else {
+                            ModelModule::set_scale(boss_boma_2, 0.08);
+                            MotionModule::change_motion(
+                                boss_boma_2,
+                                Hash40::new("wait"),
+                                0.0,
+                                1.0,
+                                false,
+                                0.0,
+                                false,
+                                false,
+                            );
+                        }
                     }
                     if ModelModule::scale(module_accessor) == 0.0001 {
-                        MotionModule::change_motion(
-                            module_accessor,
-                            Hash40::new("none"),
-                            0.0,
-                            1.0,
-                            false,
-                            0.0,
-                            false,
-                            false,
-                        );
-                        ModelModule::set_joint_rotate(
-                            module_accessor,
-                            Hash40::new("root"),
-                            &mut Vector3f {
-                                x: -270.0,
-                                y: 180.0,
-                                z: -90.0,
-                            },
-                            smash::app::MotionNodeRotateCompose {
-                                _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
-                            },
-                            ModelModule::rotation_order(module_accessor),
-                        );
+                        if boss_helpers::is_classic_staffroll_stage(stage_id) {
+                            crate::amiibo_preview::maintain_classic_staffroll_look(
+                                module_accessor,
+                                "crazy_hand",
+                            );
+                        } else {
+                            MotionModule::change_motion(
+                                module_accessor,
+                                Hash40::new("none"),
+                                0.0,
+                                1.0,
+                                false,
+                                0.0,
+                                false,
+                                false,
+                            );
+                            ModelModule::set_joint_rotate(
+                                module_accessor,
+                                Hash40::new("root"),
+                                &mut Vector3f {
+                                    x: -270.0,
+                                    y: 180.0,
+                                    z: -90.0,
+                                },
+                                smash::app::MotionNodeRotateCompose {
+                                    _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
+                                },
+                                ModelModule::rotation_order(module_accessor),
+                            );
+                        }
                     }
                 } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {
                     restore_crazy_hand_after_item_wipe(module_accessor, fighter_manager);

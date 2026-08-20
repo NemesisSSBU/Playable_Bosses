@@ -219,6 +219,7 @@ unsafe fn log_wol_preview_attachment_once(
 
 #[inline(always)]
 unsafe fn ensure_preview_masterhand(module_accessor: *mut BattleObjectModuleAccessor) {
+    let staffroll = boss_helpers::is_classic_staffroll_stage(smash::app::stage::get_stage_id());
     if ModelModule::scale(module_accessor) != HIDDEN_HOST_SCALE
         || !ItemModule::is_have_item(module_accessor, 0)
     {
@@ -235,19 +236,30 @@ unsafe fn ensure_preview_masterhand(module_accessor: *mut BattleObjectModuleAcce
             *ITEM_KIND_MASTERHAND,
         );
         ModelModule::set_scale(module_accessor, HIDDEN_HOST_SCALE);
-        ModelModule::set_scale(boss_boma, PREVIEW_MASTERHAND_SCALE);
-        MotionModule::change_motion(
-            boss_boma,
-            Hash40::new("wait"),
-            0.0,
-            1.0,
-            false,
-            0.0,
-            false,
-            false,
-        );
+        if staffroll {
+            crate::amiibo_preview::apply_classic_staffroll_item(boss_boma, "wol_master_hand");
+        } else {
+            ModelModule::set_scale(boss_boma, PREVIEW_MASTERHAND_SCALE);
+            MotionModule::change_motion(
+                boss_boma,
+                Hash40::new("wait"),
+                0.0,
+                1.0,
+                false,
+                0.0,
+                false,
+                false,
+            );
+        }
     }
     if ModelModule::scale(module_accessor) == HIDDEN_HOST_SCALE {
+        if staffroll {
+            crate::amiibo_preview::maintain_classic_staffroll_look(
+                module_accessor,
+                "wol_master_hand",
+            );
+            return;
+        }
         MotionModule::change_motion(
             module_accessor,
             Hash40::new("none"),
@@ -856,15 +868,14 @@ unsafe fn apply_wol_mh_dead_range(
         WOL_MH_BOUND_INSET_TOP,
         WOL_MH_BOUND_INSET_BOTTOM,
     );
-    let (clamped_x, clamped_y) =
-        boss_helpers::clamp_point_to_box(x, y, left, right, bottom, top);
+    let (clamped_x, clamped_y) = boss_helpers::clamp_point_to_box(x, y, left, right, bottom, top);
     let host_pos = Vector3f {
         x: clamped_x,
         y: clamped_y + WOL_MH_HOST_CAMERA_OFFSET_Y,
         z,
     };
-    let player_owned = CONTROLLABLE
-        && !boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID);
+    let player_owned =
+        CONTROLLABLE && !boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID);
     if player_owned && (clamped_x != x || clamped_y != y) {
         PostureModule::set_pos(
             boss_boma,

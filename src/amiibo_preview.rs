@@ -948,6 +948,94 @@ pub fn profile_for_ui_chara_id(ui_chara_id: &str) -> Option<&'static BossAmiiboP
         .find(|profile| profile.ui_chara_id == ui_chara_id)
 }
 
+pub fn profile_for_key(key: &str) -> Option<&'static BossAmiiboPreviewProfile> {
+    profiles().iter().find(|profile| profile.key == key)
+}
+
+/// Classic staff roll should match the Amiibo viewer: same item scale and the
+/// same `[0, 0, -90]` presentation rotation, without the WOL host-root recipe.
+#[inline(always)]
+pub unsafe fn apply_classic_staffroll_item(boss_boma: *mut BattleObjectModuleAccessor, key: &str) {
+    if boss_boma.is_null() {
+        return;
+    }
+    let Some(profile) = profile_for_key(key) else {
+        return;
+    };
+    if let Some(scale) = profile.preview_scale {
+        ModelModule::set_scale(boss_boma, scale);
+    }
+    let expected_motion = smash::hash40(profile.idle_motion);
+    if MotionModule::motion_kind(boss_boma) != expected_motion {
+        MotionModule::change_motion(
+            boss_boma,
+            Hash40::new(profile.idle_motion),
+            0.0,
+            1.0,
+            false,
+            0.0,
+            false,
+            false,
+        );
+    }
+    if let Some(rotation) = profile.presentation_rotation {
+        PostureModule::set_rot(
+            boss_boma,
+            &Vector3f {
+                x: rotation[0],
+                y: rotation[1],
+                z: rotation[2],
+            },
+            0,
+        );
+    }
+}
+
+#[inline(always)]
+pub unsafe fn apply_classic_staffroll_host(module_accessor: *mut BattleObjectModuleAccessor) {
+    if module_accessor.is_null() {
+        return;
+    }
+    if MotionModule::motion_kind(module_accessor) != smash::hash40("none") {
+        MotionModule::change_motion(
+            module_accessor,
+            Hash40::new("none"),
+            0.0,
+            1.0,
+            false,
+            0.0,
+            false,
+            false,
+        );
+    }
+    PostureModule::set_rot(
+        module_accessor,
+        &Vector3f {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        0,
+    );
+    set_root_joint_rotation(module_accessor, [0.0, 0.0, 0.0]);
+}
+
+#[inline(always)]
+pub unsafe fn maintain_classic_staffroll_look(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    key: &str,
+) {
+    apply_classic_staffroll_host(module_accessor);
+    if module_accessor.is_null() || !ItemModule::is_have_item(module_accessor, 0) {
+        return;
+    }
+    let item_id = ItemModule::get_have_item_id(module_accessor, 0) as u32;
+    if item_id == 0 || !sv_battle_object::is_active(item_id) {
+        return;
+    }
+    apply_classic_staffroll_item(sv_battle_object::module_accessor(item_id), key);
+}
+
 #[inline(always)]
 fn profile_for_ui_chara_hash(ui_chara_hash: u64) -> Option<&'static BossAmiiboPreviewProfile> {
     profiles()
@@ -4540,6 +4628,43 @@ mod tests {
                 .preview_scale
                 .map(|scale| scale > 0.0)
                 .unwrap_or(true));
+        }
+    }
+
+    #[test]
+    fn classic_staffroll_reuses_amiibo_item_scale_and_rotation() {
+        let expected_scales = [
+            ("master_hand", Some(0.45)),
+            ("crazy_hand", Some(0.45)),
+            ("wol_master_hand", Some(0.45)),
+            ("dracula", Some(0.45)),
+            ("ganon_boss", Some(0.365625)),
+            ("galeem", Some(0.28125)),
+            ("dharkon", Some(0.28125)),
+            ("marx", Some(0.28125)),
+            ("galleom", Some(0.225)),
+            ("rathalos", Some(0.225)),
+            ("giga_bowser", None),
+        ];
+        for (key, scale) in expected_scales {
+            let profile = profile_for_key(key).expect(key);
+            assert_eq!(profile.preview_scale, scale, "{}", key);
+            assert_eq!(
+                profile.presentation_rotation,
+                Some([0.0, 0.0, -90.0]),
+                "{}",
+                key
+            );
+            assert_eq!(
+                profile.host_orientation_recipe,
+                if key == "giga_bowser" {
+                    AmiiboHostOrientationRecipe::NativeFighter
+                } else {
+                    AmiiboHostOrientationRecipe::NativeHost
+                },
+                "{}",
+                key
+            );
         }
     }
 

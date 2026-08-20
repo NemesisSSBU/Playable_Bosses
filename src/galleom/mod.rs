@@ -261,42 +261,55 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             &raw mut BOSS_ID,
                             *ITEM_KIND_GALLEOM,
                         );
-                        ModelModule::set_scale(boss_boma, 0.04);
-                        MotionModule::change_motion(
-                            boss_boma,
-                            smash::phx::Hash40::new("wait"),
-                            0.0,
-                            1.0,
-                            false,
-                            0.0,
-                            false,
-                            false,
-                        );
+                        if boss_helpers::is_classic_staffroll_stage(stage_id) {
+                            crate::amiibo_preview::apply_classic_staffroll_item(
+                                boss_boma, "galleom",
+                            );
+                        } else {
+                            ModelModule::set_scale(boss_boma, 0.04);
+                            MotionModule::change_motion(
+                                boss_boma,
+                                smash::phx::Hash40::new("wait"),
+                                0.0,
+                                1.0,
+                                false,
+                                0.0,
+                                false,
+                                false,
+                            );
+                        }
                     }
                     if ModelModule::scale(module_accessor) == 0.0001 {
-                        MotionModule::change_motion(
-                            module_accessor,
-                            smash::phx::Hash40::new("none"),
-                            0.0,
-                            1.0,
-                            false,
-                            0.0,
-                            false,
-                            false,
-                        );
-                        ModelModule::set_joint_rotate(
-                            module_accessor,
-                            smash::phx::Hash40::new("root"),
-                            &mut Vector3f {
-                                x: -270.0,
-                                y: 180.0,
-                                z: -90.0,
-                            },
-                            smash::app::MotionNodeRotateCompose {
-                                _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
-                            },
-                            ModelModule::rotation_order(module_accessor),
-                        );
+                        if boss_helpers::is_classic_staffroll_stage(stage_id) {
+                            crate::amiibo_preview::maintain_classic_staffroll_look(
+                                module_accessor,
+                                "galleom",
+                            );
+                        } else {
+                            MotionModule::change_motion(
+                                module_accessor,
+                                smash::phx::Hash40::new("none"),
+                                0.0,
+                                1.0,
+                                false,
+                                0.0,
+                                false,
+                                false,
+                            );
+                            ModelModule::set_joint_rotate(
+                                module_accessor,
+                                smash::phx::Hash40::new("root"),
+                                &mut Vector3f {
+                                    x: -270.0,
+                                    y: 180.0,
+                                    z: -90.0,
+                                },
+                                smash::app::MotionNodeRotateCompose {
+                                    _address: *MOTION_NODE_ROTATE_COMPOSE_BEFORE as u8,
+                                },
+                                ModelModule::rotation_order(module_accessor),
+                            );
+                        }
                     }
                     log_wol_preview_attachment_once(module_accessor, stage_id, ENTRY_ID);
                 } else if !boss_helpers::is_boss_passthrough_stage(stage_id) {

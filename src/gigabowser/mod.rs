@@ -69,13 +69,14 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             crate::result_camera::observe_native_fighter_result_reference(module_accessor);
         }
 
-        // Amiibo Figure Player viewer only. Giga Bowser is the one boss the
-        // native viewer builds itself, so there is no presentation item to
-        // scale — the fighter is the preview. He overfills the frame at native
-        // size, so halve him here. Nothing else on this stage is touched, and
-        // battle stages keep his real scale.
+        // Amiibo Figure Player and Classic staff roll share the same preview
+        // scale. Giga Bowser is a native fighter, so there is no presentation
+        // item — half scale is the viewer/credits size. Battle stages keep
+        // his real scale.
+        let stage_id = smash::app::stage::get_stage_id();
         if fighter_kind == *FIGHTER_KIND_KOOPAG
-            && smash::app::stage::get_stage_id() == boss_helpers::STAGE_ID_AMIIBO_PREVIEW
+            && (stage_id == boss_helpers::STAGE_ID_AMIIBO_PREVIEW
+                || boss_helpers::is_classic_staffroll_stage(stage_id))
         {
             if ModelModule::scale(module_accessor) != AMIIBO_PREVIEW_SCALE {
                 ModelModule::set_scale(module_accessor, AMIIBO_PREVIEW_SCALE);
