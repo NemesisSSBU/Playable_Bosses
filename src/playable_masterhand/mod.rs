@@ -40,6 +40,13 @@ const HIDDEN_HOST_SCALE: f32 = 0.0001;
 const PREVIEW_MASTERHAND_SCALE: f32 = 0.08;
 const DEFAULT_CONTROL_SPEED_MUL: f32 = 2.0;
 const DEFAULT_CONTROL_SPEED_MUL_2: f32 = 0.05;
+// 3.0.3/3.1.1 kept the hand 100 units inside a symmetric |dead_range.x| box,
+// so it could not sit off-camera against Galeem/Dharkon. These insets are
+// measured from the real blast rectangle (left, right, top, bottom).
+const WOL_MH_BOUND_INSET_X: f32 = 24.0;
+const WOL_MH_BOUND_INSET_TOP: f32 = 24.0;
+const WOL_MH_BOUND_INSET_BOTTOM: f32 = 48.0;
+const WOL_MH_HOST_CAMERA_OFFSET_Y: f32 = 20.0;
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -826,6 +833,51 @@ unsafe fn skip_cpu_world_masterhand_item_throws(
     );
 }
 
+#[inline(always)]
+unsafe fn apply_wol_mh_dead_range(
+    lua_state: u64,
+    module_accessor: *mut BattleObjectModuleAccessor,
+    boss_boma: *mut BattleObjectModuleAccessor,
+    fighter_manager: *mut smash::app::FighterManager,
+) {
+    if module_accessor.is_null() || boss_boma.is_null() {
+        return;
+    }
+    let x = PostureModule::pos_x(boss_boma);
+    let y = PostureModule::pos_y(boss_boma);
+    let z = PostureModule::pos_z(boss_boma);
+    let range = dead_range(lua_state);
+    let (left, right, bottom, top) = boss_helpers::flying_boss_travel_box(
+        range.x,
+        range.y,
+        range.z,
+        range.w,
+        WOL_MH_BOUND_INSET_X,
+        WOL_MH_BOUND_INSET_TOP,
+        WOL_MH_BOUND_INSET_BOTTOM,
+    );
+    let (clamped_x, clamped_y) =
+        boss_helpers::clamp_point_to_box(x, y, left, right, bottom, top);
+    let host_pos = Vector3f {
+        x: clamped_x,
+        y: clamped_y + WOL_MH_HOST_CAMERA_OFFSET_Y,
+        z,
+    };
+    let player_owned = CONTROLLABLE
+        && !boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID);
+    if player_owned && (clamped_x != x || clamped_y != y) {
+        PostureModule::set_pos(
+            boss_boma,
+            &Vector3f {
+                x: clamped_x,
+                y: clamped_y,
+                z,
+            },
+        );
+    }
+    PostureModule::set_pos(module_accessor, &host_pos);
+}
+
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
@@ -1217,353 +1269,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
 
                     if ModelModule::scale(module_accessor) == 0.0001 {
-                        let x = PostureModule::pos_x(boss_boma);
-                        let y = PostureModule::pos_y(boss_boma);
-                        let z = PostureModule::pos_z(boss_boma);
-                        let boss_pos = Vector3f {
-                            x: x,
-                            y: y + 20.0,
-                            z: z,
-                        };
-                        if !CONTROLLABLE
-                            || boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID)
-                                == true
-                        {
-                            if PostureModule::pos_y(boss_boma)
-                                <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0
-                            {
-                                let boss_y_pos_2 = Vector3f {
-                                    x: x,
-                                    y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0,
-                                    z: z,
-                                };
-                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                if PostureModule::pos_x(boss_boma)
-                                    >= dead_range(fighter.lua_state_agent).x.abs() - 100.0
-                                {
-                                    let boss_x_pos_1 = Vector3f {
-                                        x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                        y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0)
-                                            + 160.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                }
-                                if PostureModule::pos_x(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0
-                                {
-                                    let boss_x_pos_2 = Vector3f {
-                                        x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0)
-                                            + 100.0,
-                                        y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0)
-                                            + 160.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                }
-                            } else if PostureModule::pos_x(boss_boma)
-                                >= dead_range(fighter.lua_state_agent).x.abs() - 100.0
-                            {
-                                let boss_x_pos_1 = Vector3f {
-                                    x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                    y: y,
-                                    z: z,
-                                };
-                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                if PostureModule::pos_x(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0
-                                {
-                                    let boss_x_pos_2 = Vector3f {
-                                        x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0)
-                                            + 100.0,
-                                        y: y,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                }
-                                if PostureModule::pos_y(boss_boma)
-                                    >= dead_range(fighter.lua_state_agent).y.abs() - 100.0
-                                {
-                                    let boss_y_pos_1 = Vector3f {
-                                        x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                        y: dead_range(fighter.lua_state_agent).y.abs() - 100.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                }
-                                if PostureModule::pos_y(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0
-                                {
-                                    let boss_y_pos_2 = Vector3f {
-                                        x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                        y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0)
-                                            + 160.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                }
-                            } else if PostureModule::pos_x(boss_boma)
-                                <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0
-                            {
-                                let boss_x_pos_2 = Vector3f {
-                                    x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0,
-                                    y: y,
-                                    z: z,
-                                };
-                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                if PostureModule::pos_y(boss_boma)
-                                    >= dead_range(fighter.lua_state_agent).y.abs() - 100.0
-                                {
-                                    let boss_y_pos_1 = Vector3f {
-                                        x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0)
-                                            + 100.0,
-                                        y: dead_range(fighter.lua_state_agent).y.abs() - 100.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                }
-                                if PostureModule::pos_y(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0
-                                {
-                                    let boss_y_pos_2 = Vector3f {
-                                        x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0)
-                                            + 100.0,
-                                        y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0)
-                                            + 160.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                }
-                                if PostureModule::pos_x(boss_boma)
-                                    >= dead_range(fighter.lua_state_agent).x.abs() - 100.0
-                                {
-                                    let boss_x_pos_1 = Vector3f {
-                                        x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                        y: y,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                }
-                            } else if PostureModule::pos_y(boss_boma)
-                                >= dead_range(fighter.lua_state_agent).y.abs() - 100.0
-                            {
-                                let boss_y_pos_1 = Vector3f {
-                                    x: x,
-                                    y: dead_range(fighter.lua_state_agent).y.abs() - 100.0,
-                                    z: z,
-                                };
-                                PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                if PostureModule::pos_y(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0
-                                {
-                                    let boss_y_pos_2 = Vector3f {
-                                        x: x,
-                                        y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0)
-                                            + 160.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                }
-                                if PostureModule::pos_x(boss_boma)
-                                    >= dead_range(fighter.lua_state_agent).x.abs() - 100.0
-                                {
-                                    let boss_x_pos_1 = Vector3f {
-                                        x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                        y: dead_range(fighter.lua_state_agent).y.abs() - 100.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                }
-                                if PostureModule::pos_x(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0
-                                {
-                                    let boss_x_pos_2 = Vector3f {
-                                        x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0)
-                                            + 100.0,
-                                        y: dead_range(fighter.lua_state_agent).y.abs() - 100.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                }
-                            } else {
-                                PostureModule::set_pos(module_accessor, &boss_pos);
-                            }
-                        } else {
-                            if PostureModule::pos_y(boss_boma)
-                                <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0
-                            {
-                                let boss_y_pos_2 = Vector3f {
-                                    x: x,
-                                    y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0,
-                                    z: z,
-                                };
-                                PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                if PostureModule::pos_x(boss_boma)
-                                    >= dead_range(fighter.lua_state_agent).x.abs() - 100.0
-                                {
-                                    let boss_x_pos_1 = Vector3f {
-                                        x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                        y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0)
-                                            + 160.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                    PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                }
-                                if PostureModule::pos_x(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0
-                                {
-                                    let boss_x_pos_2 = Vector3f {
-                                        x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0)
-                                            + 100.0,
-                                        y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0)
-                                            + 160.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                    PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                }
-                            } else if PostureModule::pos_x(boss_boma)
-                                >= dead_range(fighter.lua_state_agent).x.abs() - 100.0
-                            {
-                                let boss_x_pos_1 = Vector3f {
-                                    x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                    y: y,
-                                    z: z,
-                                };
-                                PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                if PostureModule::pos_x(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0
-                                {
-                                    let boss_x_pos_2 = Vector3f {
-                                        x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0)
-                                            + 100.0,
-                                        y: y,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                    PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                }
-                                if PostureModule::pos_y(boss_boma)
-                                    >= dead_range(fighter.lua_state_agent).y.abs() - 100.0
-                                {
-                                    let boss_y_pos_1 = Vector3f {
-                                        x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                        y: dead_range(fighter.lua_state_agent).y.abs() - 100.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                    PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                }
-                                if PostureModule::pos_y(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0
-                                {
-                                    let boss_y_pos_2 = Vector3f {
-                                        x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                        y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0)
-                                            + 160.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                    PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                }
-                            } else if PostureModule::pos_x(boss_boma)
-                                <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0
-                            {
-                                let boss_x_pos_2 = Vector3f {
-                                    x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0,
-                                    y: y,
-                                    z: z,
-                                };
-                                PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                if PostureModule::pos_y(boss_boma)
-                                    >= dead_range(fighter.lua_state_agent).y.abs() - 100.0
-                                {
-                                    let boss_y_pos_1 = Vector3f {
-                                        x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0)
-                                            + 100.0,
-                                        y: dead_range(fighter.lua_state_agent).y.abs() - 100.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                    PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                }
-                                if PostureModule::pos_y(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0
-                                {
-                                    let boss_y_pos_2 = Vector3f {
-                                        x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0)
-                                            + 100.0,
-                                        y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0)
-                                            + 160.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                    PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                }
-                                if PostureModule::pos_x(boss_boma)
-                                    >= dead_range(fighter.lua_state_agent).x.abs() - 100.0
-                                {
-                                    let boss_x_pos_1 = Vector3f {
-                                        x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                        y: y,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                    PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                }
-                            } else if PostureModule::pos_y(boss_boma)
-                                >= dead_range(fighter.lua_state_agent).y.abs() - 100.0
-                            {
-                                let boss_y_pos_1 = Vector3f {
-                                    x: x,
-                                    y: dead_range(fighter.lua_state_agent).y.abs() - 100.0,
-                                    z: z,
-                                };
-                                PostureModule::set_pos(module_accessor, &boss_y_pos_1);
-                                PostureModule::set_pos(boss_boma, &boss_y_pos_1);
-                                if PostureModule::pos_y(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).y.abs() * -1.0) + 160.0
-                                {
-                                    let boss_y_pos_2 = Vector3f {
-                                        x: x,
-                                        y: (dead_range(fighter.lua_state_agent).y.abs() * -1.0)
-                                            + 160.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_y_pos_2);
-                                    PostureModule::set_pos(boss_boma, &boss_y_pos_2);
-                                }
-                                if PostureModule::pos_x(boss_boma)
-                                    >= dead_range(fighter.lua_state_agent).x.abs() - 100.0
-                                {
-                                    let boss_x_pos_1 = Vector3f {
-                                        x: dead_range(fighter.lua_state_agent).x.abs() - 100.0,
-                                        y: dead_range(fighter.lua_state_agent).y.abs() - 100.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_1);
-                                    PostureModule::set_pos(boss_boma, &boss_x_pos_1);
-                                }
-                                if PostureModule::pos_x(boss_boma)
-                                    <= (dead_range(fighter.lua_state_agent).x.abs() * -1.0) + 100.0
-                                {
-                                    let boss_x_pos_2 = Vector3f {
-                                        x: (dead_range(fighter.lua_state_agent).x.abs() * -1.0)
-                                            + 100.0,
-                                        y: dead_range(fighter.lua_state_agent).y.abs() - 100.0,
-                                        z: z,
-                                    };
-                                    PostureModule::set_pos(module_accessor, &boss_x_pos_2);
-                                    PostureModule::set_pos(boss_boma, &boss_x_pos_2);
-                                }
-                            } else {
-                                PostureModule::set_pos(module_accessor, &boss_pos);
-                            }
-                        }
+                        apply_wol_mh_dead_range(
+                            fighter.lua_state_agent,
+                            module_accessor,
+                            boss_boma,
+                            fighter_manager,
+                        );
 
                         // SETS POWER
 

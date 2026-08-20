@@ -1695,6 +1695,57 @@ pub unsafe fn request_hidden_host_stock_drain(
     }
 }
 
+/// Convert `sv_camera_manager::dead_range` into a travel box.
+/// Native order is left, right, top, bottom. The old WOL Master Hand clamp
+/// treated `.x.abs()` / `.y.abs()` as symmetric extents and then inset 100/160,
+/// which kept the hand well inside the camera. Callers pass a smaller inset so
+/// the hand can sit a few spaces off-screen.
+#[inline(always)]
+pub fn flying_boss_travel_box(
+    range_x: f32,
+    range_y: f32,
+    range_z: f32,
+    range_w: f32,
+    inset_x: f32,
+    inset_top: f32,
+    inset_bottom: f32,
+) -> (f32, f32, f32, f32) {
+    let (raw_left, raw_right, raw_top, raw_bottom) = if range_x < range_y && range_z > range_w {
+        (range_x, range_y, range_z, range_w)
+    } else {
+        let half_x = range_x.abs();
+        let half_y = range_y.abs();
+        (-half_x, half_x, half_y, -half_y)
+    };
+    let mut left = raw_left + inset_x;
+    let mut right = raw_right - inset_x;
+    let mut top = raw_top - inset_top;
+    let mut bottom = raw_bottom + inset_bottom;
+    if left > right {
+        let mid = (left + right) * 0.5;
+        left = mid;
+        right = mid;
+    }
+    if bottom > top {
+        let mid = (bottom + top) * 0.5;
+        bottom = mid;
+        top = mid;
+    }
+    (left, right, bottom, top)
+}
+
+#[inline(always)]
+pub fn clamp_point_to_box(
+    x: f32,
+    y: f32,
+    left: f32,
+    right: f32,
+    bottom: f32,
+    top: f32,
+) -> (f32, f32) {
+    (x.max(left).min(right), y.max(bottom).min(top))
+}
+
 #[inline(always)]
 pub unsafe fn clamp_flying_boss_floor(
     module_accessor: *mut BattleObjectModuleAccessor,
@@ -1762,7 +1813,7 @@ pub fn is_boss_nonbattle_stage(stage_id: i32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        boss_mario_host_audio_decision, generic_item_status_name,
+        boss_mario_host_audio_decision, flying_boss_travel_box, generic_item_status_name,
         hidden_kiila_darz_cpu_is_quarantined, is_kiila_darz_first_attack_status,
         is_mario_death_audio_status, item_trait_has_boss, scale_is_hidden_host,
         should_discard_tracked_boss, should_force_generic_wait,
@@ -1862,6 +1913,20 @@ mod tests {
         assert!(!is_mario_death_audio_status(*FIGHTER_STATUS_KIND_WAIT));
         assert!(!is_mario_death_audio_status(*FIGHTER_STATUS_KIND_ENTRY));
         assert!(!is_mario_death_audio_status(*FIGHTER_STATUS_KIND_REBIRTH));
+    }
+
+    #[test]
+    fn wol_mh_travel_box_opens_past_the_old_symmetric_inset() {
+        // Final Destination-like blast: left, right, top, bottom.
+        let (left, right, bottom, top) =
+            flying_boss_travel_box(-240.0, 240.0, 180.0, -140.0, 24.0, 24.0, 48.0);
+        // Old 3.0.3 formula used |x|-100 / |x|+160, i.e. x in [-140, 140].
+        assert!(left < -140.0);
+        assert!(right > 140.0);
+        assert_eq!(left, -216.0);
+        assert_eq!(right, 216.0);
+        assert_eq!(top, 156.0);
+        assert_eq!(bottom, -92.0);
     }
 
     fn hidden_cpu_quarantine_requires_active_none() {
