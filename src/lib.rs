@@ -3609,7 +3609,6 @@ pub fn main() {
     let cfg = &*CONFIG;
     let opts = &cfg.options;
     amiibo_preview::install_nro_trace();
-    let giga_bowser_normal = !opts.giga_bowser_normal.unwrap_or(false);
     let condensed_css = opts.condense_bosses_into_single_slot();
     let custom_css = opts.custom_css.unwrap_or(false);
     let detect_character_name = opts.detect_character_name.unwrap_or(false);
@@ -3694,9 +3693,11 @@ pub fn main() {
     selection::install();
 
     mastercrazy::install();
-    if giga_bowser_normal || amiibo_has("giga_bowser") {
-        gigabowser::install();
-    }
+    // Always install the koopag agent. Amiibo preview scale and result-camera
+    // observation live here. Boss-battle rules (no knockback, HP KO,
+    // BOSS_RESPAWN) are gated per-frame by GIGA_BOWSER_NORMAL so an amiibo
+    // mapping or a hacked-in roster slot cannot force boss mode.
+    gigabowser::install();
 
     if !amiibo_mappings.is_empty() {
         callback_amiibo::install("ui/param/database/ui_amiibo_db.prc", MAX_FILE_SIZE);

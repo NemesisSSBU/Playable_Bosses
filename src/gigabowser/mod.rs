@@ -12,6 +12,19 @@ use smashline::{Agent, Main};
 /// which overfills the preview frame. Half scale is the preview-only size.
 const AMIIBO_PREVIEW_SCALE: f32 = 0.5;
 
+/// `GIGA_BOWSER_NORMAL = true` means play as a regular hacked-in `koopag`
+/// fighter: knockback, stocks, and no HP-threshold KO. Default false keeps
+/// the Classic/boss-battle rules. Amiibo mapping must not override this.
+#[inline(always)]
+pub fn giga_bowser_uses_boss_battle_rules(giga_bowser_normal: bool) -> bool {
+    !giga_bowser_normal
+}
+
+#[inline(always)]
+fn uses_boss_battle_rules() -> bool {
+    giga_bowser_uses_boss_battle_rules(CONFIG.options.giga_bowser_normal.unwrap_or(false))
+}
+
 static mut DEAD: bool = false;
 static mut STOP: bool = false;
 static mut ENTRY_ID: usize = 0;
@@ -83,6 +96,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
             WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
         if fighter_kind == *FIGHTER_KIND_KOOPAG {
             if !boss_helpers::is_boss_nonbattle_stage(smash::app::stage::get_stage_id()) {
+                if !uses_boss_battle_rules() {
+                    return;
+                }
                 let fighter_manager = boss_helpers::fighter_manager();
                 if fighter_manager.is_null() {
                     return;
@@ -262,4 +278,21 @@ pub fn install() {
     Agent::new("koopag")
         .on_line(Main, once_per_fighter_frame)
         .install();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::giga_bowser_uses_boss_battle_rules;
+
+    #[test]
+    fn giga_bowser_normal_disables_boss_battle_rules() {
+        assert!(
+            giga_bowser_uses_boss_battle_rules(false),
+            "default false is Classic/boss-battle mode"
+        );
+        assert!(
+            !giga_bowser_uses_boss_battle_rules(true),
+            "true is vanilla hacked-in koopag: knockback, stocks, ignore BOSS_RESPAWN"
+        );
+    }
 }
