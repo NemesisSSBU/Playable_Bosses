@@ -1561,6 +1561,42 @@ pub unsafe fn clear_boss_mario_host_latch(entry: usize) {
     }
 }
 
+/// Death can reset the hidden-host scale before Mario's KO scream finishes, so
+/// a latch keeps muting through DEAD/STANDBY. Visible living statuses must not
+/// inherit that mute — training Mario after WOL Master Hand is the hardware
+/// case, where the previous match's latch otherwise runs `stop_all_sound`
+/// every frame.
+#[inline(always)]
+pub fn is_mario_death_audio_status(status: i32) -> bool {
+    status == *FIGHTER_STATUS_KIND_DEAD || status == *FIGHTER_STATUS_KIND_STANDBY
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BossMarioHostAudioDecision {
+    /// Hidden host, or latched through the death window after scale resets.
+    Suppress,
+    /// Previous host latch is still set, but this Mario is visibly alive.
+    ReleaseLatch,
+    None,
+}
+
+#[inline(always)]
+pub fn boss_mario_host_audio_decision(
+    hidden_now: bool,
+    latched: bool,
+    death_audio_status: bool,
+) -> BossMarioHostAudioDecision {
+    if hidden_now {
+        BossMarioHostAudioDecision::Suppress
+    } else if latched && death_audio_status {
+        BossMarioHostAudioDecision::Suppress
+    } else if latched {
+        BossMarioHostAudioDecision::ReleaseLatch
+    } else {
+        BossMarioHostAudioDecision::None
+    }
+}
+
 #[inline(always)]
 pub unsafe fn stop_hidden_host_knockout_sfx(module_accessor: *mut BattleObjectModuleAccessor) {
     if !is_hidden_host(module_accessor) {
@@ -1620,6 +1656,10 @@ pub unsafe fn restore_plain_mario_visuals(module_accessor: *mut BattleObjectModu
         },
         ModelModule::rotation_order(module_accessor),
     );
+    // Same-frame restore: mario_boss_dispatch_frame mutes both before and after
+    // this call. Drop the host latch once Mario is visibly the fighter again so
+    // the second `stop_all_sound` does not mute the rest of the match.
+    clear_boss_mario_host_latch(entry_id(module_accessor).min(7));
 }
 
 #[inline(always)]
@@ -1722,13 +1762,14 @@ pub fn is_boss_nonbattle_stage(stage_id: i32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        generic_item_status_name, hidden_kiila_darz_cpu_is_quarantined,
-        is_kiila_darz_first_attack_status, item_trait_has_boss, scale_is_hidden_host,
+        boss_mario_host_audio_decision, generic_item_status_name,
+        hidden_kiila_darz_cpu_is_quarantined, is_kiila_darz_first_attack_status,
+        is_mario_death_audio_status, item_trait_has_boss, scale_is_hidden_host,
         should_discard_tracked_boss, should_force_generic_wait,
         should_intercept_kiila_darz_spawn_status, should_restore_staged_entry,
         staged_boss_ready_for_activation, staged_intro_reached_end, trait_flag_without_boss,
-        HIDDEN_HOST_ENTRY_PREP_SCALE, HIDDEN_HOST_ENTRY_STAGE2_SCALE, HIDDEN_HOST_SCALE,
-        MARIO_STAMINA_KNOCKOUT_VOICE,
+        BossMarioHostAudioDecision, HIDDEN_HOST_ENTRY_PREP_SCALE, HIDDEN_HOST_ENTRY_STAGE2_SCALE,
+        HIDDEN_HOST_SCALE, MARIO_STAMINA_KNOCKOUT_VOICE,
     };
     use smash::lib::lua_const::*;
 
@@ -1780,7 +1821,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn uninitialised_model_scale_is_not_a_hidden_host() {
         // The regression: 0.0 (model not yet initialised) used to pass the
         // unbounded `<=` test and latched a plain Mario as a boss audio host.
@@ -1796,6 +1836,32 @@ mod tests {
         assert!(scale_is_hidden_host(HIDDEN_HOST_SCALE));
         assert!(scale_is_hidden_host(HIDDEN_HOST_ENTRY_PREP_SCALE));
         assert!(scale_is_hidden_host(HIDDEN_HOST_ENTRY_STAGE2_SCALE));
+    }
+
+    #[test]
+    fn boss_mario_audio_latch_does_not_follow_a_visible_living_mario() {
+        assert_eq!(
+            boss_mario_host_audio_decision(true, false, false),
+            BossMarioHostAudioDecision::Suppress
+        );
+        assert_eq!(
+            boss_mario_host_audio_decision(false, true, true),
+            BossMarioHostAudioDecision::Suppress
+        );
+        // WOL Master Hand → training Mario: leftover latch, full-scale WAIT.
+        assert_eq!(
+            boss_mario_host_audio_decision(false, true, false),
+            BossMarioHostAudioDecision::ReleaseLatch
+        );
+        assert_eq!(
+            boss_mario_host_audio_decision(false, false, false),
+            BossMarioHostAudioDecision::None
+        );
+        assert!(is_mario_death_audio_status(*FIGHTER_STATUS_KIND_DEAD));
+        assert!(is_mario_death_audio_status(*FIGHTER_STATUS_KIND_STANDBY));
+        assert!(!is_mario_death_audio_status(*FIGHTER_STATUS_KIND_WAIT));
+        assert!(!is_mario_death_audio_status(*FIGHTER_STATUS_KIND_ENTRY));
+        assert!(!is_mario_death_audio_status(*FIGHTER_STATUS_KIND_REBIRTH));
     }
 
     fn hidden_cpu_quarantine_requires_active_none() {

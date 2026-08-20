@@ -347,29 +347,48 @@ unsafe fn suppress_hidden_host_result_audio(
 /// completely silent, just Mario, as both player and CPU".
 ///
 /// Audio suppression therefore requires physical evidence that this fighter is
-/// actually acting as a boss host right now: the per-entry latch (set the first
-/// frame a hidden-host scale is observed, long before any death voice) or a
-/// live hidden-host scale. A CSS/persisted selection alone is never enough.
+/// actually acting as a boss host right now: a live hidden-host scale, or the
+/// per-entry latch while that host is still in the death window (scale can
+/// reset before the KO scream finishes). A CSS/persisted selection is never
+/// enough, and a leftover latch on a visible living Mario (training after WOL
+/// Master Hand, typically with no result scene to reset bookkeeping) is
+/// released instead of muting the next match.
 unsafe fn is_boss_mario_host_for_audio(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
 ) -> bool {
     if module_accessor.is_null() {
         return false;
     }
-    if boss_helpers::is_marked_boss_mario_host(module_accessor) {
-        return true;
-    }
-    // Latch on the first hidden-host frame, exactly as the previous predicate
-    // did, so the death voice stays muted even after death resets the scale.
     let hidden = boss_helpers::is_hidden_host(module_accessor)
         || boss_helpers::is_hidden_host_entry_prep(module_accessor)
         || boss_helpers::is_hidden_host_entry_stage_two(module_accessor)
         || boss_helpers::is_hidden_host_baseline(module_accessor);
-    if hidden {
-        boss_helpers::mark_boss_mario_host(module_accessor);
-        return true;
+    let latched = boss_helpers::is_marked_boss_mario_host(module_accessor);
+    let death_audio_status = boss_helpers::is_mario_death_audio_status(StatusModule::status_kind(
+        module_accessor,
+    ));
+    match boss_helpers::boss_mario_host_audio_decision(hidden, latched, death_audio_status) {
+        boss_helpers::BossMarioHostAudioDecision::Suppress => {
+            if hidden {
+                boss_helpers::mark_boss_mario_host(module_accessor);
+            }
+            true
+        }
+        boss_helpers::BossMarioHostAudioDecision::ReleaseLatch => {
+            let entry = boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1);
+            boss_helpers::clear_boss_mario_host_latch(entry);
+            if crate::debug::enabled() {
+                crate::boss_log!(
+                    "[PB][MarioAudio] drop_host_latch entry={} status={} scale={:.4}",
+                    entry,
+                    StatusModule::status_kind(module_accessor),
+                    ModelModule::scale(module_accessor)
+                );
+            }
+            false
+        }
+        boss_helpers::BossMarioHostAudioDecision::None => false,
     }
-    false
 }
 
 unsafe fn suppress_boss_mario_host_death_voice(
