@@ -160,6 +160,57 @@ impl PendingOpaqueSelection {
 
 static mut PENDING_OPAQUE_SELECTION: PendingOpaqueSelection = PendingOpaqueSelection::EMPTY;
 
+const CONDENSED_CARRIER_CONFIRMATION_OBSERVATIONS: u8 = 2;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct CondensedCarrierEvidence {
+    master_hand_observations: u8,
+    last_sequence: u32,
+}
+
+impl CondensedCarrierEvidence {
+    const EMPTY: Self = Self {
+        master_hand_observations: 0,
+        last_sequence: 0,
+    };
+
+    fn observe(self, condensed_enabled: bool, pending: PendingOpaqueSelection) -> (Self, bool) {
+        if !condensed_enabled || pending.ambiguous {
+            return (Self::EMPTY, false);
+        }
+
+        if named_observation_belongs_to_this_transaction(&pending) {
+            if pending.observed_boss_hash != UI_CHARA_MASTERHAND_HASH {
+                return (Self::EMPTY, false);
+            }
+            if pending.sequence == self.last_sequence {
+                return (
+                    self,
+                    self.master_hand_observations >= CONDENSED_CARRIER_CONFIRMATION_OBSERVATIONS,
+                );
+            }
+
+            let next = Self {
+                master_hand_observations: self.master_hand_observations.saturating_add(1),
+                last_sequence: pending.sequence,
+            };
+            return (
+                next,
+                next.master_hand_observations >= CONDENSED_CARRIER_CONFIRMATION_OBSERVATIONS,
+            );
+        }
+
+        if pending.saw_mario {
+            return (Self::EMPTY, false);
+        }
+
+        (self, false)
+    }
+}
+
+static mut CONDENSED_CARRIER_EVIDENCE_BY_ENTRY: [CondensedCarrierEvidence; MAX_FIGHTERS] =
+    [CondensedCarrierEvidence::EMPTY; MAX_FIGHTERS];
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum OpaqueSelectionCommit {
     Cached {
@@ -538,17 +589,8 @@ fn named_observation_belongs_to_this_transaction(pending: &PendingOpaqueSelectio
         && pending.observed_at_sequence == pending.sequence
 }
 
-/// Second, independent selection signal required before Confirmed* / disk /
-/// CPU authority. Hardware 2026-08-17: `observed_at_sequence == sequence`
-/// was true for an automatic Rathalos confirm on Spirit CPU Mario
-/// (`css_cache_corroborated=false`). Do not gate on css-cache corroboration
-/// until an explicit CPU pick A/B exists. Fail closed until then.
-fn independent_selection_corroborated() -> bool {
-    false
-}
-
 fn pending_selection_commit(
-    condensed_enabled: bool,
+    _condensed_enabled: bool,
     pending: PendingOpaqueSelection,
 ) -> OpaqueSelectionCommit {
     if pending.ambiguous {
@@ -558,18 +600,6 @@ fn pending_selection_commit(
     }
 
     if named_observation_belongs_to_this_transaction(&pending) {
-        if independent_selection_corroborated() {
-            let origin =
-                if condensed_enabled && pending.observed_boss_hash == UI_CHARA_MASTERHAND_HASH {
-                    OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
-                } else {
-                    OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-                };
-            return OpaqueSelectionCommit::Cached {
-                ui_hash: pending.observed_boss_hash,
-                origin,
-            };
-        }
         return OpaqueSelectionCommit::Cached {
             ui_hash: pending.observed_boss_hash,
             origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
@@ -591,6 +621,22 @@ fn pending_selection_commit(
 
     OpaqueSelectionCommit::Clear {
         reason: "no_named_ui_identity",
+    }
+}
+
+fn promote_condensed_carrier_commit(
+    commit: OpaqueSelectionCommit,
+    carrier_confirmed: bool,
+) -> OpaqueSelectionCommit {
+    match commit {
+        OpaqueSelectionCommit::Cached {
+            ui_hash: UI_CHARA_MASTERHAND_HASH,
+            origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
+        } if carrier_confirmed => OpaqueSelectionCommit::Cached {
+            ui_hash: UI_CHARA_MASTERHAND_HASH,
+            origin: OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier,
+        },
+        other => other,
     }
 }
 
@@ -725,6 +771,7 @@ unsafe fn observe_pending_opaque_selection_lookup(raw_ui_hash: u64) {
 unsafe fn log_condensed_carrier_transition(
     pending: PendingOpaqueSelection,
     commit: OpaqueSelectionCommit,
+    evidence: CondensedCarrierEvidence,
 ) {
     if !crate::debug::enabled() || !condensed_mode_enabled() || pending.entry_idx >= MAX_FIGHTERS {
         return;
@@ -738,7 +785,7 @@ unsafe fn log_condensed_carrier_transition(
             ui_hash,
             true,
             "none",
-            "selected_fighter_named_master_hand_lookup",
+            "repeated_selected_fighter_master_hand_lookup",
         ),
         OpaqueSelectionCommit::Cached {
             ui_hash,
@@ -748,6 +795,15 @@ unsafe fn log_condensed_carrier_transition(
             false,
             "not_master_hand_selection",
             "selected_fighter_named_ui_lookup",
+        ),
+        OpaqueSelectionCommit::Cached {
+            ui_hash,
+            origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
+        } if ui_hash == UI_CHARA_MASTERHAND_HASH => (
+            ui_hash,
+            false,
+            "awaiting_repeated_master_hand_lookup",
+            "selected_fighter_named_master_hand_lookup",
         ),
         OpaqueSelectionCommit::Cached {
             ui_hash,
@@ -782,6 +838,7 @@ unsafe fn log_condensed_carrier_transition(
     let signature = selected_ui_hash
         ^ pending.observed_boss_hash.rotate_left(11)
         ^ pending.fallback_hash.rotate_left(23)
+        ^ (evidence.master_hand_observations as u64).rotate_left(37)
         ^ ((pending.saw_mario as u64) << 61)
         ^ ((pending.ambiguous as u64) << 62)
         ^ ((carrier_confirmed as u64) << 63);
@@ -790,12 +847,13 @@ unsafe fn log_condensed_carrier_transition(
     }
     LAST_LOGGED_CONDENSED_CARRIER[pending.entry_idx] = signature;
     crate::boss_log!(
-        "[PB][CondensedCarrier] entry={} condensed_enabled=true master_hand_selection_detected={} detection_source={} selected_ui_hash=0x{:010x} carrier_confirmed={} failure_reason={}",
+        "[PB][CondensedCarrier] entry={} condensed_enabled=true master_hand_selection_detected={} detection_source={} selected_ui_hash=0x{:010x} carrier_confirmed={} confirmation_observations={} failure_reason={}",
         pending.entry_idx,
         master_hand_selection_detected,
         detection_source,
         selected_ui_hash,
         carrier_confirmed,
+        evidence.master_hand_observations,
         failure_reason
     );
 }
@@ -808,7 +866,16 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
 
     let pending = PENDING_OPAQUE_SELECTION;
     PENDING_OPAQUE_SELECTION = PendingOpaqueSelection::EMPTY;
-    let commit = pending_selection_commit(condensed_mode_enabled(), pending);
+    let condensed_enabled = condensed_mode_enabled();
+    let previous_evidence = CONDENSED_CARRIER_EVIDENCE_BY_ENTRY[entry_idx];
+    let (carrier_evidence, carrier_confirmed) =
+        previous_evidence.observe(condensed_enabled, pending);
+    CONDENSED_CARRIER_EVIDENCE_BY_ENTRY[entry_idx] = carrier_evidence;
+
+    let commit = promote_condensed_carrier_commit(
+        pending_selection_commit(condensed_enabled, pending),
+        carrier_confirmed,
+    );
     if selection_txn_budget_take() {
         let (proposed_origin, proposed_hash) = match commit {
             OpaqueSelectionCommit::Cached { ui_hash, origin } => (origin_label(origin), ui_hash),
@@ -818,7 +885,7 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
         // this exact transaction window?
         let css_cache_corroborated = LAST_CSS_CACHE_TXN_SEQUENCE == pending.sequence;
         crate::boss_log!(
-            "[PB][SelectionTxn] phase=commit entry={} outer_hook={} outer_player_id={} outer_info_ptr=0x{:x} transaction_sequence={} observed_at_sequence={} raw_lookup_hash=0x{:x} observed_boss_hash=0x{:010x} fallback_hash=0x{:010x} observation_count={} saw_mario={} ambiguous={} proposed_origin={} proposed_hash=0x{:010x} boss={} css_cache_corroborated={} independent_corroboration={} would_persist={}",
+            "[PB][SelectionTxn] phase=commit entry={} outer_hook={} outer_player_id={} outer_info_ptr=0x{:x} transaction_sequence={} observed_at_sequence={} raw_lookup_hash=0x{:x} observed_boss_hash=0x{:010x} fallback_hash=0x{:010x} observation_count={} saw_mario={} ambiguous={} proposed_origin={} proposed_hash=0x{:010x} boss={} css_cache_corroborated={} repeated_carrier_corroboration={} would_persist={}",
             pending.entry_idx,
             if pending.outer_hook == 1 { "3310760" } else { "3311190" },
             pending.outer_player_id,
@@ -835,7 +902,7 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
             proposed_hash,
             css_identity_label(proposed_hash),
             css_cache_corroborated,
-            independent_selection_corroborated(),
+            carrier_confirmed,
             matches!(commit, OpaqueSelectionCommit::Cached { ui_hash, origin }
                 if origin_is_authoritative_selection(origin)
                     && is_persistable_host_boss_hash(ui_hash))
@@ -857,7 +924,7 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
             let existing_rank = origin_authority_rank(existing_origin);
             let has_existing = is_boss_css_hash(existing_hash);
             if has_existing && origin_authority_rank(origin) < existing_rank {
-                log_condensed_carrier_transition(pending, commit);
+                log_condensed_carrier_transition(pending, commit, carrier_evidence);
                 return;
             }
             // Nested named lookups are Candidate until an independent
@@ -899,7 +966,7 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
             }
         }
     }
-    log_condensed_carrier_transition(pending, commit);
+    log_condensed_carrier_transition(pending, commit, carrier_evidence);
 }
 
 #[skyline::hook(offset = SELECTION_UPDATE_SELECTED_FIGHTER_13_0_1)]
@@ -2629,6 +2696,81 @@ mod condensed_tests {
         );
     }
 
+    fn named_master_hand_transaction(entry_idx: usize, sequence: u32) -> PendingOpaqueSelection {
+        let mut pending = PendingOpaqueSelection::begin(entry_idx, 0);
+        pending.sequence = sequence;
+        pending.observe_named_lookup(Some(UI_CHARA_MASTERHAND_HASH));
+        pending
+    }
+
+    #[test]
+    fn repeated_master_hand_transactions_confirm_the_condensed_carrier() {
+        let first = named_master_hand_transaction(0, 10);
+        let (evidence, confirmed) = CondensedCarrierEvidence::EMPTY.observe(true, first);
+        assert!(!confirmed, "one startup lookup must remain observational");
+        assert_eq!(evidence.master_hand_observations, 1);
+        assert_eq!(
+            promote_condensed_carrier_commit(pending_selection_commit(true, first), confirmed),
+            OpaqueSelectionCommit::Cached {
+                ui_hash: UI_CHARA_MASTERHAND_HASH,
+                origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
+            }
+        );
+
+        let repeated_same_transaction = evidence.observe(true, first);
+        assert_eq!(repeated_same_transaction, (evidence, false));
+
+        let second = named_master_hand_transaction(0, 11);
+        let (evidence, confirmed) = evidence.observe(true, second);
+        assert!(confirmed);
+        assert_eq!(evidence.master_hand_observations, 2);
+        assert_eq!(
+            promote_condensed_carrier_commit(pending_selection_commit(true, second), confirmed),
+            OpaqueSelectionCommit::Cached {
+                ui_hash: UI_CHARA_MASTERHAND_HASH,
+                origin: OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier,
+            }
+        );
+    }
+
+    #[test]
+    fn condensed_carrier_evidence_is_mode_and_identity_scoped() {
+        let first = named_master_hand_transaction(0, 20);
+        let (evidence, _) = CondensedCarrierEvidence::EMPTY.observe(true, first);
+
+        let mut mario = PendingOpaqueSelection::begin(0, 0);
+        mario.sequence = 21;
+        mario.observe_named_lookup(Some(UI_CHARA_MARIO_HASH));
+        assert_eq!(
+            evidence.observe(true, mario),
+            (CondensedCarrierEvidence::EMPTY, false)
+        );
+
+        let mut crazy_hand = PendingOpaqueSelection::begin(0, 0);
+        crazy_hand.sequence = 22;
+        crazy_hand.observe_named_lookup(Some(UI_CHARA_CRAZYHAND_HASH));
+        assert_eq!(
+            evidence.observe(true, crazy_hand),
+            (CondensedCarrierEvidence::EMPTY, false)
+        );
+        assert_eq!(
+            evidence.observe(false, named_master_hand_transaction(0, 23)),
+            (CondensedCarrierEvidence::EMPTY, false)
+        );
+    }
+
+    #[test]
+    fn condensed_carrier_evidence_stays_per_entry() {
+        let p1_first = named_master_hand_transaction(0, 30);
+        let p2_first = named_master_hand_transaction(1, 31);
+        let (p1, _) = CondensedCarrierEvidence::EMPTY.observe(true, p1_first);
+        let (p2, _) = CondensedCarrierEvidence::EMPTY.observe(true, p2_first);
+
+        let (_, p1_confirmed) = p1.observe(true, named_master_hand_transaction(0, 32));
+        assert!(p1_confirmed);
+        assert_eq!(p2.master_hand_observations, 1);
+    }
+
     #[test]
     fn stale_global_hash_never_confirms_the_condensed_carrier() {
         let pending = PendingOpaqueSelection::begin(0, UI_CHARA_MASTERHAND_HASH);
@@ -3976,7 +4118,6 @@ mod persisted_slot_contamination_tests {
                 origin: OpaqueSelectionCacheOrigin::TentativeUiSelection,
             }
         );
-        assert!(!independent_selection_corroborated());
         assert!(!origin_is_authoritative_selection(
             OpaqueSelectionCacheOrigin::CandidateUiLookup
         ));
