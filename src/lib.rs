@@ -2371,16 +2371,21 @@ fn callback_amiibo(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     Some(written_size)
 }
 
-#[arc_callback]
-fn callback_koopag_layout(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let original_size = reader.position() as usize;
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum KoopagLayoutState {
+    Existing,
+    Added,
+}
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum KoopagLayoutError {
+    MissingTemplate,
+    MissingNamedFields,
+}
+
+fn ensure_koopag_layout(
+    db_root_list: &mut ParamList,
+) -> Result<KoopagLayoutState, KoopagLayoutError> {
     let ui_layout_id_hash = to_hash40("ui_layout_id");
     let ui_chara_id_hash = to_hash40("ui_chara_id");
     let source_layout_id = to_hash40("ui_chara_koopa_00");
@@ -2392,8 +2397,7 @@ fn callback_koopag_layout(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         .iter()
         .any(|param| struct_hash40_field_matches(param, ui_layout_id_hash, target_layout_id))
     {
-        crate::boss_log!("[PB][CSSLayout] kept existing ui_layout_db row ui_chara_koopag_00");
-        return Some(original_size);
+        return Ok(KoopagLayoutState::Existing);
     }
 
     let Some(source_layout) = db_root_list
@@ -2403,10 +2407,7 @@ fn callback_koopag_layout(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         .and_then(|param| param.try_into_ref::<ParamStruct>().ok())
         .cloned()
     else {
-        crate::boss_log!(
-            "[PB][CSSLayout] ui_layout_db missing Bowser template row ui_chara_koopa_00"
-        );
-        return Some(original_size);
+        return Err(KoopagLayoutError::MissingTemplate);
     };
 
     let mut cloned_layout = source_layout;
@@ -2416,22 +2417,11 @@ fn callback_koopag_layout(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         patch_hash40_field(&mut cloned_layout, ui_chara_id_hash, target_chara_id);
 
     if !patched_layout_id || !patched_chara_id {
-        crate::boss_log!(
-            "[PB][CSSLayout] ui_layout_db failed to patch cloned Koopag layout row layout_id={} chara_id={}",
-            patched_layout_id,
-            patched_chara_id
-        );
-        return Some(original_size);
+        return Err(KoopagLayoutError::MissingNamedFields);
     }
 
     db_root_list.0.push(ParamKind::Struct(cloned_layout));
-    crate::boss_log!(
-        "[PB][CSSLayout] appended ui_layout_db row ui_chara_koopag_00 from Bowser template"
-    );
-
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    Some(writer.position() as usize)
+    Ok(KoopagLayoutState::Added)
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -2502,45 +2492,189 @@ fn ensure_condensed_carrier_layouts(
     Ok(CONDENSED_NATIVE_PRESENTATIONS.len())
 }
 
-#[arc_callback]
-fn callback_condensed_boss_layout(hash: u64, mut data: &mut [u8]) -> Option<usize> {
-    load_original_file(hash, &mut data);
-    let mut reader = std::io::Cursor::new(&mut data);
-    let mut root = prc::read_stream(&mut reader).unwrap();
-    let original_size = reader.position() as usize;
-    let (db_root_hash, db_root) = &mut root.0[0];
-    assert_eq!(*db_root_hash, to_hash40("db_root"));
-    let db_root_list = db_root.try_into_mut::<ParamList>().unwrap();
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum UiLayoutPatchMode {
+    Koopag,
+    Condensed,
+    KoopagAndCondensed,
+}
 
-    let carrier_layout_count = match ensure_condensed_carrier_layouts(db_root_list) {
-        Ok(count) => count,
-        Err(reason) => {
-            crate::boss_log!("[PB][CondensedBossCSS] ui_layout_db failure={:?}", reason);
-            return Some(original_size);
+impl UiLayoutPatchMode {
+    fn for_features(koopag: bool, condensed: bool) -> Option<Self> {
+        match (koopag, condensed) {
+            (true, true) => Some(Self::KoopagAndCondensed),
+            (true, false) => Some(Self::Koopag),
+            (false, true) => Some(Self::Condensed),
+            (false, false) => None,
+        }
+    }
+
+    fn includes_koopag(self) -> bool {
+        matches!(self, Self::Koopag | Self::KoopagAndCondensed)
+    }
+
+    fn includes_condensed(self) -> bool {
+        matches!(self, Self::Condensed | Self::KoopagAndCondensed)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Koopag => "koopag",
+            Self::Condensed => "condensed",
+            Self::KoopagAndCondensed => "koopag+condensed",
+        }
+    }
+}
+
+fn patch_ui_layout_db(hash: u64, data: &mut [u8], mode: UiLayoutPatchMode) -> Option<usize> {
+    crate::boss_log!(
+        "[PB][UILayoutPatch] phase=begin mode={} buffer_size={}",
+        mode.name(),
+        data.len()
+    );
+    let Some(original_size) = load_original_file(hash, &mut *data) else {
+        crate::boss_log!(
+            "[PB][UILayoutPatch] phase=failed mode={} reason=original_file_unavailable",
+            mode.name()
+        );
+        return None;
+    };
+    if original_size > data.len() {
+        crate::boss_log!(
+            "[PB][UILayoutPatch] phase=failed mode={} reason=buffer_too_small original_size={} buffer_size={}",
+            mode.name(),
+            original_size,
+            data.len()
+        );
+        return None;
+    }
+
+    let mut root = {
+        let mut reader = std::io::Cursor::new(&data[..original_size]);
+        match prc::read_stream(&mut reader) {
+            Ok(root) => root,
+            Err(error) => {
+                crate::boss_log!(
+                    "[PB][UILayoutPatch] phase=failed mode={} reason=parse_error error={:?}",
+                    mode.name(),
+                    error
+                );
+                return Some(original_size);
+            }
+        }
+    };
+    let db_root_hash = to_hash40("db_root");
+    let Some((_, db_root)) = root.0.iter_mut().find(|(hash, _)| *hash == db_root_hash) else {
+        crate::boss_log!(
+            "[PB][UILayoutPatch] phase=failed mode={} reason=missing_db_root",
+            mode.name()
+        );
+        return Some(original_size);
+    };
+    let Ok(db_root_list) = db_root.try_into_mut::<ParamList>() else {
+        crate::boss_log!(
+            "[PB][UILayoutPatch] phase=failed mode={} reason=invalid_db_root",
+            mode.name()
+        );
+        return Some(original_size);
+    };
+
+    let mut should_write = false;
+    if mode.includes_koopag() {
+        match ensure_koopag_layout(db_root_list) {
+            Ok(state) => {
+                should_write |= state == KoopagLayoutState::Added;
+                crate::boss_log!("[PB][CSSLayout] koopag_layout={:?}", state);
+            }
+            Err(reason) => {
+                crate::boss_log!("[PB][CSSLayout] koopag_layout_failure={:?}", reason);
+            }
+        }
+    }
+
+    let mut carrier_layout_count = None;
+    if mode.includes_condensed() {
+        match ensure_condensed_carrier_layouts(db_root_list) {
+            Ok(count) => {
+                carrier_layout_count = Some(count);
+                should_write = true;
+            }
+            Err(reason) => {
+                crate::boss_log!("[PB][CondensedBossCSS] ui_layout_db failure={:?}", reason);
+            }
+        }
+    }
+
+    if !should_write {
+        crate::boss_log!(
+            "[PB][UILayoutPatch] phase=complete mode={} original_size={} written_size={} mutation=none",
+            mode.name(),
+            original_size,
+            original_size
+        );
+        return Some(original_size);
+    }
+
+    let written_size = {
+        let mut writer = std::io::Cursor::new(&mut *data);
+        match write_stream(&mut writer, &root) {
+            Ok(()) => writer.position() as usize,
+            Err(error) => {
+                crate::boss_log!(
+                    "[PB][UILayoutPatch] phase=failed mode={} reason=write_error error={:?}",
+                    mode.name(),
+                    error
+                );
+                if load_original_file(hash, &mut *data).is_none() {
+                    return None;
+                }
+                return Some(original_size);
+            }
         }
     };
 
-    let mut writer = std::io::Cursor::new(data);
-    write_stream(&mut writer, &root).unwrap();
-    crate::boss_log!(
-        "[PB][CondensedBossCSS] carrier_layouts={} presentation=boss_layout_data+carrier_identity_assets asset_name_id=masterhand native_colors=0..7",
-        carrier_layout_count
-    );
-    for presentation in CONDENSED_NATIVE_PRESENTATIONS {
+    if let Some(carrier_layout_count) = carrier_layout_count {
         crate::boss_log!(
-            "[PB][CondensedBossCSS] logical_index={} logical_boss={} carrier_layout={} layout_template={} layout_template_ui_chara={} source_ui_chara={} asset_ui_chara={} chara_color={} asset_color={:02} asset_families=chara_1|chara_2|chara_4|chara_7",
-            presentation.logical_index,
-            presentation.logical_boss,
-            presentation.carrier_layout_id,
-            presentation.layout_template_id,
-            presentation.layout_template_ui_chara_id,
-            presentation.source_ui_chara_id,
-            CONDENSED_CARRIER_UI_CHARA,
-            presentation.logical_index,
-            presentation.logical_index
+            "[PB][CondensedBossCSS] carrier_layouts={} presentation=boss_layout_data+carrier_identity_assets asset_name_id=masterhand native_colors=0..7",
+            carrier_layout_count
         );
+        for presentation in CONDENSED_NATIVE_PRESENTATIONS {
+            crate::boss_log!(
+                "[PB][CondensedBossCSS] logical_index={} logical_boss={} carrier_layout={} layout_template={} layout_template_ui_chara={} source_ui_chara={} asset_ui_chara={} chara_color={} asset_color={:02} asset_families=chara_1|chara_2|chara_4|chara_7",
+                presentation.logical_index,
+                presentation.logical_boss,
+                presentation.carrier_layout_id,
+                presentation.layout_template_id,
+                presentation.layout_template_ui_chara_id,
+                presentation.source_ui_chara_id,
+                CONDENSED_CARRIER_UI_CHARA,
+                presentation.logical_index,
+                presentation.logical_index
+            );
+        }
     }
-    Some(writer.position() as usize)
+    crate::boss_log!(
+        "[PB][UILayoutPatch] phase=complete mode={} original_size={} written_size={} mutation=applied",
+        mode.name(),
+        original_size,
+        written_size
+    );
+    Some(written_size)
+}
+
+#[arc_callback]
+fn callback_koopag_layout(hash: u64, data: &mut [u8]) -> Option<usize> {
+    patch_ui_layout_db(hash, data, UiLayoutPatchMode::Koopag)
+}
+
+#[arc_callback]
+fn callback_condensed_boss_layout(hash: u64, data: &mut [u8]) -> Option<usize> {
+    patch_ui_layout_db(hash, data, UiLayoutPatchMode::Condensed)
+}
+
+#[arc_callback]
+fn callback_koopag_condensed_layout(hash: u64, data: &mut [u8]) -> Option<usize> {
+    patch_ui_layout_db(hash, data, UiLayoutPatchMode::KoopagAndCondensed)
 }
 
 // Giga Bowser
@@ -3601,6 +3735,9 @@ fn callback_map_7(hash: u64, mut data: &mut [u8]) -> Option<usize> {
 // ARCropolis callback buffer needs to be >= the largest patched PRC in load order.
 // Logs showed ui_chara_db.prc around 0x9D3280, so keep comfortable headroom.
 const MAX_FILE_SIZE: usize = 0x00C00000;
+// Condensed mode expands ui_layout_db and must share one callback transaction
+// with Giga Bowser instead of registering two independent full-file writers.
+const MAX_UI_LAYOUT_FILE_SIZE: usize = 0x01000000;
 
 #[cfg(not(test))]
 #[skyline::main(name = "comp_boss")]
@@ -3635,6 +3772,11 @@ pub fn main() {
             .iter()
             .any(|mapping| mapping.identity.key == key)
     };
+    let install_giga_bowser_css = should_install_giga_bowser_css_callback(
+        custom_css,
+        giga_bowser_css,
+        amiibo_has("giga_bowser"),
+    );
     // The viewer's identity handoff is runtime behavior, not debug-only
     // instrumentation. Populate its allowlist before any selection hook can
     // observe a Figure Player row.
@@ -3702,13 +3844,8 @@ pub fn main() {
         callback_amiibo::install("ui/param/database/ui_amiibo_db.prc", MAX_FILE_SIZE);
     }
 
-    if should_install_giga_bowser_css_callback(
-        custom_css,
-        giga_bowser_css,
-        amiibo_has("giga_bowser"),
-    ) {
+    if install_giga_bowser_css {
         callback_koopag::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
-        callback_koopag_layout::install("ui/param/database/ui_layout_db.prc", MAX_FILE_SIZE);
     }
 
     if should_install_item_boss_css_callback(
@@ -3801,11 +3938,20 @@ pub fn main() {
     ) {
         callback_wolmh::install("ui/param/database/ui_chara_db.prc", MAX_FILE_SIZE);
     }
-    if condensed_css {
-        callback_condensed_boss_layout::install(
+    match UiLayoutPatchMode::for_features(install_giga_bowser_css, condensed_css) {
+        Some(UiLayoutPatchMode::Koopag) => callback_koopag_layout::install(
             "ui/param/database/ui_layout_db.prc",
-            MAX_FILE_SIZE,
-        );
+            MAX_UI_LAYOUT_FILE_SIZE,
+        ),
+        Some(UiLayoutPatchMode::Condensed) => callback_condensed_boss_layout::install(
+            "ui/param/database/ui_layout_db.prc",
+            MAX_UI_LAYOUT_FILE_SIZE,
+        ),
+        Some(UiLayoutPatchMode::KoopagAndCondensed) => callback_koopag_condensed_layout::install(
+            "ui/param/database/ui_layout_db.prc",
+            MAX_UI_LAYOUT_FILE_SIZE,
+        ),
+        None => {}
     }
 
     if final2_stage {
@@ -4725,5 +4871,22 @@ mod condensed_css_tests {
         assert!(should_install_giga_bowser_css_callback(false, true, false));
         assert!(should_install_giga_bowser_css_callback(false, false, true));
         assert!(!should_install_giga_bowser_css_callback(true, true, true));
+    }
+
+    #[test]
+    fn ui_layout_features_share_one_callback_transaction() {
+        assert_eq!(UiLayoutPatchMode::for_features(false, false), None);
+        assert_eq!(
+            UiLayoutPatchMode::for_features(true, false),
+            Some(UiLayoutPatchMode::Koopag)
+        );
+        assert_eq!(
+            UiLayoutPatchMode::for_features(false, true),
+            Some(UiLayoutPatchMode::Condensed)
+        );
+        assert_eq!(
+            UiLayoutPatchMode::for_features(true, true),
+            Some(UiLayoutPatchMode::KoopagAndCondensed)
+        );
     }
 }
