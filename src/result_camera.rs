@@ -6,8 +6,9 @@
 //! Giga Bowser are excluded from item recreation.
 
 use smash::app::lua_bind::{
-    CameraModule, FighterManager, HitModule, ItemModule, JostleModule, LinkModule, ModelModule,
-    MotionModule, PostureModule, SoundModule, StatusModule, VisibilityModule, WorkModule,
+    AttackModule, CameraModule, FighterManager, HitModule, ItemModule, JostleModule, LinkModule,
+    ModelModule, MotionModule, PostureModule, SoundModule, StatusModule, VisibilityModule,
+    WorkModule,
 };
 use smash::app::sv_battle_object;
 use smash::app::{BattleObjectModuleAccessor, ItemKind};
@@ -23,6 +24,11 @@ const MAX_RESULT_WIDE_CAMERA_REASSERTIONS: u8 = 90;
 const RESULT_ITEM_SETTLE_TICKS: u32 = 12;
 const RESULT_PRESENTATION_SCALE: f32 = 0.4;
 const DEFAULT_GIGA_BOWSER_RESULT_CAMERA_TYPE: i32 = 0;
+
+extern "C" {
+    #[link_name = "\u{1}_ZN3app10item_other6removeEPNS_26BattleObjectModuleAccessorE"]
+    fn remove_result_presentation_item(module_accessor: *mut BattleObjectModuleAccessor);
+}
 
 // Optional hardware-captured override. Camera type 0 is Giga Bowser's native
 // unanimated Result view and is used until a runtime capture replaces it.
@@ -238,6 +244,7 @@ impl ResultReferenceLogState {
 struct ResultPresentationState {
     attempted: bool,
     object_id: u32,
+    item_kind: i32,
 }
 
 impl ResultPresentationState {
@@ -245,7 +252,51 @@ impl ResultPresentationState {
         Self {
             attempted: false,
             object_id: 0,
+            item_kind: -1,
         }
+    }
+}
+
+#[derive(Copy, Clone)]
+struct ResultPresentationRetirement {
+    object_id: u32,
+    item_kind: i32,
+    removal_requested: bool,
+    wait_logged: bool,
+}
+
+impl ResultPresentationRetirement {
+    const fn empty() -> Self {
+        Self {
+            object_id: 0,
+            item_kind: -1,
+            removal_requested: false,
+            wait_logged: false,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum ResultPresentationRetirementAction {
+    Clear,
+    RequestRemoval,
+    Wait,
+}
+
+#[inline(always)]
+fn result_presentation_retirement_action(
+    object_id: u32,
+    active: bool,
+    accessor_available: bool,
+    expected_kind: bool,
+    removal_requested: bool,
+) -> ResultPresentationRetirementAction {
+    if object_id == 0 || !active || (accessor_available && !expected_kind) {
+        ResultPresentationRetirementAction::Clear
+    } else if !accessor_available || removal_requested {
+        ResultPresentationRetirementAction::Wait
+    } else {
+        ResultPresentationRetirementAction::RequestRemoval
     }
 }
 
@@ -255,6 +306,8 @@ static mut RESULT_REFERENCE_LOGS: [ResultReferenceLogState; MAX_FIGHTERS] =
     [ResultReferenceLogState::empty(); MAX_FIGHTERS];
 static mut RESULT_PRESENTATION: [ResultPresentationState; MAX_FIGHTERS] =
     [ResultPresentationState::empty(); MAX_FIGHTERS];
+static mut RESULT_PRESENTATION_RETIREMENTS: [ResultPresentationRetirement; MAX_FIGHTERS] =
+    [ResultPresentationRetirement::empty(); MAX_FIGHTERS];
 static mut LAST_RESULT_MODE: bool = false;
 static mut LAST_WINNER_PROBE_SIGNATURE: u64 = u64::MAX;
 static mut LAST_STAGE_B_SIGNATURE: u64 = u64::MAX;
@@ -1075,6 +1128,131 @@ unsafe fn reset_result_presentation_scene() {
 }
 
 #[inline(always)]
+unsafe fn poll_result_presentation_retirement(entry: usize) -> bool {
+    if entry >= MAX_FIGHTERS {
+        return true;
+    }
+
+    let retirement = RESULT_PRESENTATION_RETIREMENTS[entry];
+    if retirement.object_id == 0 {
+        return true;
+    }
+
+    let active = sv_battle_object::is_active(retirement.object_id);
+    let item_boma = if active {
+        sv_battle_object::module_accessor(retirement.object_id)
+    } else {
+        core::ptr::null_mut()
+    };
+    let accessor_available = !item_boma.is_null();
+    let actual_kind = if accessor_available {
+        smash::app::utility::get_kind(&mut *item_boma)
+    } else {
+        -1
+    };
+    let expected_kind = accessor_available && actual_kind == retirement.item_kind;
+
+    match result_presentation_retirement_action(
+        retirement.object_id,
+        active,
+        accessor_available,
+        expected_kind,
+        retirement.removal_requested,
+    ) {
+        ResultPresentationRetirementAction::Clear => {
+            if crate::debug::enabled() {
+                crate::boss_log!(
+                    "[PB][ResultPresentation] action=retirement_complete entry={} object_id=0x{:x} expected_kind={} actual_kind={} active={} reason={}",
+                    entry,
+                    retirement.object_id,
+                    retirement.item_kind,
+                    actual_kind,
+                    active,
+                    if active { "object_id_reused" } else { "inactive" }
+                );
+            }
+            RESULT_PRESENTATION_RETIREMENTS[entry] = ResultPresentationRetirement::empty();
+            true
+        }
+        ResultPresentationRetirementAction::RequestRemoval => {
+            AttackModule::clear_all(item_boma);
+            HitModule::set_whole(item_boma, smash::app::HitStatus(*HIT_STATUS_OFF), 0);
+            VisibilityModule::set_whole(item_boma, false);
+            WorkModule::off_flag(item_boma, *ITEM_INSTANCE_WORK_FLAG_IGNORE_DELETE_BY_STAGE);
+            remove_result_presentation_item(item_boma);
+
+            let active_after = sv_battle_object::is_active(retirement.object_id);
+            if crate::debug::enabled() {
+                crate::boss_log!(
+                    "[PB][ResultPresentation] action=retire_requested entry={} object_id=0x{:x} expected_kind={} actual_kind={} active_after={} stage=0x{:x}",
+                    entry,
+                    retirement.object_id,
+                    retirement.item_kind,
+                    actual_kind,
+                    active_after,
+                    smash::app::stage::get_stage_id()
+                );
+            }
+            if active_after {
+                RESULT_PRESENTATION_RETIREMENTS[entry].removal_requested = true;
+                false
+            } else {
+                RESULT_PRESENTATION_RETIREMENTS[entry] = ResultPresentationRetirement::empty();
+                true
+            }
+        }
+        ResultPresentationRetirementAction::Wait => {
+            if crate::debug::enabled() && !retirement.wait_logged {
+                crate::boss_log!(
+                    "[PB][ResultPresentation] action=retirement_wait entry={} object_id=0x{:x} expected_kind={} actual_kind={} accessor_available={} removal_requested={}",
+                    entry,
+                    retirement.object_id,
+                    retirement.item_kind,
+                    actual_kind,
+                    accessor_available,
+                    retirement.removal_requested
+                );
+                RESULT_PRESENTATION_RETIREMENTS[entry].wait_logged = true;
+            }
+            false
+        }
+    }
+}
+
+#[inline(always)]
+unsafe fn retire_result_presentations() {
+    for entry in 0..MAX_FIGHTERS {
+        let presentation = RESULT_PRESENTATION[entry];
+        if presentation.object_id == 0 {
+            continue;
+        }
+
+        RESULT_PRESENTATION_RETIREMENTS[entry] = ResultPresentationRetirement {
+            object_id: presentation.object_id,
+            item_kind: presentation.item_kind,
+            removal_requested: false,
+            wait_logged: false,
+        };
+        let _ = poll_result_presentation_retirement(entry);
+    }
+    reset_result_presentation_scene();
+}
+
+/// Result presentation items are detached and protected from native stage
+/// deletion. A matching item must wait until every tracked instance retires.
+pub unsafe fn result_presentation_kind_retired(item_kind: i32) -> bool {
+    let mut retired = true;
+    for entry in 0..MAX_FIGHTERS {
+        let retirement = RESULT_PRESENTATION_RETIREMENTS[entry];
+        let entry_retired = poll_result_presentation_retirement(entry);
+        if retirement.item_kind == item_kind && !entry_retired {
+            retired = false;
+        }
+    }
+    retired
+}
+
+#[inline(always)]
 unsafe fn result_host_pos(module_accessor: *mut BattleObjectModuleAccessor) -> Vector3f {
     Vector3f {
         x: PostureModule::pos_x(module_accessor),
@@ -1193,6 +1371,9 @@ unsafe fn apply_result_presentation(
         RESULT_PRESENTATION[entry].attempted = true;
         return;
     };
+    if !result_presentation_kind_retired(item_kind) {
+        return;
+    }
 
     let state = RESULT_PRESENTATION[entry];
     if state.object_id != 0 {
@@ -1217,6 +1398,7 @@ unsafe fn apply_result_presentation(
         RESULT_PRESENTATION[entry] = ResultPresentationState {
             attempted: true,
             object_id: held_id,
+            item_kind,
         };
         maintain_result_presentation_item(module_accessor, held_boma, held_id, profile, true);
         return;
@@ -1229,6 +1411,7 @@ unsafe fn apply_result_presentation(
         boss_helpers::held_item_by_kind(module_accessor, &[item_kind])
     {
         RESULT_PRESENTATION[entry].object_id = held_id;
+        RESULT_PRESENTATION[entry].item_kind = item_kind;
         maintain_result_presentation_item(module_accessor, held_boma, held_id, profile, true);
         if crate::debug::enabled() {
             crate::boss_log!(
@@ -1265,7 +1448,7 @@ pub unsafe fn frame(module_accessor: *mut BattleObjectModuleAccessor) {
         reset_result_reference_scene(entry);
         if LAST_RESULT_MODE {
             restore_result_wide_camera(module_accessor, "result_exit");
-            reset_result_presentation_scene();
+            retire_result_presentations();
             if crate::debug::enabled() {
                 crate::boss_log!("[PB][ResultCamera] scene_exit reason=result_exit restored=true");
             }
@@ -1311,7 +1494,8 @@ mod tests {
     use super::{
         active_result_pipeline_stage_name, camera_type_as_i32, custom_result_pipeline_enabled,
         next_result_identity, result_idle_motion_for_profile, result_presentation_allowed,
-        result_profile_for_ui_hash, ResultIdentity, CUSTOM_RESULT_AUDIO_ENABLED,
+        result_presentation_retirement_action, result_profile_for_ui_hash, ResultIdentity,
+        ResultPresentationRetirementAction, CUSTOM_RESULT_AUDIO_ENABLED,
         DEFAULT_GIGA_BOWSER_RESULT_CAMERA_TYPE, RESULT_ITEM_CREATION_ENABLED,
         RESULT_PRESENTATION_SCALE,
     };
@@ -1342,6 +1526,34 @@ mod tests {
         assert!(result_presentation_allowed("galleom"));
         assert!(result_presentation_allowed("rathalos"));
         assert!(result_presentation_allowed("marx"));
+    }
+
+    #[test]
+    fn result_presentation_retirement_blocks_recreation_until_inactive() {
+        assert_eq!(
+            result_presentation_retirement_action(0, false, false, false, false),
+            ResultPresentationRetirementAction::Clear
+        );
+        assert_eq!(
+            result_presentation_retirement_action(0x4000_0001, false, false, false, false),
+            ResultPresentationRetirementAction::Clear
+        );
+        assert_eq!(
+            result_presentation_retirement_action(0x4000_0001, true, true, false, false),
+            ResultPresentationRetirementAction::Clear
+        );
+        assert_eq!(
+            result_presentation_retirement_action(0x4000_0001, true, true, true, false),
+            ResultPresentationRetirementAction::RequestRemoval
+        );
+        assert_eq!(
+            result_presentation_retirement_action(0x4000_0001, true, true, true, true),
+            ResultPresentationRetirementAction::Wait
+        );
+        assert_eq!(
+            result_presentation_retirement_action(0x4000_0001, true, false, false, false),
+            ResultPresentationRetirementAction::Wait
+        );
     }
 
     #[test]

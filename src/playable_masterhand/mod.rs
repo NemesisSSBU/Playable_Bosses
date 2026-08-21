@@ -484,15 +484,44 @@ unsafe fn acquire_player_world_masterhand(
 }
 
 #[inline(always)]
-unsafe fn start_world_masterhand_entry(boss_boma: *mut BattleObjectModuleAccessor) {
+unsafe fn start_world_masterhand_entry(
+    boss_boma: *mut BattleObjectModuleAccessor,
+    cpu_entry: bool,
+) {
     if boss_boma.is_null() {
         return;
     }
+
+    if cpu_entry {
+        StatusModule::change_status_request_from_script(
+            boss_boma,
+            *ITEM_STATUS_KIND_FOR_BOSS_START,
+            true,
+        );
+        return;
+    }
+
+    // Match the established post-wipe restoration path on the first player
+    // spawn so cold and consecutive rounds begin from the same item state.
     StatusModule::change_status_request_from_script(
         boss_boma,
-        *ITEM_STATUS_KIND_FOR_BOSS_START,
+        *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_WAIT,
         true,
     );
+    MotionModule::change_motion(
+        boss_boma,
+        Hash40::new("wait"),
+        0.0,
+        1.0,
+        false,
+        0.0,
+        false,
+        false,
+    );
+    if PostureModule::lr(boss_boma) != 1.0 {
+        PostureModule::set_lr(boss_boma, 1.0);
+        PostureModule::update_rot_y_lr(boss_boma);
+    }
 }
 
 #[inline(always)]
@@ -952,15 +981,14 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             EXISTS_PUBLIC = true;
                             RESULT_SPAWNED = false;
                             let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
-                            let boss_boma = if boss_helpers::is_operation_cpu_entry(
-                                fighter_manager,
-                                ENTRY_ID,
-                            ) {
+                            let cpu_entry =
+                                boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID);
+                            let boss_boma = if cpu_entry {
                                 acquire_cpu_world_masterhand(module_accessor, get_boss_intensity)
                             } else {
                                 acquire_player_world_masterhand(module_accessor)
                             };
-                            start_world_masterhand_entry(boss_boma);
+                            start_world_masterhand_entry(boss_boma, cpu_entry);
                         }
                     }
 
@@ -1033,7 +1061,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             } else {
                                 acquire_player_world_masterhand(module_accessor)
                             };
-                            start_world_masterhand_entry(boss_boma);
+                            start_world_masterhand_entry(boss_boma, cpu_entry);
                             if !boss_boma.is_null() {
                                 let x = PostureModule::pos_x(module_accessor);
                                 let y = PostureModule::pos_y(module_accessor);

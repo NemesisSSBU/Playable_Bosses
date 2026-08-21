@@ -1734,6 +1734,22 @@ pub fn flying_boss_travel_box(
     (left, right, bottom, top)
 }
 
+/// 3.0.3 WOL Master Hand hover band: `-|dead_range.y| + 160` to `|dead_range.y| - 100`.
+/// Issue #91 opened the X blast box; the Y floor must stay this hover, or gravity
+/// and `FOR_BOSS_START` walk the hand down toward the blastzone each fight.
+#[inline(always)]
+pub fn flying_boss_hover_band(range_y: f32) -> (f32, f32) {
+    let half = range_y.abs();
+    let mut bottom = -half + 160.0;
+    let mut top = half - 100.0;
+    if bottom > top {
+        let mid = (bottom + top) * 0.5;
+        bottom = mid;
+        top = mid;
+    }
+    (bottom, top)
+}
+
 #[inline(always)]
 pub fn clamp_point_to_box(
     x: f32,
@@ -1818,9 +1834,9 @@ pub fn is_classic_staffroll_stage(stage_id: i32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        boss_mario_host_audio_decision, flying_boss_travel_box, generic_item_status_name,
-        hidden_kiila_darz_cpu_is_quarantined, is_boss_preview_stage, is_classic_staffroll_stage,
-        is_kiila_darz_first_attack_status, is_mario_death_audio_status,
+        boss_mario_host_audio_decision, flying_boss_hover_band, flying_boss_travel_box,
+        generic_item_status_name, hidden_kiila_darz_cpu_is_quarantined, is_boss_preview_stage,
+        is_classic_staffroll_stage, is_kiila_darz_first_attack_status, is_mario_death_audio_status,
         is_world_of_light_boss_preview_stage, item_trait_has_boss, scale_is_hidden_host,
         should_discard_tracked_boss, should_force_generic_wait,
         should_intercept_kiila_darz_spawn_status, should_restore_staged_entry,
@@ -1946,6 +1962,16 @@ mod tests {
         assert_eq!(right, 216.0);
         assert_eq!(top, 156.0);
         assert_eq!(bottom, -92.0);
+    }
+
+    #[test]
+    fn wol_mh_hover_band_matches_3_0_3_floor_and_ceiling() {
+        let (bottom, top) = flying_boss_hover_band(180.0);
+        assert_eq!(bottom, -20.0);
+        assert_eq!(top, 80.0);
+        let (bottom, top) = flying_boss_hover_band(-180.0);
+        assert_eq!(bottom, -20.0);
+        assert_eq!(top, 80.0);
     }
 
     fn hidden_cpu_quarantine_requires_active_none() {
