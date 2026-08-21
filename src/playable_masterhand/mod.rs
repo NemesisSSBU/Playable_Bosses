@@ -46,7 +46,6 @@ const DEFAULT_CONTROL_SPEED_MUL_2: f32 = 0.05;
 const WOL_MH_BOUND_INSET_X: f32 = 24.0;
 const WOL_MH_BOUND_INSET_TOP: f32 = 24.0;
 const WOL_MH_BOUND_INSET_BOTTOM: f32 = 48.0;
-const WOL_MH_HOST_CAMERA_OFFSET_Y: f32 = 20.0;
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -927,7 +926,7 @@ unsafe fn apply_wol_mh_dead_range(
     let (clamped_x, clamped_y) = boss_helpers::clamp_point_to_box(x, y, left, right, bottom, top);
     let host_pos = Vector3f {
         x: clamped_x,
-        y: clamped_y + WOL_MH_HOST_CAMERA_OFFSET_Y,
+        y: clamped_y,
         z,
     };
     let player_owned =
