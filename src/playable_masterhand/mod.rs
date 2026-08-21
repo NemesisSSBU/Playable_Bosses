@@ -525,6 +525,33 @@ unsafe fn start_world_masterhand_entry(
 }
 
 #[inline(always)]
+unsafe fn lock_player_world_masterhand_countdown(boss_boma: *mut BattleObjectModuleAccessor) {
+    let wait_status = *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_WAIT;
+    let wait_motion = smash::hash40("wait");
+    let status = StatusModule::status_kind(boss_boma);
+    let motion = MotionModule::motion_kind(boss_boma);
+
+    if status != wait_status {
+        StatusModule::change_status_request_from_script(boss_boma, wait_status, true);
+    }
+    if motion != wait_motion {
+        MotionModule::change_motion(
+            boss_boma,
+            Hash40::new("wait"),
+            0.0,
+            1.0,
+            false,
+            0.0,
+            false,
+            false,
+        );
+    }
+    if status != wait_status || motion != wait_motion {
+        AttackModule::clear_all(boss_boma);
+    }
+}
+
+#[inline(always)]
 unsafe fn resolve_world_masterhand_boss(
     module_accessor: *mut BattleObjectModuleAccessor,
 ) -> *mut BattleObjectModuleAccessor {
@@ -1784,6 +1811,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 }
                             }
                         }
+                    }
+
+                    if !sv_information::is_ready_go()
+                        && !boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID)
+                    {
+                        lock_player_world_masterhand_countdown(boss_boma);
                     }
                 }
             }
