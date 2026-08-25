@@ -1750,6 +1750,27 @@ pub fn flying_boss_hover_band(range_y: f32) -> (f32, f32) {
     (bottom, top)
 }
 
+/// Return the established flying-boss box while accepting either known
+/// `dead_range` representation: left/right/top/bottom or symmetric extents.
+#[inline(always)]
+pub fn flying_boss_safe_box(
+    range_x: f32,
+    range_y: f32,
+    range_z: f32,
+    range_w: f32,
+    inset_x: f32,
+) -> (f32, f32, f32, f32) {
+    let (left, right, _, _) =
+        flying_boss_travel_box(range_x, range_y, range_z, range_w, inset_x, 0.0, 0.0);
+    let vertical_extent = if range_x < range_y && range_z > range_w {
+        range_z.abs().max(range_w.abs())
+    } else {
+        range_y.abs()
+    };
+    let (bottom, top) = flying_boss_hover_band(vertical_extent);
+    (left, right, bottom, top)
+}
+
 #[inline(always)]
 pub fn clamp_point_to_box(
     x: f32,
@@ -1760,6 +1781,38 @@ pub fn clamp_point_to_box(
     top: f32,
 ) -> (f32, f32) {
     (x.max(left).min(right), y.max(bottom).min(top))
+}
+
+/// Keep the invisible fighter host out of native magnifying-glass damage while
+/// preserving the item as the visible and controllable boss. The boss keeps
+/// its existing movement rules; only the hidden host is projected into the
+/// safe box.
+#[inline(always)]
+pub unsafe fn sync_flying_boss_hidden_host(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    boss_boma: *mut BattleObjectModuleAccessor,
+    range_x: f32,
+    range_y: f32,
+    range_z: f32,
+    range_w: f32,
+    inset_x: f32,
+) {
+    if module_accessor.is_null() || boss_boma.is_null() {
+        return;
+    }
+
+    let x = PostureModule::pos_x(boss_boma);
+    let y = PostureModule::pos_y(boss_boma);
+    let z = PostureModule::pos_z(boss_boma);
+    let (left, right, bottom, top) =
+        flying_boss_safe_box(range_x, range_y, range_z, range_w, inset_x);
+    let (safe_x, safe_y) = clamp_point_to_box(x, y, left, right, bottom, top);
+    let safe_pos = Vector3f {
+        x: safe_x,
+        y: safe_y,
+        z,
+    };
+    PostureModule::set_pos(module_accessor, &safe_pos);
 }
 
 #[inline(always)]
@@ -1834,11 +1887,11 @@ pub fn is_classic_staffroll_stage(stage_id: i32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        boss_mario_host_audio_decision, flying_boss_hover_band, flying_boss_travel_box,
-        generic_item_status_name, hidden_kiila_darz_cpu_is_quarantined, is_boss_preview_stage,
-        is_classic_staffroll_stage, is_kiila_darz_first_attack_status, is_mario_death_audio_status,
-        is_world_of_light_boss_preview_stage, item_trait_has_boss, scale_is_hidden_host,
-        should_discard_tracked_boss, should_force_generic_wait,
+        boss_mario_host_audio_decision, flying_boss_hover_band, flying_boss_safe_box,
+        flying_boss_travel_box, generic_item_status_name, hidden_kiila_darz_cpu_is_quarantined,
+        is_boss_preview_stage, is_classic_staffroll_stage, is_kiila_darz_first_attack_status,
+        is_mario_death_audio_status, is_world_of_light_boss_preview_stage, item_trait_has_boss,
+        scale_is_hidden_host, should_discard_tracked_boss, should_force_generic_wait,
         should_intercept_kiila_darz_spawn_status, should_restore_staged_entry,
         staged_boss_ready_for_activation, staged_intro_reached_end, trait_flag_without_boss,
         BossMarioHostAudioDecision, HIDDEN_HOST_ENTRY_PREP_SCALE, HIDDEN_HOST_ENTRY_STAGE2_SCALE,
@@ -1972,6 +2025,16 @@ mod tests {
         let (bottom, top) = flying_boss_hover_band(-180.0);
         assert_eq!(bottom, -20.0);
         assert_eq!(top, 80.0);
+    }
+
+    #[test]
+    fn flying_boss_safe_box_uses_vertical_dead_range_components() {
+        let (left, right, bottom, top) = flying_boss_safe_box(-240.0, 240.0, 180.0, -140.0, 100.0);
+        assert_eq!((left, right), (-140.0, 140.0));
+        assert_eq!((bottom, top), (-20.0, 80.0));
+
+        let symmetric = flying_boss_safe_box(240.0, 180.0, 0.0, 0.0, 100.0);
+        assert_eq!(symmetric, (-140.0, 140.0, -20.0, 80.0));
     }
 
     fn hidden_cpu_quarantine_requires_active_none() {

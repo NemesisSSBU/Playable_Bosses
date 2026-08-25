@@ -1357,7 +1357,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                     }
 
-                    let rage_hp = CONFIG.options.galleom_rage_hp.unwrap_or(220.0);
+                    let rage_hp = CONFIG.options.galleom_rage_hp.unwrap_or(385.0);
                     if DamageModule::damage(module_accessor, 0) >= rage_hp
                         && !DEAD
                         && sv_information::is_ready_go()

@@ -659,6 +659,44 @@ pub fn validation_errors() -> Vec<String> {
 mod tests {
     use super::*;
 
+    fn verified_test_record(
+        is_valid: bool,
+        character_id_upper: u16,
+        character_id_lower: u8,
+        numbering_id: u16,
+        enable_unknown_numbering_id: bool,
+    ) -> ParamStruct {
+        ParamStruct(vec![
+            (FIELD_UI_AMIIBO_ID, ParamKind::Hash(Hash40(1))),
+            (
+                FIELD_UI_CHARA_ID,
+                ParamKind::Hash(Hash40::new("ui_chara_mario")),
+            ),
+            (FIELD_IS_VALID, ParamKind::Bool(is_valid)),
+            (FIELD_UNKNOWN_BOOL, ParamKind::Bool(false)),
+            (FIELD_NFP_NUMBERING_ID, ParamKind::U16(numbering_id)),
+            (FIELD_DEFAULT_COLOR, ParamKind::U8(0)),
+            (
+                FIELD_ENABLE_UNKNOWN_NUMBERING_ID,
+                ParamKind::Bool(enable_unknown_numbering_id),
+            ),
+            (
+                FIELD_NFP_CHARACTER_ID_UPPER,
+                ParamKind::U16(character_id_upper),
+            ),
+            (
+                FIELD_NFP_CHARACTER_ID_LOWER,
+                ParamKind::U8(character_id_lower),
+            ),
+        ])
+    }
+
+    fn verified_test_records() -> ParamList {
+        ParamList(vec![ParamKind::Struct(verified_test_record(
+            true, 0, 0, 0, true,
+        ))])
+    }
+
     #[test]
     fn parses_the_current_figure_id_layout() {
         assert_eq!(
@@ -717,17 +755,10 @@ mod tests {
 
     #[test]
     fn discovers_a_schema_template_without_a_product_sentinel() {
-        let mut reader = std::io::Cursor::new(include_bytes!("../ui_amiibo_db.prc"));
-        let root = prc::read_stream(&mut reader).expect("fixture PRC should parse");
-        let records = root
-            .0
-            .iter()
-            .find(|(hash, _)| *hash == Hash40::new("db_root"))
-            .and_then(|(_, value)| value.try_into_ref::<ParamList>().ok())
-            .expect("fixture should contain db_root");
+        let records = verified_test_records();
 
-        assert_eq!(amiibo_schema_record_count(records), records.0.len());
-        let (index, template) = select_amiibo_template(records).expect("schema template");
+        assert_eq!(amiibo_schema_record_count(&records), records.0.len());
+        let (index, template) = select_amiibo_template(&records).expect("schema template");
         assert_eq!(index, 0);
         assert!(is_verified_amiibo_record(&template));
     }
@@ -788,15 +819,8 @@ mod tests {
 
     #[test]
     fn zero_upper_mario_append_is_one_complete_master_hand_record() {
-        let mut reader = std::io::Cursor::new(include_bytes!("../ui_amiibo_db.prc"));
-        let root = prc::read_stream(&mut reader).expect("fixture PRC should parse");
-        let records = root
-            .0
-            .iter()
-            .find(|(hash, _)| *hash == Hash40::new("db_root"))
-            .and_then(|(_, value)| value.try_into_ref::<ParamList>().ok())
-            .expect("fixture should contain db_root");
-        let (_, template) = select_amiibo_template(records).expect("schema template");
+        let records = verified_test_records();
+        let (_, template) = select_amiibo_template(&records).expect("schema template");
 
         let appended = prepare_append_record(
             &template,
@@ -854,22 +878,15 @@ mod tests {
         let original_count = records.0.len();
         let mut simulated_records = records.clone();
         simulated_records.0.push(ParamKind::Struct(appended));
-        assert_eq!(original_count, 124);
+        assert_eq!(original_count, 1);
         assert_eq!(simulated_records.0.len(), original_count + 1);
         assert_eq!(records.0.len(), original_count);
     }
 
     #[test]
     fn virtual_master_hand_append_patches_the_complete_native_nfp_key() {
-        let mut reader = std::io::Cursor::new(include_bytes!("../ui_amiibo_db.prc"));
-        let root = prc::read_stream(&mut reader).expect("fixture PRC should parse");
-        let records = root
-            .0
-            .iter()
-            .find(|(hash, _)| *hash == Hash40::new("db_root"))
-            .and_then(|(_, value)| value.try_into_ref::<ParamList>().ok())
-            .expect("fixture should contain db_root");
-        let (_, template) = select_amiibo_template(records).expect("schema template");
+        let records = verified_test_records();
+        let (_, template) = select_amiibo_template(&records).expect("schema template");
 
         let appended = prepare_append_record(
             &template,

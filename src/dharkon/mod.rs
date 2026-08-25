@@ -1893,6 +1893,16 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             DHARKON_FLOOR_CLEARANCE,
                                         );
                                     }
+                                    let range = dead_range(fighter.lua_state_agent);
+                                    boss_helpers::sync_flying_boss_hidden_host(
+                                        module_accessor,
+                                        boss_boma,
+                                        range.x,
+                                        range.y,
+                                        range.z,
+                                        range.w,
+                                        100.0,
+                                    );
                                 }
                             }
                         }

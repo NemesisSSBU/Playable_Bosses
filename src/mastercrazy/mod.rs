@@ -529,11 +529,44 @@ unsafe fn maybe_recover_crazy_cpu_idle(
 
 #[inline(always)]
 unsafe fn current_master_boma() -> *mut BattleObjectModuleAccessor {
-    if ENTRY_ID < 8 && BOSS_ID[ENTRY_ID] != 0 {
-        sv_battle_object::module_accessor(BOSS_ID[ENTRY_ID])
-    } else {
-        core::ptr::null_mut()
+    if ENTRY_ID < 8 {
+        let object_id = BOSS_ID[ENTRY_ID];
+        if object_id != 0 && sv_battle_object::is_active(object_id) {
+            return sv_battle_object::module_accessor(object_id);
+        }
     }
+    core::ptr::null_mut()
+}
+
+#[inline(always)]
+unsafe fn current_crazy_boma() -> *mut BattleObjectModuleAccessor {
+    if ENTRY_ID_2 < 8 {
+        let object_id = BOSS_ID_2[ENTRY_ID_2];
+        if object_id != 0 && sv_battle_object::is_active(object_id) {
+            return sv_battle_object::module_accessor(object_id);
+        }
+    }
+    core::ptr::null_mut()
+}
+
+#[inline(always)]
+unsafe fn tracked_hand_entry(
+    boma: *mut BattleObjectModuleAccessor,
+    object_ids: *const [u32; 8],
+) -> usize {
+    if boma.is_null() {
+        return usize::MAX;
+    }
+    for entry in 0..8 {
+        let object_id = (*object_ids)[entry];
+        if object_id != 0
+            && sv_battle_object::is_active(object_id)
+            && sv_battle_object::module_accessor(object_id) == boma
+        {
+            return entry;
+        }
+    }
+    usize::MAX
 }
 
 unsafe fn finder_master_entry_boma() -> (usize, *mut BattleObjectModuleAccessor) {
@@ -569,7 +602,7 @@ unsafe fn finder_master_entry_boma() -> (usize, *mut BattleObjectModuleAccessor)
             fallback_entry = entry;
             fallback_boma = boss_boma;
         }
-        if TeamModule::team_no(boss_boma) == CRAZY_TEAM {
+        if MASTER_TEAM == CRAZY_TEAM {
             return (entry, boss_boma);
         }
     }
@@ -610,10 +643,12 @@ unsafe fn finder_crazy_entry_boma() -> (usize, *mut BattleObjectModuleAccessor) 
 unsafe fn finder_master_for_crazy(
     crazy_boma: *mut BattleObjectModuleAccessor,
 ) -> (usize, *mut BattleObjectModuleAccessor) {
-    if crazy_boma.is_null() {
+    if crazy_boma.is_null()
+        || MASTER_TEAM != CRAZY_TEAM
+        || tracked_hand_entry(crazy_boma, &raw const BOSS_ID_2) >= 8
+    {
         return (usize::MAX, core::ptr::null_mut());
     }
-    let crazy_team = TeamModule::team_no(crazy_boma);
     let mut matching_entry = usize::MAX;
     let mut matching_boma: *mut BattleObjectModuleAccessor = core::ptr::null_mut();
     for entry in 0..8 {
@@ -625,7 +660,6 @@ unsafe fn finder_master_for_crazy(
         if master_boma.is_null()
             || smash::app::utility::get_kind(&mut *master_boma) != *ITEM_KIND_MASTERHAND
             || master_boma == crazy_boma
-            || TeamModule::team_no(master_boma) != crazy_team
         {
             continue;
         }
@@ -956,8 +990,7 @@ unsafe fn start_finder_pair(lua_state: u64, crazy_boma: *mut BattleObjectModuleA
     } else {
         StatusModule::status_kind(master_boma)
     };
-    let same_team = !master_boma.is_null()
-        && TeamModule::team_no(master_boma) == TeamModule::team_no(crazy_boma);
+    let same_team = !master_boma.is_null() && MASTER_TEAM == CRAZY_TEAM;
     let host_boma = smash::app::sv_system::battle_object_module_accessor(lua_state);
     let floor_dist = boss_floor_dist(host_boma, crazy_boma);
     let cooldown_ready = FINDER_COOLDOWN_FRAMES == 0;
@@ -1405,7 +1438,9 @@ unsafe fn begin_hand_team_authority(
         || crazy_boma.is_null()
         || !sv_battle_object::is_active(BOSS_ID[master_entry])
         || !sv_battle_object::is_active(BOSS_ID_2[crazy_entry])
-        || TeamModule::team_no(master_boma) != TeamModule::team_no(crazy_boma)
+        // Item team metadata is not the pair authority. These are held boss
+        // objects; the hidden fighter hosts carry the actual player teams.
+        || MASTER_TEAM != CRAZY_TEAM
     {
         return false;
     }
@@ -1734,7 +1769,7 @@ unsafe fn find_hand_entrance_pair() -> Option<(
             let crazy_boma = sv_battle_object::module_accessor(crazy_id);
             if crazy_boma.is_null()
                 || smash::app::utility::get_kind(&mut *crazy_boma) != *ITEM_KIND_CRAZYHAND
-                || TeamModule::team_no(master_boma) != TeamModule::team_no(crazy_boma)
+                || MASTER_TEAM != CRAZY_TEAM
             {
                 continue;
             }
@@ -2436,24 +2471,41 @@ pub unsafe fn quarantine_hand_authority_for_result(reason: &str) {
 
 #[inline(always)]
 unsafe fn sync_hand_team_authority_from_flags(
-    crazy_boma: *mut BattleObjectModuleAccessor,
+    initiator_boma: *mut BattleObjectModuleAccessor,
     initiator_entry: usize,
 ) {
     let action = shared_hand_action();
-    if action == 0 || action == HAND_TEAM_ACTION_FINDER || HAND_TEAM_AUTHORITY_ACTIVE {
+    if action == 0
+        || action == HAND_TEAM_ACTION_FINDER
+        || HAND_TEAM_AUTHORITY_ACTIVE
+        || initiator_boma.is_null()
+        || MASTER_TEAM != CRAZY_TEAM
+    {
         return;
     }
-    let (master_entry, master_boma) = finder_master_for_crazy(crazy_boma);
-    let mut crazy_entry = usize::MAX;
-    for entry in 0..8 {
-        if BOSS_ID_2[entry] != 0
-            && sv_battle_object::is_active(BOSS_ID_2[entry])
-            && sv_battle_object::module_accessor(BOSS_ID_2[entry]) == crazy_boma
-        {
-            crazy_entry = entry;
-            break;
-        }
-    }
+
+    let initiator_kind = smash::app::utility::get_kind(&mut *initiator_boma);
+    let (master_entry, master_boma, crazy_entry, crazy_boma) =
+        if initiator_kind == *ITEM_KIND_MASTERHAND {
+            let crazy_boma = current_crazy_boma();
+            (
+                tracked_hand_entry(initiator_boma, &raw const BOSS_ID),
+                initiator_boma,
+                tracked_hand_entry(crazy_boma, &raw const BOSS_ID_2),
+                crazy_boma,
+            )
+        } else if initiator_kind == *ITEM_KIND_CRAZYHAND {
+            let master_boma = current_master_boma();
+            (
+                tracked_hand_entry(master_boma, &raw const BOSS_ID),
+                master_boma,
+                tracked_hand_entry(initiator_boma, &raw const BOSS_ID_2),
+                initiator_boma,
+            )
+        } else {
+            return;
+        };
+
     if master_entry < 8 && crazy_entry < 8 {
         let _ = begin_hand_team_authority(
             action,
@@ -3969,7 +4021,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             let lua_state = fighter.lua_state_agent;
                             let module_accessor =
                                 smash::app::sv_system::battle_object_module_accessor(lua_state);
-                            let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(1.0);
+                            let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
                             ENTRY_ID = WorkModule::get_int(
                                 module_accessor,
                                 *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID,
@@ -5029,6 +5081,16 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     MASTER_FLOAT_FLOOR_CLEARANCE,
                                 );
                             }
+                            let range = dead_range(fighter.lua_state_agent);
+                            boss_helpers::sync_flying_boss_hidden_host(
+                                module_accessor,
+                                boss_boma,
+                                range.x,
+                                range.y,
+                                range.z,
+                                range.w,
+                                100.0,
+                            );
                         }
                     }
 
@@ -9620,6 +9682,16 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     crazy_floor_clearance,
                                 );
                             }
+                            let range = dead_range(fighter.lua_state_agent);
+                            boss_helpers::sync_flying_boss_hidden_host(
+                                module_accessor,
+                                boss_boma,
+                                range.x,
+                                range.y,
+                                range.z,
+                                range.w,
+                                100.0,
+                            );
                         }
                     }
 
@@ -9660,7 +9732,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     }
                     update_finder_runtime(fighter.lua_state_agent);
                     log_hand_team_status();
-                    maybe_finish_hand_team_authority("native_pair_complete");
 
                     if !FINDER {
                         if BARK
@@ -12778,6 +12849,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             }
                         }
                     }
+                    maybe_finish_hand_team_authority("native_pair_complete");
                 }
             }
         }

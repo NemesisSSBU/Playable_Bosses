@@ -243,8 +243,31 @@ mod tests {
 
     #[test]
     fn distributed_config_keeps_condensed_mode_disabled_by_default() {
-        let distributed = include_str!("../ultimate/mods/Bosses/config.toml");
+        let distributed = include_str!("../Bosses/config.toml");
         let config: Config = toml::from_str(distributed).expect("distributed config should parse");
         assert!(!config.options.condense_bosses_into_single_slot());
+    }
+
+    #[test]
+    fn distributed_config_declares_every_css_option() {
+        let distributed = include_str!("../Bosses/config.toml");
+        let config: Config = toml::from_str(distributed).expect("distributed config should parse");
+        let options = &config.options;
+        assert_eq!(
+            [
+                options.master_hand_css,
+                options.crazy_hand_css,
+                options.dharkon_css,
+                options.galeem_css,
+                options.marx_css,
+                options.giga_bowser_css,
+                options.ganon_css,
+                options.dracula_css,
+                options.rathalos_css,
+                options.galleom_css,
+                options.wol_master_hand_css,
+            ],
+            [Some(true); 11]
+        );
     }
 }

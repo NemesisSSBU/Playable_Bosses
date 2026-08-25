@@ -25,6 +25,33 @@ fn uses_boss_battle_rules() -> bool {
     giga_bowser_uses_boss_battle_rules(CONFIG.options.giga_bowser_normal.unwrap_or(false))
 }
 
+#[inline]
+fn should_request_boss_hp_death(
+    training_mode: bool,
+    hp_mode: bool,
+    damage: f32,
+    hp: f32,
+    lifecycle_blocked: bool,
+    stop: bool,
+) -> bool {
+    !training_mode && !hp_mode && damage >= hp && !lifecycle_blocked && !stop
+}
+
+#[inline]
+const fn should_reset_respawn_lifecycle(respawn_enabled: bool, status_is_rebirth: bool) -> bool {
+    respawn_enabled && status_is_rebirth
+}
+
+#[inline]
+const fn should_latch_respawn_death(
+    respawn_enabled: bool,
+    dead: bool,
+    stop: bool,
+    status_is_dead: bool,
+) -> bool {
+    respawn_enabled && dead && !stop && status_is_dead
+}
+
 static mut DEAD: bool = false;
 static mut STOP: bool = false;
 static mut ENTRY_ID: usize = 0;
@@ -105,6 +132,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     return;
                 }
                 FighterManager::set_cursor_whole(fighter_manager, false);
+                let training_mode = smash::app::smashball::is_training_mode();
+                let respawn_enabled = CONFIG.options.boss_respawn.unwrap_or(false);
+                let status = StatusModule::status_kind(module_accessor);
                 if sv_information::is_ready_go() == false {
                     DEAD = false;
                     STOP = false;
@@ -118,6 +148,18 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         );
                     }
                 }
+                if should_reset_respawn_lifecycle(
+                    respawn_enabled,
+                    status == *FIGHTER_STATUS_KIND_REBIRTH,
+                ) {
+                    DEAD = false;
+                    STOP = false;
+                    DECREASING = false;
+                    if FighterUtil::is_hp_mode(module_accessor) {
+                        INITIAL_STOCK_COUNT =
+                            boss_helpers::stock_count_entry(fighter_manager, ENTRY_ID);
+                    }
+                }
                 if sv_information::is_ready_go() {
                     DamageModule::set_reaction_mul(module_accessor, 0.0);
                     DamageModule::set_reaction_mul_2nd(module_accessor, 0.0);
@@ -125,25 +167,29 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 }
 
                 let hp = CONFIG.options.giga_bowser_hp.unwrap_or(600.0);
-                if !smash::app::smashball::is_training_mode()
-                    && DamageModule::damage(module_accessor, 0) >= hp
-                    && FighterUtil::is_hp_mode(module_accessor) == false
-                    && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD
-                    && !STOP
-                    && !CONFIG.options.boss_respawn.unwrap_or(false)
-                {
+                let lifecycle_blocked = status == *FIGHTER_STATUS_KIND_DEAD
+                    || status == *FIGHTER_STATUS_KIND_REBIRTH
+                    || status == *FIGHTER_STATUS_KIND_STANDBY;
+                if should_request_boss_hp_death(
+                    training_mode,
+                    FighterUtil::is_hp_mode(module_accessor),
+                    DamageModule::damage(module_accessor, 0),
+                    hp,
+                    lifecycle_blocked,
+                    STOP,
+                ) {
                     StatusModule::change_status_request_from_script(
                         module_accessor,
                         *FIGHTER_STATUS_KIND_DEAD,
                         true,
                     );
                 }
-                if !smash::app::smashball::is_training_mode()
+                if !training_mode
                     && DamageModule::damage(module_accessor, 0) >= hp
                     && FighterUtil::is_hp_mode(module_accessor) == false
                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY
                     && STOP
-                    && !CONFIG.options.boss_respawn.unwrap_or(false)
+                    && !respawn_enabled
                 {
                     let x = 0.0;
                     let y = 0.0;
@@ -160,9 +206,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if StatusModule::status_kind(module_accessor) == 470
                     || StatusModule::status_kind(module_accessor) == 181
                 {
-                    if FighterUtil::is_hp_mode(module_accessor)
-                        && smash::app::smashball::is_training_mode() == false
-                    {
+                    if FighterUtil::is_hp_mode(module_accessor) && !training_mode {
                         if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
                             if DECREASING
                                 && FighterInformation::stock_count(
@@ -207,23 +251,21 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     }
                 }
                 if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD
-                    && smash::app::smashball::is_training_mode() == false
+                    && !training_mode
                 {
                     DEAD = true;
                 }
-                if smash::app::smashball::is_training_mode() == false
-                    || CONFIG.options.boss_respawn.unwrap_or(false)
-                {
+                if !training_mode || respawn_enabled {
                     if DEAD == true {
-                        if STOP == false && CONFIG.options.boss_respawn.unwrap_or(false) {
-                            StatusModule::change_status_request_from_script(
-                                module_accessor,
-                                *FIGHTER_STATUS_KIND_DEAD,
-                                true,
-                            );
+                        if should_latch_respawn_death(
+                            respawn_enabled,
+                            DEAD,
+                            STOP,
+                            StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD,
+                        ) {
                             STOP = true;
                         }
-                        if STOP == false && !CONFIG.options.boss_respawn.unwrap_or(false) {
+                        if STOP == false && !respawn_enabled {
                             if FighterInformation::stock_count(
                                 FighterManager::get_fighter_information(
                                     fighter_manager,
@@ -259,7 +301,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if STOP == true {
                             if StatusModule::status_kind(module_accessor)
                                 == *FIGHTER_STATUS_KIND_REBIRTH
-                                && !CONFIG.options.boss_respawn.unwrap_or(false)
+                                && !respawn_enabled
                             {
                                 StatusModule::change_status_request_from_script(
                                     module_accessor,
@@ -283,7 +325,10 @@ pub fn install() {
 
 #[cfg(test)]
 mod tests {
-    use super::giga_bowser_uses_boss_battle_rules;
+    use super::{
+        giga_bowser_uses_boss_battle_rules, should_latch_respawn_death,
+        should_request_boss_hp_death, should_reset_respawn_lifecycle,
+    };
 
     #[test]
     fn giga_bowser_normal_disables_boss_battle_rules() {
@@ -295,5 +340,30 @@ mod tests {
             !giga_bowser_uses_boss_battle_rules(true),
             "true is vanilla hacked-in koopag: knockback, stocks, ignore BOSS_RESPAWN"
         );
+    }
+
+    #[test]
+    fn boss_respawn_does_not_disable_hp_threshold_death() {
+        assert!(should_request_boss_hp_death(
+            false, false, 600.0, 600.0, false, false
+        ));
+        assert!(!should_request_boss_hp_death(
+            true, false, 600.0, 600.0, false, false
+        ));
+        assert!(!should_request_boss_hp_death(
+            false, true, 600.0, 600.0, false, false
+        ));
+        assert!(!should_request_boss_hp_death(
+            false, false, 600.0, 600.0, true, false
+        ));
+    }
+
+    #[test]
+    fn boss_respawn_lifecycle_resets_once_rebirth_begins() {
+        assert!(should_latch_respawn_death(true, true, false, true));
+        assert!(!should_latch_respawn_death(true, true, true, true));
+        assert!(should_reset_respawn_lifecycle(true, true));
+        assert!(!should_reset_respawn_lifecycle(false, true));
+        assert!(!should_reset_respawn_lifecycle(true, false));
     }
 }

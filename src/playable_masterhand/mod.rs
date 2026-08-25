@@ -44,8 +44,6 @@ const DEFAULT_CONTROL_SPEED_MUL_2: f32 = 0.05;
 // so it could not sit off-camera against Galeem/Dharkon. These insets are
 // measured from the real blast rectangle (left, right, top, bottom).
 const WOL_MH_BOUND_INSET_X: f32 = 24.0;
-const WOL_MH_BOUND_INSET_TOP: f32 = 24.0;
-const WOL_MH_BOUND_INSET_BOTTOM: f32 = 48.0;
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -905,43 +903,20 @@ unsafe fn apply_wol_mh_dead_range(
     lua_state: u64,
     module_accessor: *mut BattleObjectModuleAccessor,
     boss_boma: *mut BattleObjectModuleAccessor,
-    fighter_manager: *mut smash::app::FighterManager,
 ) {
     if module_accessor.is_null() || boss_boma.is_null() {
         return;
     }
-    let x = PostureModule::pos_x(boss_boma);
-    let y = PostureModule::pos_y(boss_boma);
-    let z = PostureModule::pos_z(boss_boma);
     let range = dead_range(lua_state);
-    let (left, right, bottom, top) = boss_helpers::flying_boss_travel_box(
+    boss_helpers::sync_flying_boss_hidden_host(
+        module_accessor,
+        boss_boma,
         range.x,
         range.y,
         range.z,
         range.w,
         WOL_MH_BOUND_INSET_X,
-        WOL_MH_BOUND_INSET_TOP,
-        WOL_MH_BOUND_INSET_BOTTOM,
     );
-    let (clamped_x, clamped_y) = boss_helpers::clamp_point_to_box(x, y, left, right, bottom, top);
-    let host_pos = Vector3f {
-        x: clamped_x,
-        y: clamped_y,
-        z,
-    };
-    let player_owned =
-        CONTROLLABLE && !boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID);
-    if player_owned && (clamped_x != x || clamped_y != y) {
-        PostureModule::set_pos(
-            boss_boma,
-            &Vector3f {
-                x: clamped_x,
-                y: clamped_y,
-                z,
-            },
-        );
-    }
-    PostureModule::set_pos(module_accessor, &host_pos);
 }
 
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
@@ -1338,7 +1313,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             fighter.lua_state_agent,
                             module_accessor,
                             boss_boma,
-                            fighter_manager,
                         );
 
                         // SETS POWER

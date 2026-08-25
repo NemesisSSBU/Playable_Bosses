@@ -68,7 +68,6 @@ enum OpaqueSelectionCacheOrigin {
     /// user pick. Must not persist, must not apply to a CPU, and must not
     /// outrank Restored until an independent corroboration signal exists.
     CandidateUiLookup,
-    ConfirmedUiLookup,
     ConfirmedCondensedCarrier,
     /// Restored from disk at plugin load. Bootstrap fallback only: weaker than
     /// any positively resolved current-session identity (corroborated CSS
@@ -789,15 +788,6 @@ unsafe fn log_condensed_carrier_transition(
         ),
         OpaqueSelectionCommit::Cached {
             ui_hash,
-            origin: OpaqueSelectionCacheOrigin::ConfirmedUiLookup,
-        } => (
-            ui_hash,
-            false,
-            "not_master_hand_selection",
-            "selected_fighter_named_ui_lookup",
-        ),
-        OpaqueSelectionCommit::Cached {
-            ui_hash,
             origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
         } if ui_hash == UI_CHARA_MASTERHAND_HASH => (
             ui_hash,
@@ -1118,13 +1108,13 @@ unsafe fn cached_css_boss_hash(
         return None;
     }
     match CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] {
-        OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-        | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => Some(by_entry),
+        OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => Some(by_entry),
         // Restored persist is a cold-launch fallback for the human player
         // who never revisited Fighter Selection. It must not transform an
         // unrelated fighter that later occupies this entry index — including
         // a Spirit CPU Mario sitting in a slot that last stored a CPU boss.
-        // Genuine this-session CPU bosses arrive as Confirmed* above.
+        // Condensed CPU selections arrive through the confirmed carrier above;
+        // ordinary current-session identity comes from live or name sources.
         origin @ OpaqueSelectionCacheOrigin::RestoredPersistedSelection => {
             if cache_visible_on_battle_stage(origin, entry_operation_cpu(entry_idx)) {
                 Some(by_entry)
@@ -1221,7 +1211,7 @@ fn is_persistable_host_boss_hash(value: u64) -> bool {
 /// lower rank, which is what stops generic menu enumeration from overwriting a
 /// restored or confirmed selection.
 ///
-/// Confirmed (current process, independently corroborated)
+/// ConfirmedCondensedCarrier (current process, independently corroborated)
 ///   > RestoredPersistedSelection (bootstrap fallback)
 ///   > CandidateUiLookup / TentativeUiSelection (observational / global guess)
 ///   > None
@@ -1235,8 +1225,7 @@ fn origin_authority_rank(origin: OpaqueSelectionCacheOrigin) -> u8 {
         OpaqueSelectionCacheOrigin::TentativeUiSelection
         | OpaqueSelectionCacheOrigin::CandidateUiLookup => 1,
         OpaqueSelectionCacheOrigin::RestoredPersistedSelection => 2,
-        OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-        | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => 3,
+        OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => 3,
     }
 }
 
@@ -1245,13 +1234,12 @@ fn origin_authority_rank(origin: OpaqueSelectionCacheOrigin) -> u8 {
 fn origin_is_authoritative_selection(origin: OpaqueSelectionCacheOrigin) -> bool {
     matches!(
         origin,
-        OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-            | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
+        OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
     )
 }
 
 /// Restored persist is eligible only for a human-controlled occupant. CPU
-/// entries need a this-session Confirmed* origin; they must not inherit a
+/// entries need a this-session confirmed carrier origin; they must not inherit a
 /// stale slot from last_boss_selection.txt. This is provenance, not a CPU
 /// boss blacklist. Missing fighter-info fails closed (treated as ineligible).
 unsafe fn entry_operation_cpu(entry_idx: usize) -> bool {
@@ -1262,8 +1250,7 @@ unsafe fn entry_operation_cpu(entry_idx: usize) -> bool {
 /// Whether a cached origin is visible to the battle resolver for this occupant.
 fn cache_visible_on_battle_stage(origin: OpaqueSelectionCacheOrigin, operation_cpu: bool) -> bool {
     match origin {
-        OpaqueSelectionCacheOrigin::ConfirmedUiLookup
-        | OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => true,
+        OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => true,
         OpaqueSelectionCacheOrigin::RestoredPersistedSelection => !operation_cpu,
         OpaqueSelectionCacheOrigin::None
         | OpaqueSelectionCacheOrigin::TentativeUiSelection
@@ -2246,7 +2233,6 @@ fn origin_label(origin: OpaqueSelectionCacheOrigin) -> &'static str {
         OpaqueSelectionCacheOrigin::None => "none",
         OpaqueSelectionCacheOrigin::TentativeUiSelection => "tentative_ui_selection",
         OpaqueSelectionCacheOrigin::CandidateUiLookup => "candidate_ui_lookup",
-        OpaqueSelectionCacheOrigin::ConfirmedUiLookup => "confirmed_ui_lookup",
         OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => "confirmed_condensed_carrier",
         OpaqueSelectionCacheOrigin::RestoredPersistedSelection => "restored_persisted_selection",
     }
@@ -2289,7 +2275,6 @@ fn selector_choice_reason(
     if chosen.is_some() && chosen == cache {
         return match cache_origin {
             OpaqueSelectionCacheOrigin::RestoredPersistedSelection => "restored_fallback",
-            OpaqueSelectionCacheOrigin::ConfirmedUiLookup => "confirmed_ui_lookup",
             OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => "confirmed_condensed_carrier",
             OpaqueSelectionCacheOrigin::CandidateUiLookup => "candidate_ui_lookup",
             _ => "cache_fallback",
@@ -2585,7 +2570,7 @@ mod condensed_tests {
             OpaqueSelectionCacheOrigin::RestoredPersistedSelection
         ));
         assert!(origin_is_authoritative_selection(
-            OpaqueSelectionCacheOrigin::ConfirmedUiLookup
+            OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
         ));
         assert!(!origin_is_authoritative_selection(
             OpaqueSelectionCacheOrigin::CandidateUiLookup
@@ -2598,7 +2583,7 @@ mod condensed_tests {
         ));
         assert_ne!(
             OpaqueSelectionCacheOrigin::RestoredPersistedSelection,
-            OpaqueSelectionCacheOrigin::ConfirmedUiLookup
+            OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
         );
     }
 
@@ -3378,7 +3363,7 @@ mod persistence_semantics_tests {
                     let existing_origin = if self.restored_pending {
                         OpaqueSelectionCacheOrigin::RestoredPersistedSelection
                     } else if self.origin_authoritative {
-                        OpaqueSelectionCacheOrigin::ConfirmedUiLookup
+                        OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
                     } else if is_boss_css_hash(self.cache) {
                         OpaqueSelectionCacheOrigin::TentativeUiSelection
                     } else {
@@ -3628,7 +3613,7 @@ mod restore_consumption_tests {
         fn confirmed(hash: u64) -> Self {
             Self {
                 hash,
-                origin: OpaqueSelectionCacheOrigin::ConfirmedUiLookup,
+                origin: OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier,
                 disk: hash,
             }
         }
@@ -3920,10 +3905,6 @@ mod restore_consumption_tests {
     fn authority_ranks_are_ordered() {
         use OpaqueSelectionCacheOrigin::*;
         assert!(
-            origin_authority_rank(ConfirmedUiLookup)
-                > origin_authority_rank(RestoredPersistedSelection)
-        );
-        assert!(
             origin_authority_rank(ConfirmedCondensedCarrier)
                 > origin_authority_rank(RestoredPersistedSelection)
         );
@@ -4040,9 +4021,9 @@ mod persisted_slot_contamination_tests {
     }
 
     #[test]
-    fn confirmed_cpu_dharkon_still_applies() {
+    fn confirmed_condensed_cpu_dharkon_still_applies() {
         assert!(cache_visible_on_battle_stage(
-            OpaqueSelectionCacheOrigin::ConfirmedUiLookup,
+            OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier,
             true
         ));
         assert_eq!(
@@ -4056,10 +4037,10 @@ mod persisted_slot_contamination_tests {
                 None,
                 None,
                 Some(FIXTURE_ENTRY1_DHARKON),
-                OpaqueSelectionCacheOrigin::ConfirmedUiLookup,
+                OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier,
                 Some(FIXTURE_ENTRY1_DHARKON),
             ),
-            "confirmed_ui_lookup"
+            "confirmed_condensed_carrier"
         );
     }
 
@@ -4126,7 +4107,7 @@ mod persisted_slot_contamination_tests {
                 < origin_authority_rank(OpaqueSelectionCacheOrigin::RestoredPersistedSelection)
         );
         assert!(
-            origin_authority_rank(OpaqueSelectionCacheOrigin::ConfirmedUiLookup)
+            origin_authority_rank(OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier)
                 > origin_authority_rank(OpaqueSelectionCacheOrigin::RestoredPersistedSelection)
         );
     }

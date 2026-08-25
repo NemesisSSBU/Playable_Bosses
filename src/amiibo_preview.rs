@@ -5166,7 +5166,7 @@ mod tests {
         // `BOSS_DIFFICULTY` is the only intensity source, and it is a plain
         // ordinary-CPU boss-AI value. There is deliberately no FP level, FP
         // intensity, or amiibo-level option to derive one from.
-        let distributed = include_str!("../ultimate/mods/Bosses/config.toml");
+        let distributed = include_str!("../Bosses/config.toml");
         let parsed: toml::Value = toml::from_str(distributed).expect("distributed config parses");
         let options = parsed.get("options").and_then(|v| v.as_table()).unwrap();
         assert!(options.contains_key("BOSS_DIFFICULTY"));
