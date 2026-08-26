@@ -9,7 +9,7 @@ GIGA_BOWSER_NORMAL = true
 
 # true = World of Light Master Hand deals his normal hefty amounts of damage
 # false = nerfed damage for regular match balance (default)
-WOL_MASTER_HAND_NORMAL = true
+WOL_MASTER_HAND_NORMAL = false
 
 # true = detects the characters ui_chara name (default)
 # false = detects the character's name in game
@@ -37,7 +37,7 @@ BOSS_DIFFICULTY = 10.0
 # Developer use or extreme bug reporting (not needed for normal reports or normal players)
 # true = developer logs shown
 # false = developer logs not shown (default)
-DEBUG_BOSS_LOGS = true
+DEBUG_BOSS_LOGS = false
 
 # true = Boss will appear on CSS (default)
 # false = Boss will not appear on CSS
