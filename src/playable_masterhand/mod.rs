@@ -44,6 +44,7 @@ const DEFAULT_CONTROL_SPEED_MUL_2: f32 = 0.05;
 // so it could not sit off-camera against Galeem/Dharkon. These insets are
 // measured from the real blast rectangle (left, right, top, bottom).
 const WOL_MH_BOUND_INSET_X: f32 = 24.0;
+const WOL_MH_ENTRY_HEIGHT_FACTOR: f32 = 0.5;
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -919,6 +920,55 @@ unsafe fn apply_wol_mh_dead_range(
     );
 }
 
+#[inline]
+fn wol_masterhand_entry_anchor(
+    range_x: f32,
+    range_y: f32,
+    range_z: f32,
+    range_w: f32,
+) -> (f32, f32) {
+    let (left, right, _, top) = boss_helpers::flying_boss_safe_box(
+        range_x,
+        range_y,
+        range_z,
+        range_w,
+        WOL_MH_BOUND_INSET_X,
+    );
+    ((left + right) * 0.5, top * WOL_MH_ENTRY_HEIGHT_FACTOR)
+}
+
+#[inline(always)]
+unsafe fn place_world_masterhand_at_entry_anchor(
+    lua_state: u64,
+    module_accessor: *mut BattleObjectModuleAccessor,
+    boss_boma: *mut BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() || boss_boma.is_null() {
+        return;
+    }
+
+    let range = dead_range(lua_state);
+    let (x, y) = wol_masterhand_entry_anchor(range.x, range.y, range.z, range.w);
+    let entry_pos = Vector3f {
+        x,
+        y,
+        z: PostureModule::pos_z(boss_boma),
+    };
+    PostureModule::set_pos(boss_boma, &entry_pos);
+    PostureModule::set_pos(module_accessor, &entry_pos);
+    crate::boss_log!(
+        "[PB][WOL_MH][EntryPosition] entry={} source=stage_half_top_center range=({:.2},{:.2},{:.2},{:.2}) position=({:.2},{:.2},{:.2})",
+        boss_helpers::entry_id(module_accessor),
+        range.x,
+        range.y,
+        range.z,
+        range.w,
+        entry_pos.x,
+        entry_pos.y,
+        entry_pos.z
+    );
+}
+
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let lua_state = fighter.lua_state_agent;
@@ -990,6 +1040,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 acquire_player_world_masterhand(module_accessor)
                             };
                             start_world_masterhand_entry(boss_boma, cpu_entry);
+                            place_world_masterhand_at_entry_anchor(
+                                fighter.lua_state_agent,
+                                module_accessor,
+                                boss_boma,
+                            );
                         }
                     }
 
@@ -1802,4 +1857,23 @@ pub unsafe fn frame(fighter: &mut L2CFighterCommon) {
         return;
     }
     once_per_fighter_frame(fighter);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wol_masterhand_entry_anchor;
+
+    #[test]
+    fn entry_anchor_uses_half_the_upper_center_height_of_a_camera_rectangle() {
+        let (x, y) = wol_masterhand_entry_anchor(-240.0, 240.0, 180.0, -140.0);
+        assert_eq!(x, 0.0);
+        assert_eq!(y, 40.0);
+    }
+
+    #[test]
+    fn entry_anchor_halves_the_legacy_symmetric_dead_range_height() {
+        let (x, y) = wol_masterhand_entry_anchor(240.0, 180.0, 0.0, 0.0);
+        assert_eq!(x, 0.0);
+        assert_eq!(y, 40.0);
+    }
 }
