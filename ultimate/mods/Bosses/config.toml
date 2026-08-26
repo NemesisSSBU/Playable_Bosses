@@ -1,20 +1,46 @@
 [options]
+# true = bosses get up immediately after getting stunned
+# false = bosses play their full stun animation (default)
 FULL_STUN_DURATION = false
-GIGA_BOWSER_NORMAL = false
+
+# true = Giga Bowser has no knockback, only one(1) stock, limited HP (default is set at 600, you can change it below) (default)
+# false = Giga Bowser turns into his normal fighter version
+GIGA_BOWSER_NORMAL = true
+
+# true = World of Light Master Hand deals his normal hefty amounts of damage
+# false = nerfed damage for regular match balance (default)
 WOL_MASTER_HAND_NORMAL = true
+
+# true = detects the characters ui_chara name (default)
+# false = detects the character's name in game
+# typically you never need to touch this
 DETECT_CHARACTER_NAME = true
+
+# true = you have your own CSS and to not load in any bosses on the CSS or impact the CSS in any way
+# false = allow the mod to modify the CSS (default)
 CUSTOM_CSS = false
 
-# false = traditional individual boss CSS entries
+# false = traditional individual boss CSS entries (default)
 # true = one BOSSES slot using the existing Master Hand carrier
 # If true: Galleom: choose variant 4 (Ganon) and hold Shield through match load. (L/R)
 # If true: WOL Master Hand: choose variant 1 (Master Hand) and hold Shield through match load. (L/R)
 CONDENSE_BOSSES_INTO_SINGLE_SLOT = false
 
+# true = bosses can respawn (if they have stocks)
+# false = bosses cannot respawn (default)
 BOSS_RESPAWN = false
-BOSS_DIFFICULTY = 10.0
-DEBUG_BOSS_LOGS = false
 
+# This value is a float and goes from 0.0 - 10.0
+# this is similar to the intensity of bosses within Classic Mode
+BOSS_DIFFICULTY = 10.0
+
+# Developer use or extreme bug reporting (not needed for normal reports or normal players)
+# true = developer logs shown
+# false = developer logs not shown (default)
+DEBUG_BOSS_LOGS = true
+
+# true = Boss will appear on CSS (default)
+# false = Boss will not appear on CSS
 MASTER_HAND_CSS = true
 CRAZY_HAND_CSS = true
 DHARKON_CSS = true
@@ -27,6 +53,8 @@ RATHALOS_CSS = true
 GALLEOM_CSS = true
 WOL_MASTER_HAND_CSS = true
 
+# true = Boss Stages Selectable (default)
+# false = Boss Stage no longer appears on SSC
 MARX_STAGE = true
 GANON_STAGE = true
 DRACULA_STAGE = true
@@ -35,6 +63,7 @@ RATHALOS_STAGE = true
 FINAL2_STAGE = true
 FINAL3_STAGE = true
 
+# Boss HP
 MASTER_HAND_HP = 400.0
 CRAZY_HAND_HP = 400.0
 DHARKON_HP = 400.0
