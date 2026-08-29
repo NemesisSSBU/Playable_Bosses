@@ -55,6 +55,9 @@ static mut RESULT_BISECT_ALIVE_LOGGED: [bool; 8] = [false; 8];
 static mut BOSS_LIFECYCLE_GENERATION: [u32; 8] = [0; 8];
 static mut BOSS_LIFECYCLE_PHASE: [u8; 8] = [0; 8];
 static mut BOSS_LIFECYCLE_LAST_SIGNATURE: [u64; 8] = [u64::MAX; 8];
+static mut LAST_STARTED_BOSS_STAGE_BY_ENTRY: [i32; MAX_FIGHTERS] = [i32::MIN; MAX_FIGHTERS];
+static mut CLASSIC_CLEAR_CAMERA_ANCHORS: [ClassicClearCameraAnchor; MAX_FIGHTERS] =
+    [ClassicClearCameraAnchor::EMPTY; MAX_FIGHTERS];
 
 const LIFECYCLE_PHASE_PRE_MATCH: u8 = 1;
 const LIFECYCLE_PHASE_BATTLE: u8 = 2;
@@ -69,6 +72,152 @@ enum BossTransitionPhase {
     PostMatchPreResult,
     ResultReady,
     SceneExit,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+struct ClassicClearCameraAnchor {
+    position: [f32; 3],
+    generation: u32,
+    active: bool,
+    hold_logged: bool,
+}
+
+impl ClassicClearCameraAnchor {
+    const EMPTY: Self = Self {
+        position: [0.0; 3],
+        generation: 0,
+        active: false,
+        hold_logged: false,
+    };
+
+    fn capture(&mut self, position: [f32; 3], generation: u32) -> bool {
+        if position.iter().any(|component| !component.is_finite()) {
+            return false;
+        }
+        let first_capture = !self.active || self.generation != generation;
+        self.position = position;
+        self.generation = generation;
+        self.active = true;
+        self.hold_logged = false;
+        first_capture
+    }
+
+    fn hold_position(&self, generation: u32, phase: BossTransitionPhase) -> Option<[f32; 3]> {
+        (self.active
+            && self.generation == generation
+            && phase == BossTransitionPhase::PostMatchPreResult)
+            .then_some(self.position)
+    }
+
+    fn clear(&mut self) -> bool {
+        let was_active = self.active;
+        *self = Self::EMPTY;
+        was_active
+    }
+}
+
+#[inline(always)]
+unsafe fn clear_classic_clear_camera_anchor(entry_id: usize, reason: &'static str) {
+    let entry = entry_id.min(MAX_FIGHTERS - 1);
+    let mut anchor = CLASSIC_CLEAR_CAMERA_ANCHORS[entry];
+    if anchor.clear() {
+        CLASSIC_CLEAR_CAMERA_ANCHORS[entry] = anchor;
+        crate::boss_log!(
+            "[PB][ClassicClearCamera] action=release entry={} generation={} reason={}",
+            entry,
+            BOSS_LIFECYCLE_GENERATION[entry],
+            reason
+        );
+    }
+}
+
+/// Record the final safe fighter-host position after boss frames have already
+/// synchronized it. No boss object is queried by this bridge.
+#[inline(always)]
+unsafe fn capture_classic_clear_camera_anchor(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+) {
+    if module_accessor.is_null() || !boss_helpers::is_hidden_host(module_accessor) {
+        return;
+    }
+
+    let entry = boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1);
+    if !BOSS_MATCH_STARTED[entry] {
+        return;
+    }
+
+    let position = [
+        PostureModule::pos_x(module_accessor),
+        PostureModule::pos_y(module_accessor),
+        PostureModule::pos_z(module_accessor),
+    ];
+    let generation = BOSS_LIFECYCLE_GENERATION[entry];
+    let mut anchor = CLASSIC_CLEAR_CAMERA_ANCHORS[entry];
+    if anchor.capture(position, generation) {
+        crate::boss_log!(
+            "[PB][ClassicClearCamera] action=capture entry={} generation={} position=({:.3},{:.3},{:.3}) source=synchronized_hidden_host",
+            entry,
+            generation,
+            position[0],
+            position[1],
+            position[2]
+        );
+    }
+    CLASSIC_CLEAR_CAMERA_ANCHORS[entry] = anchor;
+}
+
+/// Classic's round-clear camera continues to follow the fighter after Ready-Go
+/// ends. Hold only the hidden host at its last safe battle position while boss
+/// objects remain under native teardown quarantine.
+#[inline(always)]
+unsafe fn maintain_classic_clear_camera_anchor(
+    module_accessor: *mut smash::app::BattleObjectModuleAccessor,
+    phase: BossTransitionPhase,
+) {
+    if module_accessor.is_null() {
+        return;
+    }
+
+    let entry = boss_helpers::entry_id(module_accessor).min(MAX_FIGHTERS - 1);
+    if matches!(
+        phase,
+        BossTransitionPhase::ResultReady | BossTransitionPhase::SceneExit
+    ) {
+        clear_classic_clear_camera_anchor(
+            entry,
+            if phase == BossTransitionPhase::ResultReady {
+                "result_ready"
+            } else {
+                "scene_exit"
+            },
+        );
+        return;
+    }
+
+    let generation = BOSS_LIFECYCLE_GENERATION[entry];
+    let mut anchor = CLASSIC_CLEAR_CAMERA_ANCHORS[entry];
+    let Some(position) = anchor.hold_position(generation, phase) else {
+        return;
+    };
+    let position_vector = smash::phx::Vector3f {
+        x: position[0],
+        y: position[1],
+        z: position[2],
+    };
+    PostureModule::set_pos(module_accessor, &position_vector);
+
+    if !anchor.hold_logged {
+        anchor.hold_logged = true;
+        CLASSIC_CLEAR_CAMERA_ANCHORS[entry] = anchor;
+        crate::boss_log!(
+            "[PB][ClassicClearCamera] action=hold entry={} generation={} position=({:.3},{:.3},{:.3}) phase=post_match_pre_result boss_item_access=false",
+            entry,
+            generation,
+            position[0],
+            position[1],
+            position[2]
+        );
+    }
 }
 
 #[inline(always)]
@@ -128,6 +277,34 @@ unsafe fn log_lifecycle_phase(
 /// Rebirth during an active stock match is intentionally excluded unless the
 /// previous result state is still latched, so normal respawns do not reset the
 /// boss runtime.
+#[inline]
+fn is_verified_new_round_boundary(
+    stale_result_state: bool,
+    entry_status: bool,
+    rebirth_after_result: bool,
+    replay_boundary: bool,
+    suppressed_entry_boundary: bool,
+    stage_transition_after_teardown: bool,
+) -> bool {
+    (stale_result_state || suppressed_entry_boundary)
+        && (entry_status
+            || rebirth_after_result
+            || replay_boundary
+            || stage_transition_after_teardown)
+}
+
+#[inline]
+fn is_classic_stage_transition_after_teardown(
+    tracking_invalidated: bool,
+    last_started_stage: i32,
+    current_stage: i32,
+) -> bool {
+    tracking_invalidated
+        && last_started_stage != i32::MIN
+        && current_stage != last_started_stage
+        && current_stage != boss_helpers::STAGE_ID_RESULT
+}
+
 #[inline(always)]
 unsafe fn reset_stale_match_generation_if_new_round(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
@@ -148,6 +325,18 @@ unsafe fn reset_stale_match_generation_if_new_round(
     let stale_result_state = POST_MATCH_PRE_RESULT[entry]
         || POST_MATCH_TRACKING_INVALIDATED[entry]
         || RESULT_MODE_SEEN[entry];
+    let last_started_stage = LAST_STARTED_BOSS_STAGE_BY_ENTRY[entry];
+    let stage_transition_after_teardown = is_classic_stage_transition_after_teardown(
+        POST_MATCH_TRACKING_INVALIDATED[entry],
+        last_started_stage,
+        stage_id,
+    );
+    // Result-scene cleanup may run on the old host before the next Classic
+    // host exists, clearing the result flags above. Its per-entry selection
+    // quarantine remains armed until either a real CSS transaction or the next
+    // native ENTRY, so this is the safe cross-scene continuation signal.
+    let suppressed_entry_boundary =
+        entry_status && selection::is_boss_selection_suppressed(module_accessor);
 
     // Spirit "Replay" reuses the scene: it never enters result mode, so
     // RESULT_MODE_SEEN stays false and the next battle's host is never seen in
@@ -173,7 +362,14 @@ unsafe fn reset_stale_match_generation_if_new_round(
     let replay_boundary =
         idle_pre_match && NEW_ROUND_IDLE_FRAMES[entry] >= NEW_ROUND_IDLE_FRAMES_REQUIRED;
 
-    if !stale_result_state || (!entry_status && !rebirth_after_result && !replay_boundary) {
+    if !is_verified_new_round_boundary(
+        stale_result_state,
+        entry_status,
+        rebirth_after_result,
+        replay_boundary,
+        suppressed_entry_boundary,
+        stage_transition_after_teardown,
+    ) {
         return false;
     }
     NEW_ROUND_IDLE_FRAMES[entry] = 0;
@@ -181,15 +377,19 @@ unsafe fn reset_stale_match_generation_if_new_round(
         "new_round_entry"
     } else if rebirth_after_result {
         "rebirth_after_result"
+    } else if stage_transition_after_teardown {
+        "classic_stage_transition"
     } else {
         "replay_idle_pre_match"
     };
+    clear_classic_clear_camera_anchor(entry, reset_reason);
 
     let previous_phase = lifecycle_phase_name(BOSS_LIFECYCLE_PHASE[entry]);
     // Clear the previous match's per-entry WOL secondary-selection latch
     // before resolving this new round. The fresh decision made below remains
     // armed for the new match rather than being cleared after resolution.
     selection::reset_condensed_selection(entry);
+    selection::arm_started_boss_selection_for_new_round(entry);
     let selected_ui_hash = selection::selected_css_boss_selector_id(module_accessor).unwrap_or(0);
 
     // This clears only the temporary scene suppression. The selected boss UI
@@ -220,10 +420,11 @@ unsafe fn reset_stale_match_generation_if_new_round(
         fighter_status
     );
     crate::boss_log!(
-        "[PB][MatchLifecycle] new_generation entry={} generation={} previous_phase={} reset_reason=new_round_entry stage=0x{:x} fighter_status={} selected_ui_hash=0x{:010x} selected_identity_preserved=true",
+        "[PB][MatchLifecycle] new_generation entry={} generation={} previous_phase={} reset_reason={} stage=0x{:x} fighter_status={} selected_ui_hash=0x{:010x} selected_identity_preserved=true",
         entry,
         BOSS_LIFECYCLE_GENERATION[entry],
         previous_phase,
+        reset_reason,
         stage_id,
         fighter_status,
         selected_ui_hash
@@ -236,7 +437,7 @@ unsafe fn reset_stale_match_generation_if_new_round(
         result_mode,
         fighter_status,
         selected_ui_hash,
-        "new_round_entry",
+        reset_reason,
     );
     true
 }
@@ -618,6 +819,9 @@ unsafe fn update_result_transition_state(
     // must not fall through to result-camera or boss-frame work merely because
     // that entry has no boss selection of its own.
     if ready_go && !result_mode && (hidden_host || selected_ui_hash != 0 || any_boss_active()) {
+        if hidden_host || selected_ui_hash != 0 {
+            LAST_STARTED_BOSS_STAGE_BY_ENTRY[entry_id] = stage_id;
+        }
         BOSS_HAD_READY_GO[entry_id] = true;
         // A boss battle has actually begun, so this selection is worth
         // remembering across a reboot. Browsing the CSS without starting a
@@ -1074,6 +1278,7 @@ unsafe fn cleanup_hidden_host_post_match_transition(
     // including when the next scene reports Ready-Go immediately.
     if RESULT_MODE_SEEN[entry_id] {
         let stage_id = smash::app::stage::get_stage_id();
+        clear_classic_clear_camera_anchor(entry_id, "result_scene_exit");
         TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE[entry_id] = u64::MAX;
         BOSS_LIFECYCLE_PHASE[entry_id] = LIFECYCLE_PHASE_SCENE_EXIT;
         log_lifecycle_phase(
@@ -1164,6 +1369,7 @@ unsafe fn cleanup_hidden_host_post_match_transition(
     }
 
     TRANSITION_DEBUG_LAST_DEFERRED_SIGNATURE[entry_id] = u64::MAX;
+    clear_classic_clear_camera_anchor(entry_id, "non_result_transition");
     selection::suppress_boss_selection_until_ready_go(entry_id);
     BOSS_MATCH_STARTED[entry_id] = false;
     selection::reset_condensed_selection(entry_id);
@@ -1328,7 +1534,10 @@ extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
             ai_diagnostics::log_item_host(module_accessor);
             ai_diagnostics::log_fighter_control_state(module_accessor);
             suppress_hidden_host_result_audio(module_accessor);
+            capture_classic_clear_camera_anchor(module_accessor);
         }
+
+        maintain_classic_clear_camera_anchor(module_accessor, transition_phase);
 
         // Normal boss frames are quarantined in ResultReady, so retain the
         // existing hidden-host audio suppression here rather than allowing a
@@ -4109,6 +4318,110 @@ pub fn main() {
     }
     if dracula_stage {
         callback_map_7::install("ui/param/database/ui_stage_db.prc", MAX_FILE_SIZE);
+    }
+}
+
+#[cfg(test)]
+mod classic_clear_camera_tests {
+    use super::{
+        is_classic_stage_transition_after_teardown, is_verified_new_round_boundary,
+        BossTransitionPhase, ClassicClearCameraAnchor,
+    };
+
+    #[test]
+    fn anchor_tracks_latest_position_and_holds_only_during_post_match_gap() {
+        let mut anchor = ClassicClearCameraAnchor::EMPTY;
+        assert!(anchor.capture([10.0, 20.0, 30.0], 4));
+        assert!(!anchor.capture([40.0, 50.0, 60.0], 4));
+
+        assert_eq!(
+            anchor.hold_position(4, BossTransitionPhase::PostMatchPreResult),
+            Some([40.0, 50.0, 60.0])
+        );
+        for phase in [
+            BossTransitionPhase::NotApplicable,
+            BossTransitionPhase::Battle,
+            BossTransitionPhase::ResultReady,
+            BossTransitionPhase::SceneExit,
+        ] {
+            assert_eq!(anchor.hold_position(4, phase), None);
+        }
+    }
+
+    #[test]
+    fn anchor_fails_closed_across_generations_and_after_release() {
+        let mut anchor = ClassicClearCameraAnchor::EMPTY;
+        anchor.capture([1.0, 2.0, 3.0], 7);
+
+        assert_eq!(
+            anchor.hold_position(8, BossTransitionPhase::PostMatchPreResult),
+            None
+        );
+        assert!(!anchor.capture([f32::NAN, 9.0, 9.0], 7));
+        assert_eq!(
+            anchor.hold_position(7, BossTransitionPhase::PostMatchPreResult),
+            Some([1.0, 2.0, 3.0])
+        );
+        assert!(anchor.clear());
+        assert!(!anchor.clear());
+        assert_eq!(
+            anchor.hold_position(7, BossTransitionPhase::PostMatchPreResult),
+            None
+        );
+    }
+
+    #[test]
+    fn anchors_are_independent_per_entry() {
+        let mut anchors = [ClassicClearCameraAnchor::EMPTY; 2];
+        anchors[0].capture([-15.0, 5.0, 0.0], 2);
+        anchors[1].capture([25.0, 45.0, 0.0], 2);
+
+        assert_eq!(
+            anchors[0].hold_position(2, BossTransitionPhase::PostMatchPreResult),
+            Some([-15.0, 5.0, 0.0])
+        );
+        assert_eq!(
+            anchors[1].hold_position(2, BossTransitionPhase::PostMatchPreResult),
+            Some([25.0, 45.0, 0.0])
+        );
+    }
+
+    #[test]
+    fn result_quarantine_can_bridge_a_cleared_result_state_into_native_entry() {
+        assert!(is_verified_new_round_boundary(
+            false, true, false, false, true, false
+        ));
+        assert!(!is_verified_new_round_boundary(
+            false, true, false, false, false, false
+        ));
+        assert!(!is_verified_new_round_boundary(
+            false, false, false, false, true, false
+        ));
+    }
+
+    #[test]
+    fn completed_teardown_and_stage_change_identify_a_classic_round_boundary() {
+        assert!(is_classic_stage_transition_after_teardown(true, 0x65, 0xe6));
+        assert!(!is_classic_stage_transition_after_teardown(
+            false, 0x65, 0xe6
+        ));
+        assert!(!is_classic_stage_transition_after_teardown(
+            true, 0x65, 0x65
+        ));
+        assert!(!is_classic_stage_transition_after_teardown(
+            true,
+            0x65,
+            crate::boss_helpers::STAGE_ID_RESULT
+        ));
+        assert!(is_verified_new_round_boundary(
+            true, false, false, false, false, true
+        ));
+        assert!(!is_verified_new_round_boundary(
+            false, false, false, false, false, true
+        ));
+        assert!(!is_verified_new_round_boundary(
+            true, false, false, false, false, false
+        ));
     }
 }
 

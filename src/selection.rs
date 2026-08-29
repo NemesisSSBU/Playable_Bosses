@@ -41,6 +41,11 @@ unsafe fn selection_txn_budget_take() -> bool {
 static mut CACHED_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
 static mut CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY: [OpaqueSelectionCacheOrigin; MAX_FIGHTERS] =
     [OpaqueSelectionCacheOrigin::None; MAX_FIGHTERS];
+// A verified battle identity can bridge Classic/Spirit round transitions where
+// FighterInformation has not republished the selector yet. It is armed only at
+// the shared new-round lifecycle boundary and never outranks live selection.
+static mut LAST_STARTED_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
+static mut ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
 static mut LAST_LOGGED_GLOBAL_CAPTURE_HASH: u64 = 0;
 static mut LAST_LOGGED_SELECTION_INFO_HASH: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut LAST_LOGGED_CSS_SELECTION_RAW: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
@@ -692,6 +697,7 @@ unsafe fn arm_opaque_selection_candidate(player_id: u32, payload_ptr: u64, hook:
     };
 
     crate::amiibo_preview::discard_unbound_identity_from_raw_selection_callback();
+    ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY[entry_idx] = 0;
     SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] = false;
     SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry_idx] = i32::MIN;
     reset_condensed_selection(entry_idx);
@@ -952,6 +958,8 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
             // saved boss. Ambiguous lookups and identity-free menu noise clear
             // at most the in-memory cache and never touch disk.
             if reason == "named_mario_selection" {
+                LAST_STARTED_BOSS_UI_HASH_BY_ENTRY[entry_idx] = 0;
+                ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY[entry_idx] = 0;
                 clear_persisted_selection(entry_idx);
             }
         }
@@ -1270,6 +1278,11 @@ fn resolve_current_boss_identity(
         .filter(|hash| is_boss_css_hash(*hash))
         .or_else(|| name_detection.filter(|hash| is_boss_css_hash(*hash)))
         .or_else(|| cache.filter(|hash| is_boss_css_hash(*hash)))
+}
+
+#[inline]
+fn resolve_with_round_continuation(current: Option<u64>, continuation: Option<u64>) -> Option<u64> {
+    current.or_else(|| continuation.filter(|hash| is_persistable_host_boss_hash(*hash)))
 }
 
 fn css_identity_label(value: u64) -> &'static str {
@@ -2114,6 +2127,8 @@ unsafe fn clear_persisted_selection(entry_id: usize) {
     if entry_id >= MAX_FIGHTERS || PERSISTED_SELECTION_SNAPSHOT[entry_id] == 0 {
         return;
     }
+    LAST_STARTED_BOSS_UI_HASH_BY_ENTRY[entry_id] = 0;
+    ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY[entry_id] = 0;
     PERSISTED_SELECTION_SNAPSHOT[entry_id] = 0;
     write_persisted_selection_file("clear_named_mario", entry_id, 0);
 }
@@ -2146,11 +2161,46 @@ pub unsafe fn persist_selection_for_started_battle(entry_id: usize, resolved_has
         return;
     }
     let hash = resolved_hash;
+    LAST_STARTED_BOSS_UI_HASH_BY_ENTRY[entry_id] = hash;
     if PERSISTED_SELECTION_SNAPSHOT[entry_id] == hash {
         return;
     }
     PERSISTED_SELECTION_SNAPSHOT[entry_id] = hash;
     write_persisted_selection_file("save_ready_go", entry_id, hash);
+}
+
+/// Reuse only the identity that this entry positively resolved in its previous
+/// battle. Classic and Spirit replays can create the next Mario host before
+/// FighterInformation republishes its selector; arming this bridge lets the
+/// normal pre-Ready-Go boss path take over during the entry animation.
+pub unsafe fn arm_started_boss_selection_for_new_round(entry_id: usize) -> Option<u64> {
+    if entry_id >= MAX_FIGHTERS {
+        return None;
+    }
+    let hash = LAST_STARTED_BOSS_UI_HASH_BY_ENTRY[entry_id];
+    if !is_persistable_host_boss_hash(hash) {
+        ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY[entry_id] = 0;
+        return None;
+    }
+    ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY[entry_id] = hash;
+    if crate::debug::enabled() {
+        crate::boss_log!(
+            "[PB][RoundContinuationSelection] action=arm entry={} boss={} hash=0x{:010x} source=last_started_battle",
+            entry_id,
+            css_identity_label(hash),
+            hash
+        );
+    }
+    Some(hash)
+}
+
+#[inline(always)]
+unsafe fn round_continuation_boss_hash(entry_id: i32) -> Option<u64> {
+    if entry_id < 0 || (entry_id as usize) >= MAX_FIGHTERS {
+        return None;
+    }
+    let hash = ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY[entry_id as usize];
+    is_persistable_host_boss_hash(hash).then_some(hash)
 }
 
 static mut SELECTOR_AUTHORITY_LOGGED: [bool; MAX_FIGHTERS] = [false; MAX_FIGHTERS];
@@ -2295,11 +2345,20 @@ pub unsafe fn selected_css_boss_selector_id(
     } else {
         None
     };
-    let selected = resolve_current_boss_identity(
+    let current = resolve_current_boss_identity(
         selected_boss_selector_id_from_runtime_sources(module_accessor),
         selected_boss_selector_id_from_character_name(module_accessor),
         cache,
     );
+    let round_continuation = round_continuation_boss_hash(entry_id);
+    let selected = resolve_with_round_continuation(current, round_continuation);
+
+    // A battle-confirmed continuation is already the resolved logical boss,
+    // including condensed secondary choices. Do not reinterpret it through the
+    // carrier color while that pre-match color data may still be unavailable.
+    if current.is_none() && round_continuation.is_some() {
+        return selected;
+    }
 
     if !condensed_mode_enabled() {
         return selected;
@@ -2396,6 +2455,7 @@ pub unsafe fn suppress_boss_selection_until_ready_go(entry_idx: usize) {
     if entry_idx >= MAX_FIGHTERS {
         return;
     }
+    ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY[entry_idx] = 0;
     let stage_id = smash::app::stage::get_stage_id();
     if !SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] {
         SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry_idx] = true;
@@ -2413,7 +2473,6 @@ pub unsafe fn suppress_boss_selection_until_ready_go(entry_idx: usize) {
     }
 }
 
-#[allow(dead_code)]
 pub unsafe fn is_boss_selection_suppressed(
     module_accessor: *mut BattleObjectModuleAccessor,
 ) -> bool {
@@ -2506,6 +2565,31 @@ mod persisted_selection_tests {
             }
             other => panic!("a named Mario pick must clear, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn current_identity_outranks_round_continuation() {
+        assert_eq!(
+            resolve_with_round_continuation(
+                Some(UI_CHARA_CRAZYHAND_HASH),
+                Some(UI_CHARA_MEWTWO_MASTERHAND_HASH),
+            ),
+            Some(UI_CHARA_CRAZYHAND_HASH)
+        );
+    }
+
+    #[test]
+    fn round_continuation_fills_only_a_valid_host_boss_identity_gap() {
+        assert_eq!(
+            resolve_with_round_continuation(None, Some(UI_CHARA_MEWTWO_MASTERHAND_HASH)),
+            Some(UI_CHARA_MEWTWO_MASTERHAND_HASH)
+        );
+        assert_eq!(
+            resolve_with_round_continuation(None, Some(UI_CHARA_KOOPAG_HASH)),
+            None,
+            "the dedicated Giga Bowser fighter must never use the Mario-host bridge"
+        );
+        assert_eq!(resolve_with_round_continuation(None, Some(0)), None);
     }
 }
 

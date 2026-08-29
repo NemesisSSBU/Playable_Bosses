@@ -282,7 +282,9 @@ const MASTER_KENZAN_SPAWN_X_OFFSET: f32 = 18.5;
 const CRAZY_KUMO_ASCENT: f32 = 70.0;
 const CRAZY_KUMO_DESCEND_FRAME: f32 = 110.0;
 const CRAZY_KUMO_GROUND_CLEARANCE: f32 = 0.1;
-const CRAZY_NOTAUTSU_GROUND_CLEARANCE: f32 = 0.1;
+const CRAZY_KUMO_VERTICAL_STEP_PER_MOTION_FRAME: f32 = 6.0;
+const CRAZY_KUMO_HITBOX_EARLY_CLEAR_FRAMES: f32 = 6.0;
+const CRAZY_NOTAUTSU_GROUND_CLEARANCE: f32 = 10.0;
 const MASTER_IRON_BALL_OFFSTAGE_LIMIT: i32 = 30;
 const MASTER_IRON_BALL_END_TAIL_FRAMES: f32 = 40.0;
 const MASTER_IRON_BALL_TRACK_MAX: usize = 4;
@@ -292,6 +294,75 @@ const FINDER_HAND_SPACING: f32 = 24.0;
 const FINDER_HAND_HEIGHT: f32 = 10.0;
 const FINDER_MASTER_HEIGHT_OFFSET: f32 = 70.0;
 const FINDER_COOLDOWN_DURATION: i32 = 240;
+const HAND_TEAM_BARK_FRAME_EPSILON: f32 = 0.01;
+
+#[inline(always)]
+fn bark_partner_frame_correction(
+    master_frame: f32,
+    crazy_frame: f32,
+    crazy_end_frame: f32,
+) -> Option<f32> {
+    if !master_frame.is_finite()
+        || !crazy_frame.is_finite()
+        || !crazy_end_frame.is_finite()
+        || crazy_end_frame <= 0.0
+    {
+        return None;
+    }
+
+    let target = master_frame.clamp(
+        0.0,
+        (crazy_end_frame - HAND_TEAM_BARK_FRAME_EPSILON).max(0.0),
+    );
+    if (crazy_frame - target).abs() > HAND_TEAM_BARK_FRAME_EPSILON {
+        Some(target)
+    } else {
+        None
+    }
+}
+
+#[inline(always)]
+fn bark_partner_should_finish(
+    paired_bark_active: bool,
+    shared_bark_active: bool,
+    crazy_frame: f32,
+    crazy_end_frame: f32,
+) -> bool {
+    if paired_bark_active {
+        !shared_bark_active
+    } else {
+        crazy_frame >= crazy_end_frame - 10.0
+    }
+}
+
+#[inline(always)]
+fn crazy_kumo_y_for_motion_frame(start_y: f32, floor_y: f32, motion_frame: f32) -> f32 {
+    let frame = if motion_frame.is_finite() {
+        motion_frame.max(0.0)
+    } else {
+        0.0
+    };
+    let top_y = start_y + CRAZY_KUMO_ASCENT;
+
+    if frame < CRAZY_KUMO_DESCEND_FRAME {
+        let ascent =
+            ((frame + 1.0) * CRAZY_KUMO_VERTICAL_STEP_PER_MOTION_FRAME).min(CRAZY_KUMO_ASCENT);
+        start_y + ascent
+    } else {
+        let descent =
+            (frame - CRAZY_KUMO_DESCEND_FRAME + 1.0) * CRAZY_KUMO_VERTICAL_STEP_PER_MOTION_FRAME;
+        (top_y - descent).max(floor_y + CRAZY_KUMO_GROUND_CLEARANCE)
+    }
+}
+
+#[inline(always)]
+fn crazy_kumo_should_clear_attack(motion_frame: f32, end_frame: f32) -> bool {
+    if !motion_frame.is_finite() || !end_frame.is_finite() || end_frame <= 0.0 {
+        return false;
+    }
+    let tail_start = (end_frame - CRAZY_KUMO_END_TAIL_FRAMES).max(0.0);
+    motion_frame >= (tail_start - CRAZY_KUMO_HITBOX_EARLY_CLEAR_FRAMES).max(0.0)
+}
 
 #[inline(always)]
 unsafe fn boss_floor_y(
@@ -1420,6 +1491,46 @@ unsafe fn hand_team_authority_active_for_boma(boma: *mut BattleObjectModuleAcces
         || (HAND_TEAM_CRAZY_ID != 0
             && sv_battle_object::is_active(HAND_TEAM_CRAZY_ID)
             && sv_battle_object::module_accessor(HAND_TEAM_CRAZY_ID) == boma)
+}
+
+#[inline(always)]
+unsafe fn sync_hand_team_bark_partner(crazy_boma: *mut BattleObjectModuleAccessor) -> bool {
+    if HAND_TEAM_ACTION != HAND_TEAM_ACTION_BARK
+        || !hand_team_authority_active_for_boma(crazy_boma)
+        || HAND_TEAM_MASTER_ID == 0
+        || !sv_battle_object::is_active(HAND_TEAM_MASTER_ID)
+    {
+        return false;
+    }
+
+    let master_boma = sv_battle_object::module_accessor(HAND_TEAM_MASTER_ID);
+    if master_boma.is_null()
+        || MotionModule::motion_kind(master_boma) != smash::hash40("bark")
+        || MotionModule::motion_kind(crazy_boma) != smash::hash40("bark")
+    {
+        return false;
+    }
+
+    let master_rate = MotionModule::rate(master_boma);
+    if master_rate.is_finite()
+        && master_rate >= 0.0
+        && (MotionModule::rate(crazy_boma) - master_rate).abs() > HAND_TEAM_BARK_FRAME_EPSILON
+    {
+        MotionModule::set_rate(crazy_boma, master_rate);
+        ItemMotionAnimcmdModuleImpl::set_fix_rate(crazy_boma, master_rate);
+    }
+
+    if let Some(target_frame) = bark_partner_frame_correction(
+        MotionModule::frame(master_boma),
+        MotionModule::frame(crazy_boma),
+        MotionModule::end_frame(crazy_boma),
+    ) {
+        // Master owns the hitbox and therefore the impact pause. Keep Crazy's
+        // cosmetic motion on that same clock without replaying animation commands.
+        MotionModule::set_frame(crazy_boma, target_frame, false);
+    }
+
+    true
 }
 
 #[inline(always)]
@@ -9148,14 +9259,26 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                     );
                     HitModule::set_whole(boss_boma_2, smash::app::HitStatus(*HIT_STATUS_NORMAL), 0);
 
+                    let mut has_active_attack = false;
                     for i in 0..10 {
                         if AttackModule::is_attack(boss_boma_2, i, false) {
+                            has_active_attack = true;
                             AttackModule::set_target_category(
                                 boss_boma_2,
                                 i,
                                 *COLLISION_CATEGORY_MASK_ALL as u32,
                             );
                         }
+                    }
+                    if has_active_attack
+                        && StatusModule::status_kind(boss_boma_2)
+                            == *ITEM_CRAZYHAND_STATUS_KIND_KUMO
+                        && crazy_kumo_should_clear_attack(
+                            MotionModule::frame(boss_boma_2),
+                            MotionModule::end_frame(boss_boma_2),
+                        )
+                    {
+                        AttackModule::clear_all(boss_boma_2);
                     }
 
                     if sv_information::is_ready_go() == true {
@@ -9764,11 +9887,13 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         }
 
                         if MotionModule::motion_kind(boss_boma_2) == hash40("bark") {
-                            MotionModule::set_rate(boss_boma_2, 1.0);
-                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(
-                                boss_boma_2,
-                                1.0,
-                            );
+                            if !sync_hand_team_bark_partner(boss_boma_2) {
+                                MotionModule::set_rate(boss_boma_2, 1.0);
+                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(
+                                    boss_boma_2,
+                                    1.0,
+                                );
+                            }
                             if smash::app::lua_bind::PostureModule::lr(boss_boma_2) == 1.0 {
                                 // right
                                 let master_pos = Vector3f {
@@ -9905,10 +10030,19 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             }
                         }
 
-                        if MotionModule::frame(boss_boma_2)
-                            >= MotionModule::end_frame(boss_boma_2) - 10.0
-                            && MotionModule::motion_kind(boss_boma_2) == hash40("bark")
+                        let crazy_bark_motion =
+                            MotionModule::motion_kind(boss_boma_2) == hash40("bark");
+                        let paired_bark_active = crazy_bark_motion
+                            && HAND_TEAM_ACTION == HAND_TEAM_ACTION_BARK
+                            && hand_team_authority_active_for_boma(boss_boma_2);
+                        if crazy_bark_motion
                             && !DEAD_2
+                            && bark_partner_should_finish(
+                                paired_bark_active,
+                                BARK,
+                                MotionModule::frame(boss_boma_2),
+                                MotionModule::end_frame(boss_boma_2),
+                            )
                         {
                             MotionModule::set_rate(boss_boma_2, 1.0);
                             smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(
@@ -12152,16 +12286,11 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                 }
                                 if let Some(floor_y) = boss_floor_y(module_accessor, boss_boma_2) {
                                     if !CRAZY_KUMO_ENDING {
-                                        let current_y = PostureModule::pos_y(boss_boma_2);
-                                        let target_y = CRAZY_KUMO_START_Y + CRAZY_KUMO_ASCENT;
-                                        let next_y = if MotionModule::frame(boss_boma_2)
-                                            < CRAZY_KUMO_DESCEND_FRAME
-                                        {
-                                            (current_y + 6.0).min(target_y)
-                                        } else {
-                                            let grounded_y = floor_y + CRAZY_KUMO_GROUND_CLEARANCE;
-                                            (current_y - 6.0).max(grounded_y)
-                                        };
+                                        let next_y = crazy_kumo_y_for_motion_frame(
+                                            CRAZY_KUMO_START_Y,
+                                            floor_y,
+                                            MotionModule::frame(boss_boma_2),
+                                        );
                                         PostureModule::set_pos(
                                             boss_boma_2,
                                             &Vector3f {
@@ -12874,4 +13003,76 @@ pub unsafe fn crazy_frame(fighter: &mut L2CFighterCommon) {
         return;
     }
     once_per_fighter_frame_2(fighter);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        bark_partner_frame_correction, bark_partner_should_finish, crazy_kumo_should_clear_attack,
+        crazy_kumo_y_for_motion_frame, CRAZY_FLOAT_FLOOR_CLEARANCE, CRAZY_KUMO_ASCENT,
+        CRAZY_NOTAUTSU_GROUND_CLEARANCE,
+    };
+
+    fn assert_near(actual: f32, expected: f32) {
+        assert!((actual - expected).abs() < 0.001, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn kumo_height_is_idempotent_during_a_delayed_motion_frame() {
+        let first = crazy_kumo_y_for_motion_frame(10.0, 0.0, 5.0);
+        let delayed = crazy_kumo_y_for_motion_frame(10.0, 0.0, 5.0);
+
+        assert_near(first, 46.0);
+        assert_near(delayed, first);
+    }
+
+    #[test]
+    fn kumo_descent_catches_up_when_motion_frames_skip() {
+        let top_y = 10.0 + CRAZY_KUMO_ASCENT;
+
+        assert_near(crazy_kumo_y_for_motion_frame(10.0, 0.0, 109.0), top_y);
+        assert_near(crazy_kumo_y_for_motion_frame(10.0, 0.0, 110.0), top_y - 6.0);
+        assert_near(
+            crazy_kumo_y_for_motion_frame(10.0, 0.0, 113.0),
+            top_y - 24.0,
+        );
+    }
+
+    #[test]
+    fn kumo_descent_finishes_at_the_live_floor() {
+        assert_near(crazy_kumo_y_for_motion_frame(0.1, 0.0, 121.0), 0.1);
+        assert_near(crazy_kumo_y_for_motion_frame(20.1, 20.0, 121.0), 20.1);
+    }
+
+    #[test]
+    fn kumo_hitbox_ends_six_frames_before_the_non_attacking_tail() {
+        assert!(!crazy_kumo_should_clear_attack(113.99, 165.0));
+        assert!(crazy_kumo_should_clear_attack(114.0, 165.0));
+        assert!(!crazy_kumo_should_clear_attack(f32::NAN, 165.0));
+    }
+
+    #[test]
+    fn notautsu_uses_move_specific_body_clearance() {
+        assert_near(CRAZY_NOTAUTSU_GROUND_CLEARANCE, 10.0);
+        assert!(CRAZY_NOTAUTSU_GROUND_CLEARANCE > CRAZY_FLOAT_FLOOR_CLEARANCE);
+    }
+
+    #[test]
+    fn paired_bark_rewinds_crazy_to_master_after_impact_pause() {
+        let correction = bark_partner_frame_correction(42.0, 48.0, 120.0);
+
+        assert_near(correction.expect("Crazy should be corrected"), 42.0);
+    }
+
+    #[test]
+    fn paired_bark_does_not_finish_while_master_is_still_attacking() {
+        assert!(!bark_partner_should_finish(true, true, 119.0, 120.0));
+        assert!(bark_partner_should_finish(true, false, 42.0, 120.0));
+    }
+
+    #[test]
+    fn standalone_bark_keeps_its_native_completion_rule() {
+        assert!(!bark_partner_should_finish(false, true, 109.0, 120.0));
+        assert!(bark_partner_should_finish(false, true, 110.0, 120.0));
+    }
 }
