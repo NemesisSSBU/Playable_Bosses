@@ -2566,7 +2566,7 @@ pub fn install() {
     if legacy_hooks {
         skyline::install_hook!(update_css_cache);
     } else {
-        println!("[PB][Compatibility] limited_13_0_5_build: auxiliary_selection_hooks, character_name_detection, and hand_item_hooks unavailable until their offsets are verified");
+        println!("[PB][Compatibility] limited_13_0_5_build: auxiliary_selection_hooks, character_name_detection, and crazy_hand_inline_hooks unavailable; Master Hand item hooks require a verified module build");
     }
     skyline::install_hook!(capture_lookup_fighter_kind_from_ui_hash);
     if legacy_hooks {

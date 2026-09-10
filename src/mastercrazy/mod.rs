@@ -67,7 +67,7 @@ static mut CONTROLLABLE: bool = true;
 static mut ENTRY_ID: usize = 0;
 static mut BOSS_ID: [u32; 8] = [0; 8];
 pub static mut FIGHTER_MANAGER: usize = 0;
-static mut MULTIPLE_BULLETS: usize = 0;
+static mut MULTIPLE_BULLETS: [usize; 8] = [0; 8];
 static mut DEAD: bool = false;
 static mut JUMP_START: bool = false;
 static mut RESULT_SPAWNED: bool = false;
@@ -274,6 +274,75 @@ static mut CH_CHARIOT_RADIUS_MAX: usize = 0x36c0fc;
 
 static MASTERCRAZY_ITEM_HOOKS_ONCE: Once = Once::new();
 static MASTERCRAZY_NRO_HOOK_ONCE: Once = Once::new();
+
+// The local 13.0.4 and 13.0.5 item modules have identical contents.
+const HAND_ITEM_BUILD_ID: [u8; 32] = [
+    0x6a, 0x46, 0x7d, 0x27, 0x97, 0xfe, 0x8f, 0xe8, 0x5e, 0xb4, 0xf3, 0xb7, 0xf9, 0x9e, 0x70, 0x0a,
+    0x9d, 0x37, 0xaa, 0x83, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
+fn supports_master_item_hooks(version: (u16, u16, u16), build_id: &[u8; 32]) -> bool {
+    selection::supports_legacy_fixed_offsets(version)
+        || (version == (13, 0, 5) && build_id == &HAND_ITEM_BUILD_ID)
+}
+
+fn master_chakram_positions(pos: Vector3f) -> [Vector3f; 2] {
+    [
+        Vector3f {
+            x: pos.x,
+            y: pos.y + 20.0,
+            z: pos.z,
+        },
+        Vector3f {
+            x: pos.x,
+            y: pos.y + 10.0,
+            z: pos.z,
+        },
+    ]
+}
+
+unsafe fn spawn_master_chakram(
+    host: *mut BattleObjectModuleAccessor,
+    pos: &Vector3f,
+    lr: f32,
+    shoot_action: i32,
+) {
+    ItemModule::have_item(
+        host,
+        ItemKind(*ITEM_KIND_MASTERHANDCHAKRAM),
+        0,
+        0,
+        false,
+        false,
+    );
+    SoundModule::stop_se(host, Hash40::new("se_item_item_get"), 0);
+    let id = ItemModule::get_have_item_id(host, 0) as u32;
+    if !sv_battle_object::is_active(id) {
+        return;
+    }
+    let chakram = sv_battle_object::module_accessor(id);
+    if chakram.is_null() {
+        return;
+    }
+    LinkModule::remove_model_constraint(chakram, true);
+    PostureModule::set_pos(chakram, pos);
+    PostureModule::set_lr(chakram, lr);
+    action(chakram, shoot_action, 0.0);
+}
+
+fn take_master_bullet_followup(remaining: &mut usize, status: i32) -> bool {
+    if status == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_END {
+        if *remaining > 0 {
+            *remaining -= 1;
+            return true;
+        }
+    } else if status != *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING
+        && status != *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU
+    {
+        *remaining = 0;
+    }
+    false
+}
 
 const MASTER_FLOAT_FLOOR_CLEARANCE: f32 = 0.1;
 const CRAZY_FLOAT_FLOOR_CLEARANCE: f32 = 0.1;
@@ -2805,7 +2874,7 @@ unsafe fn reset_master_runtime_for_spawn() {
     }
     JUMP_START = false;
     STOP = false;
-    MULTIPLE_BULLETS = 0;
+    MULTIPLE_BULLETS[ENTRY_ID] = 0;
     MASTER_LAST_IRON_BALL_ID = 0;
     MASTER_IRON_BALL_IDS = [0; 4];
     MASTER_IRON_BALL_OFFSTAGE_FRAMES = 0;
@@ -2881,7 +2950,7 @@ pub unsafe fn invalidate_transition_tracking(entry_id: usize) {
     ENTRY_ID = entry;
     FIGHTER_MANAGER = 0;
     BOSS_ID[entry] = 0;
-    MULTIPLE_BULLETS = 0;
+    MULTIPLE_BULLETS[entry] = 0;
     DEAD = false;
     JUMP_START = false;
     RESULT_SPAWNED = false;
@@ -3054,7 +3123,7 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     CONTROLLABLE = true;
     ENTRY_ID = entry;
     BOSS_ID[entry] = 0;
-    MULTIPLE_BULLETS = 0;
+    MULTIPLE_BULLETS[entry] = 0;
     DEAD = false;
     JUMP_START = false;
     RESULT_SPAWNED = false;
@@ -3839,22 +3908,30 @@ fn nro_hook(info: &skyline::nro::NroInfo) {
     if info.name == "item" {
         MASTERCRAZY_ITEM_HOOKS_ONCE.call_once(|| unsafe {
             let version = *crate::selection::TITLE_VERSION;
-            if !crate::selection::supports_legacy_fixed_offsets(version) {
+            let legacy_hooks = selection::supports_legacy_fixed_offsets(version);
+            let module_base = (*info.module.ModuleObject).module_base as usize;
+            let build_id = if version == (13, 0, 5) {
+                std::ptr::read_unaligned((module_base + 0x40) as *const [u8; 32])
+            } else {
+                [0; 32]
+            };
+            if !supports_master_item_hooks(version, &build_id) {
                 println!(
-                    "[PB][HandItemHooks] version={}.{}.{} skipped=unverified_item_offsets native_item_code_unchanged",
+                    "[PB][HandItemHooks] version={}.{}.{} skipped=unverified_item_build native_item_code_unchanged",
                     version.0, version.1, version.2
                 );
                 return;
             }
-            let module_base = (*info.module.ModuleObject).module_base as usize;
-            CH_FIRE_CHARIOT_MOTION += module_base;
-            skyline::install_hook!(ch_chariot_motion);
-            CH_CHARIOT_SPEED += module_base;
-            skyline::install_hook!(ch_chariot_speed);
-            CH_CHARIOT_RADIUS_MAX += module_base;
-            skyline::install_hook!(ch_chariot_radius_max);
-            CH_CHARIOT_RADIUS_MIN += module_base;
-            skyline::install_hook!(ch_chariot_radius_min);
+            if legacy_hooks {
+                CH_FIRE_CHARIOT_MOTION += module_base;
+                skyline::install_hook!(ch_chariot_motion);
+                CH_CHARIOT_SPEED += module_base;
+                skyline::install_hook!(ch_chariot_speed);
+                CH_CHARIOT_RADIUS_MAX += module_base;
+                skyline::install_hook!(ch_chariot_radius_max);
+                CH_CHARIOT_RADIUS_MIN += module_base;
+                skyline::install_hook!(ch_chariot_radius_min);
+            }
             MH_WAIT_TIME_SETTING += module_base;
             skyline::install_hook!(mh_wait_time_setting);
             MH_CHAKRAM_THROW_SUB += module_base;
@@ -3863,6 +3940,10 @@ fn nro_hook(info: &skyline::nro::NroInfo) {
             skyline::install_hook!(mh_iron_ball_throw_sub);
             MH_KENZAN_NEEDLE_SUB += module_base;
             skyline::install_hook!(mh_kenzan_needle_sub);
+            println!(
+                "[PB][HandItemHooks] version={}.{}.{} master_hooks=true chariot_hooks={} wait_time=0x54cd90 chakram=0x5643f0 iron_ball=0x569d50 kenzan_needle=0x56e7f0",
+                version.0, version.1, version.2, legacy_hooks
+            );
         });
     }
 }
@@ -7323,7 +7404,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     *CONTROL_PAD_BUTTON_SPECIAL,
                                 ) == false
                                 {
-                                    MULTIPLE_BULLETS = 0;
+                                    MULTIPLE_BULLETS[ENTRY_ID] = 0;
                                     StatusModule::change_status_request_from_script(
                                         boss_boma,
                                         *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU,
@@ -7335,57 +7416,45 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     *CONTROL_PAD_BUTTON_SPECIAL,
                                 ) == true
                                 {
-                                    MULTIPLE_BULLETS = 2;
+                                    MULTIPLE_BULLETS[ENTRY_ID] = 2;
                                 }
                             } else {
-                                MULTIPLE_BULLETS = 2;
+                                MULTIPLE_BULLETS[ENTRY_ID] = 2;
                             }
                         }
 
-                        if StatusModule::status_kind(boss_boma)
-                            != *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU
-                            && !DEAD
+                        if !DEAD
+                            && !StopModule::is_stop(boss_boma)
+                            && take_master_bullet_followup(
+                                &mut MULTIPLE_BULLETS[ENTRY_ID],
+                                StatusModule::status_kind(boss_boma),
+                            )
                         {
-                            if StatusModule::status_kind(boss_boma)
-                                != *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING
-                            {
-                                if MULTIPLE_BULLETS != 0 {
-                                    StatusModule::change_status_request_from_script(
-                                        boss_boma,
-                                        *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU,
-                                        true,
-                                    );
-                                    MULTIPLE_BULLETS = MULTIPLE_BULLETS - 1;
-                                }
-                            }
+                            StatusModule::change_status_request_from_script(
+                                boss_boma,
+                                *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU,
+                                true,
+                            );
                         }
 
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_END
                         {
-                            if MULTIPLE_BULLETS != 0 {
-                                MotionModule::set_rate(boss_boma, 1.0);
-                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(
-                                    boss_boma, 1.0,
-                                );
-                            }
-                            if MULTIPLE_BULLETS == 0 {
-                                MotionModule::set_rate(boss_boma, 1.0);
-                                smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(
-                                    boss_boma, 1.0,
-                                );
-                            }
+                            MotionModule::set_rate(boss_boma, 1.0);
+                            smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(
+                                boss_boma, 1.0,
+                            );
                         }
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU
                         {
-                            if MULTIPLE_BULLETS != 0 {
+                            if MULTIPLE_BULLETS[ENTRY_ID] != 0 {
                                 MotionModule::set_rate(boss_boma, 5.0);
                                 smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(
                                     boss_boma, 5.0,
                                 );
                             }
-                            if MULTIPLE_BULLETS == 0 {
+                            if MULTIPLE_BULLETS[ENTRY_ID] == 0 {
                                 MotionModule::set_rate(boss_boma, 1.0);
                                 smash::app::lua_bind::ItemMotionAnimcmdModuleImpl::set_fix_rate(
                                     boss_boma, 1.0,
@@ -7394,7 +7463,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
 
                         if CONTROLLABLE {
-                            MULTIPLE_BULLETS = 0;
+                            MULTIPLE_BULLETS[ENTRY_ID] = 0;
                         }
 
                         if StatusModule::status_kind(boss_boma)
@@ -7646,63 +7715,24 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             && !DEAD
                         {
                             ItemModule::remove_item(module_accessor, 0);
-                            ItemModule::have_item(
+                            let positions = master_chakram_positions(Vector3f {
+                                x: PostureModule::pos_x(boss_boma),
+                                y: PostureModule::pos_y(boss_boma),
+                                z: PostureModule::pos_z(boss_boma),
+                            });
+                            let lr = PostureModule::lr(boss_boma);
+                            spawn_master_chakram(
                                 module_accessor,
-                                ItemKind(*ITEM_KIND_MASTERHANDCHAKRAM),
-                                0,
-                                0,
-                                false,
-                                false,
+                                &positions[0],
+                                lr,
+                                *ITEM_MASTERHANDCHAKRAM_ACTION_SHOOT3,
                             );
-                            SoundModule::stop_se(
+                            spawn_master_chakram(
                                 module_accessor,
-                                smash::phx::Hash40::new("se_item_item_get"),
-                                0,
+                                &positions[1],
+                                lr,
+                                *ITEM_MASTERHANDCHAKRAM_ACTION_SHOOT2,
                             );
-                            let chakram1_boma = sv_battle_object::module_accessor(
-                                ItemModule::get_have_item_id(module_accessor, 0) as u32,
-                            );
-                            if lua_bind::PostureModule::lr(boss_boma) == -1.0 {
-                                // left
-                                smash::app::lua_bind::PostureModule::set_lr(chakram1_boma, -1.0);
-                            }
-                            if lua_bind::PostureModule::lr(boss_boma) == 1.0 {
-                                // right
-                                smash::app::lua_bind::PostureModule::set_lr(chakram1_boma, 1.0);
-                            }
-                            action(chakram1_boma, *ITEM_MASTERHANDCHAKRAM_ACTION_SHOOT3, 0.0);
-
-                            ItemModule::have_item(
-                                module_accessor,
-                                ItemKind(*ITEM_KIND_MASTERHANDCHAKRAM),
-                                0,
-                                0,
-                                false,
-                                false,
-                            );
-                            SoundModule::stop_se(
-                                module_accessor,
-                                smash::phx::Hash40::new("se_item_item_get"),
-                                0,
-                            );
-                            let chakram2_boma = sv_battle_object::module_accessor(
-                                ItemModule::get_have_item_id(module_accessor, 0) as u32,
-                            );
-                            let chakram2_pos = Vector3f {
-                                x: PostureModule::pos_x(chakram1_boma),
-                                y: PostureModule::pos_y(chakram1_boma) - 10.0,
-                                z: PostureModule::pos_z(chakram1_boma),
-                            };
-                            LinkModule::remove_model_constraint(chakram2_boma, true);
-                            PostureModule::set_pos(chakram2_boma, &chakram2_pos);
-                            if lua_bind::PostureModule::lr(boss_boma) == -1.0 {
-                                // left
-                                smash::app::lua_bind::PostureModule::set_lr(chakram2_boma, -1.0);
-                            }
-                            if lua_bind::PostureModule::lr(boss_boma) == 1.0 {
-                                // right
-                                smash::app::lua_bind::PostureModule::set_lr(chakram2_boma, 1.0);
-                            }
                             SoundModule::play_se(
                                 boss_boma,
                                 Hash40::new("se_boss_masterhand_chakram_fly"),
@@ -7712,7 +7742,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 false,
                                 smash::app::enSEType(0),
                             );
-                            action(chakram2_boma, *ITEM_MASTERHANDCHAKRAM_ACTION_SHOOT2, 0.0);
                         }
                         if MotionModule::frame(boss_boma)
                             >= MotionModule::end_frame(boss_boma) - 2.0
@@ -13017,12 +13046,80 @@ pub unsafe fn crazy_frame(fighter: &mut L2CFighterCommon) {
 mod tests {
     use super::{
         bark_partner_frame_correction, bark_partner_should_finish, crazy_kumo_should_clear_attack,
-        crazy_kumo_y_for_motion_frame, CRAZY_FLOAT_FLOOR_CLEARANCE, CRAZY_KUMO_ASCENT,
-        CRAZY_NOTAUTSU_GROUND_CLEARANCE,
+        crazy_kumo_y_for_motion_frame, master_chakram_positions, supports_master_item_hooks,
+        take_master_bullet_followup, CRAZY_FLOAT_FLOOR_CLEARANCE, CRAZY_KUMO_ASCENT,
+        CRAZY_NOTAUTSU_GROUND_CLEARANCE, HAND_ITEM_BUILD_ID,
     };
+    use smash::{lib::lua_const::*, phx::Vector3f};
 
     fn assert_near(actual: f32, expected: f32) {
         assert!((actual - expected).abs() < 0.001, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn master_item_hooks_preserve_legacy_and_require_the_verified_1305_module() {
+        for patch in 1..=4 {
+            assert!(supports_master_item_hooks((13, 0, patch), &[0; 32]));
+        }
+        assert!(supports_master_item_hooks((13, 0, 5), &HAND_ITEM_BUILD_ID));
+        for byte in 0..32 {
+            let mut other_build = HAND_ITEM_BUILD_ID;
+            other_build[byte] ^= 1;
+            assert!(!supports_master_item_hooks((13, 0, 5), &other_build));
+        }
+        for version in [(0, 0, 0), (13, 0, 0), (13, 0, 6), (14, 0, 0)] {
+            assert!(!supports_master_item_hooks(version, &HAND_ITEM_BUILD_ID));
+        }
+    }
+
+    #[test]
+    fn chakrams_follow_the_hand_with_the_original_height_and_pair_spacing() {
+        for (x, y, z) in [(-180.0, -75.0, 0.0), (170.0, 120.0, 3.0), (0.0, 0.1, 0.0)] {
+            let rings = master_chakram_positions(Vector3f { x, y, z });
+            assert_near(rings[0].y, y + 20.0);
+            assert_near(rings[0].y - rings[1].y, 10.0);
+            for ring in rings {
+                assert_near(ring.x, x);
+                assert_near(ring.z, z);
+            }
+        }
+    }
+
+    #[test]
+    fn charged_bullets_are_slot_local_and_do_not_restart_interrupted_moves() {
+        let mut remaining = [2, 2];
+        for status in [
+            *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_HOMING,
+            *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU,
+        ] {
+            assert!(!take_master_bullet_followup(&mut remaining[0], status));
+            assert_eq!(remaining, [2, 2]);
+        }
+        for expected in [1, 0] {
+            assert!(take_master_bullet_followup(
+                &mut remaining[0],
+                *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_END
+            ));
+            assert_eq!(remaining, [expected, 2]);
+        }
+        assert!(!take_master_bullet_followup(
+            &mut remaining[0],
+            *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_END
+        ));
+        for interrupted in [
+            *ITEM_MASTERHAND_STATUS_KIND_DOWN_START,
+            *ITEM_MASTERHAND_STATUS_KIND_WAIT_TIME,
+            *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_START,
+            *ITEM_STATUS_KIND_DEAD,
+        ] {
+            remaining[1] = 2;
+            assert!(!take_master_bullet_followup(&mut remaining[1], interrupted));
+            assert_eq!(remaining, [0, 0]);
+            assert!(!take_master_bullet_followup(
+                &mut remaining[1],
+                *ITEM_MASTERHAND_STATUS_KIND_YUBIDEPPOU_END
+            ));
+        }
     }
 
     #[test]
