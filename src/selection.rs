@@ -46,6 +46,7 @@ static mut CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY: [OpaqueSelectionCacheOrigin; MAX
 // the shared new-round lifecycle boundary and never outranks live selection.
 static mut LAST_STARTED_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
 static mut ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
+static mut PENDING_FIGHTER_LOAD_BOUNDARY: [bool; MAX_FIGHTERS] = [false; MAX_FIGHTERS];
 static mut LAST_LOGGED_GLOBAL_CAPTURE_HASH: u64 = 0;
 static mut LAST_LOGGED_SELECTION_INFO_HASH: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
 static mut LAST_LOGGED_CSS_SELECTION_RAW: [u64; MAX_FIGHTERS] = [u64::MAX; MAX_FIGHTERS];
@@ -74,6 +75,7 @@ enum OpaqueSelectionCacheOrigin {
     /// outrank Restored until an independent corroboration signal exists.
     CandidateUiLookup,
     ConfirmedCondensedCarrier,
+    ConfirmedFighterLoad,
     /// Restored from disk at plugin load. Bootstrap fallback only: weaker than
     /// any positively resolved current-session identity (corroborated CSS
     /// selection, character name, live summon/log selector). Kept distinct so
@@ -226,20 +228,25 @@ enum OpaqueSelectionCommit {
     },
 }
 
-static TITLE_VERSION: Lazy<(u16, u16, u16)> = Lazy::new(|| unsafe {
+pub(crate) static TITLE_VERSION: Lazy<(u16, u16, u16)> = Lazy::new(|| unsafe {
     Initialize();
     let mut display_version = DisplayVersion { name: [0; 16] };
     GetDisplayVersion(&mut display_version);
-    let name = std::str::from_utf8(&display_version.name)
+    std::str::from_utf8(&display_version.name)
+        .ok()
+        .and_then(parse_title_version)
         .unwrap_or_default()
-        .trim_end_matches(char::from(0))
-        .to_string();
-    let mut parts = name.split('.').filter_map(|s| s.parse::<u16>().ok());
-    let major = parts.next().unwrap_or(0);
-    let minor = parts.next().unwrap_or(0);
-    let micro = parts.next().unwrap_or(0);
-    (major, minor, micro)
 });
+
+fn parse_title_version(name: &str) -> Option<(u16, u16, u16)> {
+    let mut parts = name.trim_end_matches('\0').split('.');
+    let version = (
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+    );
+    parts.next().is_none().then_some(version)
+}
 
 const UI_CHARA_KOOPAG_SELECTOR: i32 = 0x18E;
 const UI_CHARA_MASTERHAND_SELECTOR: i32 = 0x160;
@@ -267,10 +274,51 @@ const UI_CHARA_MEWTWO_MASTERHAND_HASH: u64 = 0x1AA4AF9031;
 const UI_CHARA_MARIO_HASH: u64 = 0x0EDAF3C863;
 const HASH40_MASK: u64 = 0xFFFF_FFFFFF;
 
-// Known hook points for CSS selection capture across current supported builds.
+// Preserve the existing hook set on older builds; do not extrapolate these to 13.0.5.
 const SELECTION_UPDATE_SELECTED_FIGHTER_13_0_1: usize = 0x3310760;
-const SELECTION_UPDATE_SELECTED_FIGHTER_13_0_2_PLUS: usize = 0x3311190;
 const SELECTION_UPDATE_CSS_13_0_1_PLUS: usize = 0x1A12460;
+const FIGHTER_SELECTION_TABLE_13_0_5: usize = 0x5308798;
+const FIGHTER_SELECTION_ROW_STRIDE: usize = 0x1C8;
+const FIGHTER_SELECTION_LOOP_PREFIX: [u32; 5] =
+    [0x2A1F03F5, 0x321D03F7, 0x90017FD8, 0x911E6318, 0xB9400B08];
+const FIGHTER_SELECTION_LOOP_TAIL: [u32; 3] = [0x91072318, 0xF10006F7, 0x54FFFCE1];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SelectionHookOffsets {
+    lookup_fighter_kind: usize,
+    update_selected_fighter: usize,
+    fighter_selection_loop: Option<usize>,
+}
+
+pub(crate) fn supports_legacy_fixed_offsets(version: (u16, u16, u16)) -> bool {
+    matches!(version, (13, 0, 1..=4))
+}
+
+fn selection_hook_offsets(version: (u16, u16, u16)) -> Option<SelectionHookOffsets> {
+    match version {
+        (13, 0, 1..=4) => Some(SelectionHookOffsets {
+            lookup_fighter_kind: 0x3262130,
+            update_selected_fighter: 0x3311190,
+            fighter_selection_loop: None,
+        }),
+        // Smashline fdc151f, src/cloning/fighters.rs: verified per-function changes.
+        (13, 0, 5) => Some(SelectionHookOffsets {
+            lookup_fighter_kind: 0x32626E0,
+            update_selected_fighter: 0x3311740,
+            fighter_selection_loop: Some(0x2310E80),
+        }),
+        _ => None,
+    }
+}
+
+fn detected_character_name_offset(version: (u16, u16, u16)) -> Option<u64> {
+    match version {
+        (13, 0, 1 | 4) => Some(0x52C4758),
+        (13, 0, 3) => Some(0x52C5758),
+        (13, 0, 2) => Some(0x52C3758),
+        _ => None,
+    }
+}
 
 fn detect_character_name_enabled() -> bool {
     CONFIG.options.detect_character_name.unwrap_or(false)
@@ -337,15 +385,10 @@ fn canonical_detected_character_name_to_ui_hash(name: &str) -> Option<u64> {
     }
 }
 
-unsafe fn detect_character_name_text_base() -> u64 {
+unsafe fn detect_character_name_text_base() -> Option<u64> {
+    let offset = detected_character_name_offset(*TITLE_VERSION)?;
     let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as u64;
-    let offset = match *TITLE_VERSION {
-        (13, 0, 4) => 0x52C4758,
-        (13, 0, 3) => 0x52C5758,
-        (13, 0, 2) => 0x52C3758,
-        _ => 0x52C4758,
-    };
-    text + offset
+    Some(text + offset)
 }
 
 unsafe fn read_detected_character_name(addr: u64) -> Option<String> {
@@ -427,7 +470,7 @@ unsafe fn selected_boss_selector_id_from_character_name(
     }
 
     let entry_idx = entry_idx_for_detected_character_name(module_accessor)?;
-    let name_base = detect_character_name_text_base();
+    let name_base = detect_character_name_text_base()?;
     let addr = name_base
         + DETECT_CHARACTER_NAME_ENTRY_STRIDE * entry_idx as u64
         + DETECT_CHARACTER_NAME_TEXT_OFFSET;
@@ -580,6 +623,40 @@ fn normalize_known_ui_hash_candidate(raw: u64) -> Option<u64> {
 
 fn normalize_ui_hash_candidate(raw: u64) -> Option<u64> {
     normalize_known_ui_hash_candidate(raw).filter(|hash| is_boss_css_hash(*hash))
+}
+
+fn capture_fighter_load_selection(
+    entry: usize,
+    raw_hash: u64,
+    hashes: &mut [u64; MAX_FIGHTERS],
+    origins: &mut [OpaqueSelectionCacheOrigin; MAX_FIGHTERS],
+) -> bool {
+    if entry >= MAX_FIGHTERS {
+        return false;
+    }
+    let hash = normalize_known_ui_hash_candidate(raw_hash);
+    // Spirit cold starts may serialize the Mario host. Only the existing,
+    // human-only bootstrap fallback may survive that; CPU slots cannot use it.
+    if hash == Some(UI_CHARA_MARIO_HASH)
+        && origins[entry] == OpaqueSelectionCacheOrigin::RestoredPersistedSelection
+    {
+        return false;
+    }
+    hashes[entry] = hash.filter(|hash| is_boss_css_hash(*hash)).unwrap_or(0);
+    origins[entry] = if hashes[entry] == 0 {
+        OpaqueSelectionCacheOrigin::None
+    } else {
+        OpaqueSelectionCacheOrigin::ConfirmedFighterLoad
+    };
+    true
+}
+
+fn preserve_cache_on_opaque_clear(origin: OpaqueSelectionCacheOrigin, reason: &str) -> bool {
+    match origin {
+        OpaqueSelectionCacheOrigin::RestoredPersistedSelection => reason == "no_named_ui_identity",
+        OpaqueSelectionCacheOrigin::ConfirmedFighterLoad => reason != "named_mario_selection",
+        _ => false,
+    }
 }
 
 /// A named boss observation counts as in-transaction evidence only when it was
@@ -944,13 +1021,13 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
             // so a cold launch straight into Spirit Board resolved to the Mario
             // host until the Fighter tab was visited (issue #89).
             //
-            // Identity-free noise must not destroy a restored selection. A
-            // genuine Mario pick still reports `named_mario_selection`, and an
-            // ambiguous lookup still reports its own reason, so both continue
-            // to clear normally.
-            let restored_selection_pending = CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx]
-                == OpaqueSelectionCacheOrigin::RestoredPersistedSelection;
-            if !(restored_selection_pending && reason == "no_named_ui_identity") {
+            // Identity-free noise preserves bootstrap state. Neither it nor
+            // ambiguous menu lookups may erase a confirmed fighter load.
+            // An explicit Mario selection can still clear either origin.
+            if !preserve_cache_on_opaque_clear(
+                CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx],
+                reason,
+            ) {
                 CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx] = 0;
                 CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] = OpaqueSelectionCacheOrigin::None;
             }
@@ -1002,8 +1079,8 @@ unsafe fn update_selected_fighter_capture_3310760(
     );
 }
 
-// Some plugin stacks/game revisions route this callback at a nearby offset.
-#[skyline::hook(offset = SELECTION_UPDATE_SELECTED_FIGHTER_13_0_2_PLUS)]
+// Keep legacy callback labels for transaction diagnostics; installation logs the actual address.
+#[skyline::hook(offset = selection_hook_offsets(*TITLE_VERSION).expect("checked by selection::install").update_selected_fighter)]
 unsafe fn update_selected_fighter_capture_3311190(
     unk: u64,
     player_id: u32,
@@ -1038,7 +1115,7 @@ unsafe fn update_selected_fighter_capture_3311190(
     );
 }
 
-#[skyline::hook(offset = 0x3262130)]
+#[skyline::hook(offset = selection_hook_offsets(*TITLE_VERSION).expect("checked by selection::install").lookup_fighter_kind)]
 unsafe fn capture_lookup_fighter_kind_from_ui_hash(database: u64, hash: u64) -> i32 {
     let normalized = normalize_ui_hash_candidate(hash);
     let known_ui_hash = normalize_known_ui_hash_candidate(hash);
@@ -1104,6 +1181,86 @@ unsafe fn update_css_cache(unk: u64) {
     log_selection_hook(7, "update_css_cache", "end", u32::MAX, 0, None, unk);
 }
 
+#[skyline::hook(offset = selection_hook_offsets(*TITLE_VERSION).and_then(|offsets| offsets.fighter_selection_loop).expect("checked by selection::install"), inline)]
+unsafe fn capture_fighter_load(ctx: &skyline::hooks::InlineCtx) {
+    // Verified in main 21450c647b8c5940: x23 counts remaining rows, x24 points
+    // to the row. x21 counts type-0 rows, and the later lookup skips CPU rows.
+    let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as usize;
+    let row = ctx.registers[24].x() as usize;
+    let Some(entry) = fighter_load_entry(
+        ctx.registers[23].x(),
+        row,
+        text + FIGHTER_SELECTION_TABLE_13_0_5,
+    ) else {
+        return;
+    };
+    let slot_kind = std::ptr::read((row + 8) as *const u32);
+    let enabled = fighter_load_row_enabled(slot_kind);
+    let raw_hash = if enabled {
+        std::ptr::read((row + 0x18) as *const u64)
+    } else {
+        0
+    };
+    let applied = capture_fighter_load_selection(
+        entry,
+        raw_hash,
+        &mut *std::ptr::addr_of_mut!(CACHED_BOSS_UI_HASH_BY_ENTRY),
+        &mut *std::ptr::addr_of_mut!(CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY),
+    );
+    if applied {
+        LAST_STARTED_BOSS_UI_HASH_BY_ENTRY[entry] = 0;
+        ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY[entry] = 0;
+    }
+    PENDING_FIGHTER_LOAD_BOUNDARY[entry] = enabled && raw_hash & HASH40_MASK != 0;
+    crate::boss_log!(
+        "[PB][FighterLoadSelection] entry={} raw=0x{:x} boss=0x{:010x} applied={} enabled={} slot_kind={} source=selection_row",
+        entry,
+        raw_hash,
+        normalize_ui_hash_candidate(raw_hash).unwrap_or(0),
+        applied,
+        enabled,
+        slot_kind
+    );
+}
+
+fn fighter_load_row_enabled(slot_kind: u32) -> bool {
+    // Native participant counting at main+0x1785804 accepts types 0..=2; 3 is closed.
+    slot_kind < 3
+}
+
+fn fighter_load_entry(remaining: u64, row: usize, table: usize) -> Option<usize> {
+    if !(1..=MAX_FIGHTERS as u64).contains(&remaining) {
+        return None;
+    }
+    let entry = MAX_FIGHTERS - remaining as usize;
+    (table.checked_add(entry * FIGHTER_SELECTION_ROW_STRIDE) == Some(row)).then_some(entry)
+}
+
+fn fighter_selection_loop_matches(prefix: [u32; 5], tail: [u32; 3]) -> bool {
+    prefix == FIGHTER_SELECTION_LOOP_PREFIX && tail == FIGHTER_SELECTION_LOOP_TAIL
+}
+
+fn take_fighter_load_boundary(entry: usize, pending: &mut [bool; MAX_FIGHTERS]) -> bool {
+    pending
+        .get_mut(entry)
+        .map(|value| std::mem::take(value))
+        .unwrap_or(false)
+}
+
+pub(crate) unsafe fn consume_fighter_load_boundary(entry: usize) -> bool {
+    if !take_fighter_load_boundary(
+        entry,
+        &mut *std::ptr::addr_of_mut!(PENDING_FIGHTER_LOAD_BOUNDARY),
+    ) {
+        return false;
+    }
+    // Release quarantine only when the first real host frame resets the round,
+    // not from the raw UI hook while the previous scene may still be alive.
+    SUPPRESS_BOSS_SELECTION_BY_ENTRY[entry] = false;
+    SUPPRESS_BOSS_SELECTION_STAGE_BY_ENTRY[entry] = i32::MIN;
+    true
+}
+
 unsafe fn cached_css_boss_hash(
     module_accessor: *mut BattleObjectModuleAccessor,
     entry_idx: usize,
@@ -1116,13 +1273,13 @@ unsafe fn cached_css_boss_hash(
         return None;
     }
     match CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx] {
-        OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => Some(by_entry),
+        OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
+        | OpaqueSelectionCacheOrigin::ConfirmedFighterLoad => Some(by_entry),
         // Restored persist is a cold-launch fallback for the human player
         // who never revisited Fighter Selection. It must not transform an
         // unrelated fighter that later occupies this entry index — including
         // a Spirit CPU Mario sitting in a slot that last stored a CPU boss.
-        // Condensed CPU selections arrive through the confirmed carrier above;
-        // ordinary current-session identity comes from live or name sources.
+        // Current CPU picks require confirmed load/carrier or live identity.
         origin @ OpaqueSelectionCacheOrigin::RestoredPersistedSelection => {
             if cache_visible_on_battle_stage(origin, entry_operation_cpu(entry_idx)) {
                 Some(by_entry)
@@ -1219,7 +1376,8 @@ fn is_persistable_host_boss_hash(value: u64) -> bool {
 /// lower rank, which is what stops generic menu enumeration from overwriting a
 /// restored or confirmed selection.
 ///
-/// ConfirmedCondensedCarrier (current process, independently corroborated)
+/// ConfirmedFighterLoad (slot/hash pair consumed by the game's loader)
+///   > ConfirmedCondensedCarrier (independently corroborated menu selection)
 ///   > RestoredPersistedSelection (bootstrap fallback)
 ///   > CandidateUiLookup / TentativeUiSelection (observational / global guess)
 ///   > None
@@ -1234,6 +1392,7 @@ fn origin_authority_rank(origin: OpaqueSelectionCacheOrigin) -> u8 {
         | OpaqueSelectionCacheOrigin::CandidateUiLookup => 1,
         OpaqueSelectionCacheOrigin::RestoredPersistedSelection => 2,
         OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => 3,
+        OpaqueSelectionCacheOrigin::ConfirmedFighterLoad => 4,
     }
 }
 
@@ -1243,11 +1402,12 @@ fn origin_is_authoritative_selection(origin: OpaqueSelectionCacheOrigin) -> bool
     matches!(
         origin,
         OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
+            | OpaqueSelectionCacheOrigin::ConfirmedFighterLoad
     )
 }
 
 /// Restored persist is eligible only for a human-controlled occupant. CPU
-/// entries need a this-session confirmed carrier origin; they must not inherit a
+/// entries need a this-session confirmed origin; they must not inherit a
 /// stale slot from last_boss_selection.txt. This is provenance, not a CPU
 /// boss blacklist. Missing fighter-info fails closed (treated as ineligible).
 unsafe fn entry_operation_cpu(entry_idx: usize) -> bool {
@@ -1258,7 +1418,8 @@ unsafe fn entry_operation_cpu(entry_idx: usize) -> bool {
 /// Whether a cached origin is visible to the battle resolver for this occupant.
 fn cache_visible_on_battle_stage(origin: OpaqueSelectionCacheOrigin, operation_cpu: bool) -> bool {
     match origin {
-        OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => true,
+        OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
+        | OpaqueSelectionCacheOrigin::ConfirmedFighterLoad => true,
         OpaqueSelectionCacheOrigin::RestoredPersistedSelection => !operation_cpu,
         OpaqueSelectionCacheOrigin::None
         | OpaqueSelectionCacheOrigin::TentativeUiSelection
@@ -1798,8 +1959,11 @@ unsafe fn condensed_shield_held(
 unsafe fn is_confirmed_condensed_masterhand_carrier(entry_idx: usize) -> bool {
     entry_idx < MAX_FIGHTERS
         && CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx] == UI_CHARA_MASTERHAND_HASH
-        && CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx]
-            == OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
+        && matches!(
+            CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY[entry_idx],
+            OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier
+                | OpaqueSelectionCacheOrigin::ConfirmedFighterLoad
+        )
 }
 
 /// Resolve a carrier confirmed by the existing per-entry selected-fighter
@@ -2284,6 +2448,7 @@ fn origin_label(origin: OpaqueSelectionCacheOrigin) -> &'static str {
         OpaqueSelectionCacheOrigin::TentativeUiSelection => "tentative_ui_selection",
         OpaqueSelectionCacheOrigin::CandidateUiLookup => "candidate_ui_lookup",
         OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => "confirmed_condensed_carrier",
+        OpaqueSelectionCacheOrigin::ConfirmedFighterLoad => "confirmed_fighter_load",
         OpaqueSelectionCacheOrigin::RestoredPersistedSelection => "restored_persisted_selection",
     }
 }
@@ -2326,6 +2491,7 @@ fn selector_choice_reason(
         return match cache_origin {
             OpaqueSelectionCacheOrigin::RestoredPersistedSelection => "restored_fallback",
             OpaqueSelectionCacheOrigin::ConfirmedCondensedCarrier => "confirmed_condensed_carrier",
+            OpaqueSelectionCacheOrigin::ConfirmedFighterLoad => "confirmed_fighter_load",
             OpaqueSelectionCacheOrigin::CandidateUiLookup => "candidate_ui_lookup",
             _ => "cache_fallback",
         };
@@ -2383,22 +2549,48 @@ pub unsafe fn selected_css_boss_selector_id(
 }
 
 pub fn install() {
-    if crate::debug::enabled() {
-        crate::boss_log!(
-            "[PB][SelectionInstall] hooks=[0x{:x},0x{:x},0x{:x},0x{:x}] mode=ui_chara_capture_only",
-            SELECTION_UPDATE_CSS_13_0_1_PLUS,
-            0x3262130usize,
-            SELECTION_UPDATE_SELECTED_FIGHTER_13_0_1,
-            SELECTION_UPDATE_SELECTED_FIGHTER_13_0_2_PLUS
+    let version = *TITLE_VERSION;
+    let Some(offsets) = selection_hook_offsets(version) else {
+        println!(
+            "[PB][SelectionInstall] version={}.{}.{} skipped=unsupported_version no_fixed_hooks_installed",
+            version.0, version.1, version.2
         );
-    }
-
-    skyline::install_hooks!(
-        update_css_cache,
-        capture_lookup_fighter_kind_from_ui_hash,
-        update_selected_fighter_capture_3310760,
-        update_selected_fighter_capture_3311190
+        return;
+    };
+    let legacy_hooks = supports_legacy_fixed_offsets(version);
+    println!(
+        "[PB][SelectionInstall] version={}.{}.{} lookup=0x{:x} selected_fighter=0x{:x} legacy_auxiliary_hooks={}",
+        version.0, version.1, version.2,
+        offsets.lookup_fighter_kind, offsets.update_selected_fighter, legacy_hooks
     );
+    if legacy_hooks {
+        skyline::install_hook!(update_css_cache);
+    } else {
+        println!("[PB][Compatibility] limited_13_0_5_build: auxiliary_selection_hooks, character_name_detection, and hand_item_hooks unavailable until their offsets are verified");
+    }
+    skyline::install_hook!(capture_lookup_fighter_kind_from_ui_hash);
+    if legacy_hooks {
+        skyline::install_hook!(update_selected_fighter_capture_3310760);
+    }
+    skyline::install_hook!(update_selected_fighter_capture_3311190);
+    if let Some(callsite) = offsets.fighter_selection_loop {
+        let (prefix, tail) = unsafe {
+            let text = skyline::hooks::getRegionAddress(skyline::hooks::Region::Text) as usize;
+            (
+                std::ptr::read((text + callsite - 0x10) as *const [u32; 5]),
+                std::ptr::read((text + callsite + 0x5C) as *const [u32; 3]),
+            )
+        };
+        if fighter_selection_loop_matches(prefix, tail) {
+            skyline::install_hook!(capture_fighter_load);
+            println!(
+                "[PB][SelectionInstall] fighter_selection_loop=0x{:x} enabled=true",
+                callsite
+            );
+        } else {
+            println!("[PB][SelectionInstall] fighter_selection_loop=0x{:x} enabled=false reason=unexpected_selection_loop", callsite);
+        }
+    }
 }
 
 unsafe fn expected_css_hash_for_selector(expected_selector_id: i32) -> Option<u64> {
@@ -2527,6 +2719,265 @@ pub unsafe fn clear_boss_selection_suppression_if_ready_go(
                 preview_stage,
                 CACHED_BOSS_UI_HASH_BY_ENTRY[entry_idx]
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    #[test]
+    fn fixed_offsets_are_version_scoped() {
+        for (patch, name_offset) in [
+            (1, 0x52C4758),
+            (2, 0x52C3758),
+            (3, 0x52C5758),
+            (4, 0x52C4758),
+        ] {
+            let version = (13, 0, patch);
+            assert_eq!(
+                selection_hook_offsets(version),
+                Some(SelectionHookOffsets {
+                    lookup_fighter_kind: 0x3262130,
+                    update_selected_fighter: 0x3311190,
+                    fighter_selection_loop: None,
+                })
+            );
+            assert!(supports_legacy_fixed_offsets(version));
+            assert_eq!(detected_character_name_offset(version), Some(name_offset));
+        }
+        let current = parse_title_version("13.0.5\0\0").unwrap();
+        assert_eq!(
+            selection_hook_offsets(current),
+            Some(SelectionHookOffsets {
+                lookup_fighter_kind: 0x32626E0,
+                update_selected_fighter: 0x3311740,
+                fighter_selection_loop: Some(0x2310E80),
+            })
+        );
+        assert!(!supports_legacy_fixed_offsets(current));
+        assert_eq!(detected_character_name_offset(current), None);
+        for version in [(0, 0, 0), (13, 0, 0), (13, 0, 6), (13, 1, 0), (14, 0, 0)] {
+            assert_eq!(selection_hook_offsets(version), None);
+            assert!(!supports_legacy_fixed_offsets(version));
+            assert_eq!(detected_character_name_offset(version), None);
+        }
+        for invalid in ["", "13.0", "13.x.0.5", "13.0.5.1", "13.0.5-beta"] {
+            assert_eq!(parse_title_version(invalid), None);
+        }
+    }
+}
+
+#[cfg(test)]
+mod fighter_load_selection_tests {
+    use super::*;
+
+    #[test]
+    fn nonzero_active_slot_types_keep_bosses_but_closed_rows_clear_stale_hashes() {
+        use OpaqueSelectionCacheOrigin::*;
+        let mut hashes = [UI_CHARA_CRAZYHAND_HASH; MAX_FIGHTERS];
+        let mut origins = [ConfirmedFighterLoad; MAX_FIGHTERS];
+        for pair in [
+            [0xc100560df6aae3d0, 0xc100511389102cbf],
+            [0xc100511389102cbf, 0xc100560df6aae3d0],
+        ] {
+            for opponent_kind in [1, 2] {
+                for (entry, slot_kind, stored_hash) in [
+                    (0, 0, pair[0]),
+                    (1, opponent_kind, pair[1]),
+                    (2, 3, UI_CHARA_CRAZYHAND_HASH),
+                    (3, u32::MAX, UI_CHARA_MARX_HASH),
+                ] {
+                    let raw = if fighter_load_row_enabled(slot_kind) {
+                        stored_hash
+                    } else {
+                        0
+                    };
+                    assert!(capture_fighter_load_selection(
+                        entry,
+                        raw,
+                        &mut hashes,
+                        &mut origins
+                    ));
+                    let expected = if entry < 2 {
+                        pair[entry] & HASH40_MASK
+                    } else {
+                        0
+                    };
+                    assert_eq!(hashes[entry], expected);
+                    assert_eq!(
+                        origins[entry],
+                        if entry < 2 {
+                            ConfirmedFighterLoad
+                        } else {
+                            None
+                        }
+                    );
+                    assert_eq!(raw & HASH40_MASK != 0, entry < 2);
+                }
+            }
+        }
+        assert!(!fighter_load_row_enabled(4));
+    }
+
+    #[test]
+    fn current_player_and_cpu_loads_replace_stale_crazy_hand_independently() {
+        use OpaqueSelectionCacheOrigin::*;
+        let mut hashes = [UI_CHARA_CRAZYHAND_HASH; MAX_FIGHTERS];
+        let mut origins = [RestoredPersistedSelection; MAX_FIGHTERS];
+        // The three reported matches, including the metadata seen in the log.
+        for pair in [
+            [0xc100511389102cbf, 0xc10054100a39d32e],
+            [0xc1005212cef82d30, 0xc100560df6aae3d0],
+            [0xc100560df6aae3d0, 0xc1005c0d65accd76],
+            [UI_CHARA_KIILA_HASH, UI_CHARA_DRACULA_HASH],
+            [UI_CHARA_GANONBOSS_HASH, UI_CHARA_LIOLEUS_HASH],
+            [UI_CHARA_MEWTWO_MASTERHAND_HASH, UI_CHARA_KOOPAG_HASH],
+        ] {
+            for (remaining, row, raw) in [(8, 0xD80C798, pair[0]), (7, 0xD80C960, pair[1])] {
+                let entry = fighter_load_entry(remaining, row, 0xD80C798).unwrap();
+                let before = hashes;
+                assert!(capture_fighter_load_selection(
+                    entry,
+                    raw,
+                    &mut hashes,
+                    &mut origins
+                ));
+                assert_eq!(hashes[entry], raw & HASH40_MASK);
+                assert_eq!(origins[entry], ConfirmedFighterLoad);
+                for other in 0..MAX_FIGHTERS {
+                    if other != entry {
+                        assert_eq!(hashes[other], before[other]);
+                    }
+                }
+                for cpu in [false, true] {
+                    assert!(cache_visible_on_battle_stage(origins[entry], cpu));
+                    assert_eq!(
+                        resolve_current_boss_identity(
+                            Option::None,
+                            Option::None,
+                            Some(hashes[entry])
+                        ),
+                        Some(raw & HASH40_MASK)
+                    );
+                }
+            }
+        }
+        assert!(
+            origin_authority_rank(ConfirmedFighterLoad)
+                > origin_authority_rank(ConfirmedCondensedCarrier)
+        );
+        assert!(
+            origin_authority_rank(ConfirmedFighterLoad) > origin_authority_rank(CandidateUiLookup)
+        );
+        assert!(preserve_cache_on_opaque_clear(
+            ConfirmedFighterLoad,
+            "no_named_ui_identity"
+        ));
+        assert!(preserve_cache_on_opaque_clear(
+            ConfirmedFighterLoad,
+            "ambiguous_named_boss_lookups"
+        ));
+        assert!(!preserve_cache_on_opaque_clear(
+            ConfirmedFighterLoad,
+            "named_mario_selection"
+        ));
+    }
+
+    #[test]
+    fn fighter_load_clear_and_bootstrap_are_slot_local() {
+        use OpaqueSelectionCacheOrigin::*;
+        let mut hashes = [UI_CHARA_MASTERHAND_HASH; MAX_FIGHTERS];
+        let mut origins = [RestoredPersistedSelection; MAX_FIGHTERS];
+        assert!(!capture_fighter_load_selection(
+            0,
+            UI_CHARA_MARIO_HASH,
+            &mut hashes,
+            &mut origins
+        ));
+        assert!(cache_visible_on_battle_stage(origins[0], false));
+        assert!(!cache_visible_on_battle_stage(origins[0], true));
+        for raw in [UI_CHARA_MARIO_HASH, crate::to_hash40("ui_chara_link").0, 0] {
+            origins[1] = ConfirmedFighterLoad;
+            assert!(capture_fighter_load_selection(
+                1,
+                raw,
+                &mut hashes,
+                &mut origins
+            ));
+            assert_eq!((hashes[1], origins[1]), (0, None));
+            assert_eq!(hashes[0], UI_CHARA_MASTERHAND_HASH);
+        }
+        let before = (hashes, origins);
+        for entry in [MAX_FIGHTERS, usize::MAX] {
+            assert!(!capture_fighter_load_selection(
+                entry,
+                UI_CHARA_MARX_HASH,
+                &mut hashes,
+                &mut origins
+            ));
+            assert_eq!((hashes, origins), before);
+        }
+    }
+
+    #[test]
+    fn hook_guard_and_row_mapping_match_the_actual_13_0_5_loop() {
+        let prefix = [0x2A1F03F5, 0x321D03F7, 0x90017FD8, 0x911E6318, 0xB9400B08];
+        let tail = [0x91072318, 0xF10006F7, 0x54FFFCE1];
+        assert!(fighter_selection_loop_matches(prefix, tail));
+        for index in 0..prefix.len() {
+            let mut changed = prefix;
+            changed[index] ^= 1;
+            assert!(!fighter_selection_loop_matches(changed, tail));
+        }
+        for index in 0..tail.len() {
+            let mut changed = tail;
+            changed[index] ^= 1;
+            assert!(!fighter_selection_loop_matches(prefix, changed));
+        }
+        for entry in 0..MAX_FIGHTERS {
+            assert_eq!(
+                fighter_load_entry(8 - entry as u64, 0xD80C798 + entry * 0x1C8, 0xD80C798),
+                Some(entry)
+            );
+        }
+        assert_eq!(fighter_load_entry(0, 0xD80C798, 0xD80C798), None);
+        assert_eq!(fighter_load_entry(9, 0xD80C798, 0xD80C798), None);
+        assert_eq!(fighter_load_entry(8, 0xD80C960, 0xD80C798), None);
+        assert_eq!(fighter_load_entry(7, 0, usize::MAX), None);
+    }
+
+    #[test]
+    fn each_load_resets_once_before_demo_not_again_after_boss_spawn_at_entry() {
+        for previous_match_finished in [false, true] {
+            let mut pending = [false; MAX_FIGHTERS];
+            pending[0] = true;
+            pending[1] = true;
+            let mut stale = [previous_match_finished; 2];
+            let mut reset_count = [0; 2];
+            for status in [0x107, 0x1D9, 0] {
+                // DEMO -> ENTRY -> WAIT
+                for entry in 0..2 {
+                    let load = take_fighter_load_boundary(entry, &mut pending);
+                    let reset = crate::is_verified_new_round_boundary(
+                        stale[entry],
+                        status == 0x1D9,
+                        false,
+                        false,
+                        false,
+                        false,
+                        load,
+                    );
+                    assert_eq!(reset, status == 0x107);
+                    if reset {
+                        stale[entry] = false;
+                        reset_count[entry] += 1;
+                    }
+                }
+            }
+            assert_eq!(reset_count, [1, 1]);
+            assert!(!take_fighter_load_boundary(MAX_FIGHTERS, &mut pending));
         }
     }
 }

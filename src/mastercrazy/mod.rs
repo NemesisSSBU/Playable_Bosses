@@ -3838,6 +3838,14 @@ unsafe fn mh_kenzan_status(item: &mut L2CAgentBase) -> L2CValue {
 fn nro_hook(info: &skyline::nro::NroInfo) {
     if info.name == "item" {
         MASTERCRAZY_ITEM_HOOKS_ONCE.call_once(|| unsafe {
+            let version = *crate::selection::TITLE_VERSION;
+            if !crate::selection::supports_legacy_fixed_offsets(version) {
+                println!(
+                    "[PB][HandItemHooks] version={}.{}.{} skipped=unverified_item_offsets native_item_code_unchanged",
+                    version.0, version.1, version.2
+                );
+                return;
+            }
             let module_base = (*info.module.ModuleObject).module_base as usize;
             CH_FIRE_CHARIOT_MOTION += module_base;
             skyline::install_hook!(ch_chariot_motion);

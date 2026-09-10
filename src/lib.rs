@@ -285,12 +285,14 @@ fn is_verified_new_round_boundary(
     replay_boundary: bool,
     suppressed_entry_boundary: bool,
     stage_transition_after_teardown: bool,
+    fighter_load_boundary: bool,
 ) -> bool {
-    (stale_result_state || suppressed_entry_boundary)
-        && (entry_status
-            || rebirth_after_result
-            || replay_boundary
-            || stage_transition_after_teardown)
+    fighter_load_boundary
+        || (stale_result_state || suppressed_entry_boundary)
+            && (entry_status
+                || rebirth_after_result
+                || replay_boundary
+                || stage_transition_after_teardown)
 }
 
 #[inline]
@@ -313,11 +315,15 @@ unsafe fn reset_stale_match_generation_if_new_round(
     ready_go: bool,
     result_mode: bool,
 ) -> bool {
-    if module_accessor.is_null() || ready_go || result_mode {
+    if module_accessor.is_null() || result_mode {
         return false;
     }
 
     let entry = entry_id.min(MAX_FIGHTERS - 1);
+    let fighter_load_boundary = selection::consume_fighter_load_boundary(entry);
+    if ready_go && !fighter_load_boundary {
+        return false;
+    }
     let fighter_status = StatusModule::status_kind(module_accessor);
     let entry_status = fighter_status == *FIGHTER_STATUS_KIND_ENTRY;
     let rebirth_after_result =
@@ -369,11 +375,14 @@ unsafe fn reset_stale_match_generation_if_new_round(
         replay_boundary,
         suppressed_entry_boundary,
         stage_transition_after_teardown,
+        fighter_load_boundary,
     ) {
         return false;
     }
     NEW_ROUND_IDLE_FRAMES[entry] = 0;
-    let reset_reason = if entry_status {
+    let reset_reason = if fighter_load_boundary {
+        "verified_fighter_load"
+    } else if entry_status {
         "new_round_entry"
     } else if rebirth_after_result {
         "rebirth_after_result"
@@ -771,9 +780,8 @@ unsafe fn update_result_transition_state(
     let stage_id = smash::app::stage::get_stage_id();
     let ready_go = smash::app::sv_information::is_ready_go();
     let result_mode = !fighter_manager.is_null() && FighterManager::is_result_mode(fighter_manager);
-    // A new round can reuse the same hidden host and selection identity before
-    // Ready-Go becomes true. Clear only stale result-generation state at the
-    // native ENTRY boundary; ordinary in-match REBIRTH is left untouched.
+    // Reset before boss dispatch when a verified load arrives, otherwise use
+    // the legacy stale-result boundary. Ordinary in-match REBIRTH is untouched.
     reset_stale_match_generation_if_new_round(
         module_accessor,
         entry_id,
@@ -4389,13 +4397,13 @@ mod classic_clear_camera_tests {
     #[test]
     fn result_quarantine_can_bridge_a_cleared_result_state_into_native_entry() {
         assert!(is_verified_new_round_boundary(
-            false, true, false, false, true, false
+            false, true, false, false, true, false, false
         ));
         assert!(!is_verified_new_round_boundary(
-            false, true, false, false, false, false
+            false, true, false, false, false, false, false
         ));
         assert!(!is_verified_new_round_boundary(
-            false, false, false, false, true, false
+            false, false, false, false, true, false, false
         ));
     }
 
@@ -4414,13 +4422,13 @@ mod classic_clear_camera_tests {
             crate::boss_helpers::STAGE_ID_RESULT
         ));
         assert!(is_verified_new_round_boundary(
-            true, false, false, false, false, true
+            true, false, false, false, false, true, false
         ));
         assert!(!is_verified_new_round_boundary(
-            false, false, false, false, false, true
+            false, false, false, false, false, true, false
         ));
         assert!(!is_verified_new_round_boundary(
-            true, false, false, false, false, false
+            true, false, false, false, false, false, false
         ));
     }
 }
