@@ -17,6 +17,7 @@ static mut CONTROLLABLE: bool = true;
 static mut STOP: bool = false;
 static mut ENTRY_ID: usize = 0;
 static mut BOSS_ID: [u32; 8] = [0; 8];
+static mut ENTRY_POSITION_PENDING: [bool; 8] = [false; 8];
 static mut DEAD: bool = false;
 static mut RESULT_SPAWNED: bool = false;
 static mut EXISTS_PUBLIC: bool = false;
@@ -103,6 +104,7 @@ unsafe fn reset_playable_masterhand_state(entry_id: usize) {
     CONTROLLABLE = true;
     STOP = false;
     ENTRY_ID = entry_id;
+    ENTRY_POSITION_PENDING[entry_id] = false;
     DEAD = false;
     RESULT_SPAWNED = false;
     EXISTS_PUBLIC = true;
@@ -133,6 +135,7 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     STOP = false;
     ENTRY_ID = entry;
     BOSS_ID[entry] = 0;
+    ENTRY_POSITION_PENDING[entry] = false;
     *(core::ptr::addr_of_mut!(WOL_PREVIEW_ATTACHMENT_SIGNATURE) as *mut u64).add(entry) = 0;
     DEAD = false;
     RESULT_SPAWNED = false;
@@ -782,6 +785,7 @@ unsafe fn teardown_world_masterhand_post_match_transition(
 
     BOSS_ID[entry] = 0;
     EXISTS_PUBLIC = false;
+    ENTRY_POSITION_PENDING[entry] = false;
     CONTROLLABLE = false;
     STOP = false;
     DEAD = false;
@@ -926,7 +930,16 @@ fn wol_masterhand_entry_anchor(
     range_y: f32,
     range_z: f32,
     range_w: f32,
-) -> (f32, f32) {
+) -> Option<(f32, f32)> {
+    let rectangle = range_x < range_y && range_z > range_w;
+    let symmetric = range_z == 0.0 && range_w == 0.0 && range_x != 0.0 && range_y != 0.0;
+    if ![range_x, range_y, range_z, range_w]
+        .iter()
+        .all(|v| v.is_finite())
+        || !(rectangle || symmetric)
+    {
+        return None;
+    }
     let (left, right, _, top) = boss_helpers::flying_boss_safe_box(
         range_x,
         range_y,
@@ -934,21 +947,41 @@ fn wol_masterhand_entry_anchor(
         range_w,
         WOL_MH_BOUND_INSET_X,
     );
-    ((left + right) * 0.5, top * WOL_MH_ENTRY_HEIGHT_FACTOR)
+    Some(((left + right) * 0.5, top * WOL_MH_ENTRY_HEIGHT_FACTOR))
+}
+
+fn take_pending_entry_anchor(
+    pending: &mut bool,
+    host_status: i32,
+    boss_status: i32,
+    status_changing: bool,
+    range: smash::phx::Vector4f,
+) -> Option<(f32, f32)> {
+    if !*pending
+        || host_status == *FIGHTER_STATUS_KIND_DEMO
+        || host_status == *FIGHTER_STATUS_KIND_ENTRY
+        || host_status == *FIGHTER_STATUS_KIND_STANDBY
+        || boss_status != *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_WAIT
+        || status_changing
+    {
+        return None;
+    }
+    let anchor = wol_masterhand_entry_anchor(range.x, range.y, range.z, range.w)?;
+    *pending = false;
+    Some(anchor)
 }
 
 #[inline(always)]
 unsafe fn place_world_masterhand_at_entry_anchor(
-    lua_state: u64,
     module_accessor: *mut BattleObjectModuleAccessor,
     boss_boma: *mut BattleObjectModuleAccessor,
+    range: smash::phx::Vector4f,
+    (x, y): (f32, f32),
 ) {
     if module_accessor.is_null() || boss_boma.is_null() {
         return;
     }
 
-    let range = dead_range(lua_state);
-    let (x, y) = wol_masterhand_entry_anchor(range.x, range.y, range.z, range.w);
     let entry_pos = Vector3f {
         x,
         y,
@@ -957,7 +990,7 @@ unsafe fn place_world_masterhand_at_entry_anchor(
     PostureModule::set_pos(boss_boma, &entry_pos);
     PostureModule::set_pos(module_accessor, &entry_pos);
     crate::boss_log!(
-        "[PB][WOL_MH][EntryPosition] entry={} source=stage_half_top_center range=({:.2},{:.2},{:.2},{:.2}) position=({:.2},{:.2},{:.2})",
+        "[PB][WOL_MH][EntryPosition] entry={} source=stage_half_top_center range=({:.2},{:.2},{:.2},{:.2}) position=({:.2},{:.2},{:.2}) host_status={} boss_status={}",
         boss_helpers::entry_id(module_accessor),
         range.x,
         range.y,
@@ -965,7 +998,9 @@ unsafe fn place_world_masterhand_at_entry_anchor(
         range.w,
         entry_pos.x,
         entry_pos.y,
-        entry_pos.z
+        entry_pos.z,
+        StatusModule::status_kind(module_accessor),
+        StatusModule::status_kind(boss_boma)
     );
 }
 
@@ -1040,11 +1075,19 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 acquire_player_world_masterhand(module_accessor)
                             };
                             start_world_masterhand_entry(boss_boma, cpu_entry);
-                            place_world_masterhand_at_entry_anchor(
-                                fighter.lua_state_agent,
-                                module_accessor,
-                                boss_boma,
-                            );
+                            // Keep the intro anchor, then finalize after native entry releases the item.
+                            ENTRY_POSITION_PENDING[ENTRY_ID] = !cpu_entry && !boss_boma.is_null();
+                            let range = dead_range(fighter.lua_state_agent);
+                            if let Some(anchor) =
+                                wol_masterhand_entry_anchor(range.x, range.y, range.z, range.w)
+                            {
+                                place_world_masterhand_at_entry_anchor(
+                                    module_accessor,
+                                    boss_boma,
+                                    range,
+                                    anchor,
+                                );
+                            }
                         }
                     }
 
@@ -1154,6 +1197,26 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     let boss_boma = resolve_world_masterhand_boss(module_accessor);
                     if boss_boma.is_null() {
                         return;
+                    }
+
+                    if DEAD || JUMP_START {
+                        ENTRY_POSITION_PENDING[ENTRY_ID] = false;
+                    } else if ENTRY_POSITION_PENDING[ENTRY_ID] {
+                        let range = dead_range(fighter.lua_state_agent);
+                        if let Some(anchor) = take_pending_entry_anchor(
+                            &mut ENTRY_POSITION_PENDING[ENTRY_ID],
+                            StatusModule::status_kind(module_accessor),
+                            StatusModule::status_kind(boss_boma),
+                            StatusModule::is_changing(boss_boma),
+                            range,
+                        ) {
+                            place_world_masterhand_at_entry_anchor(
+                                module_accessor,
+                                boss_boma,
+                                range,
+                                anchor,
+                            );
+                        }
                     }
 
                     if sv_information::is_ready_go() == true {
@@ -1861,19 +1924,99 @@ pub unsafe fn frame(fighter: &mut L2CFighterCommon) {
 
 #[cfg(test)]
 mod tests {
-    use super::wol_masterhand_entry_anchor;
+    use super::{take_pending_entry_anchor, wol_masterhand_entry_anchor};
+    use smash::{lib::lua_const::*, phx::Vector4f};
 
     #[test]
     fn entry_anchor_uses_half_the_upper_center_height_of_a_camera_rectangle() {
-        let (x, y) = wol_masterhand_entry_anchor(-240.0, 240.0, 180.0, -140.0);
+        let (x, y) = wol_masterhand_entry_anchor(-240.0, 240.0, 180.0, -140.0).unwrap();
         assert_eq!(x, 0.0);
         assert_eq!(y, 40.0);
     }
 
     #[test]
     fn entry_anchor_halves_the_legacy_symmetric_dead_range_height() {
-        let (x, y) = wol_masterhand_entry_anchor(240.0, 180.0, 0.0, 0.0);
+        let (x, y) = wol_masterhand_entry_anchor(240.0, 180.0, 0.0, 0.0).unwrap();
         assert_eq!(x, 0.0);
         assert_eq!(y, 40.0);
+    }
+
+    #[test]
+    fn entry_anchor_rejects_unloaded_and_non_finite_bounds() {
+        assert_eq!(wol_masterhand_entry_anchor(0.0, 0.0, 0.0, 0.0), None);
+        assert_eq!(wol_masterhand_entry_anchor(0.0, 0.0, 200.0, -130.0), None);
+        for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            for component in 0..4 {
+                let mut range = [-240.0, 240.0, 200.0, -130.0];
+                range[component] = invalid;
+                assert_eq!(
+                    wol_masterhand_entry_anchor(range[0], range[1], range[2], range[3]),
+                    None
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cold_and_warm_entries_finalize_once_after_native_initialization() {
+        let valid = Vector4f {
+            x: -240.0,
+            y: 240.0,
+            z: 200.0,
+            w: -130.0,
+        };
+        let unloaded = Vector4f {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            w: 0.0,
+        };
+        let wait = *ITEM_PLAYABLE_MASTERHAND_STATUS_KIND_WAIT;
+        for first_range in [unloaded, valid] {
+            let mut pending = true;
+            for (host, boss, changing, range) in [
+                (
+                    *FIGHTER_STATUS_KIND_DEMO,
+                    *ITEM_STATUS_KIND_HAVE,
+                    false,
+                    first_range,
+                ),
+                (*FIGHTER_STATUS_KIND_DEMO, wait, false, valid),
+                (*FIGHTER_STATUS_KIND_ENTRY, wait, false, valid),
+                (*FIGHTER_STATUS_KIND_STANDBY, wait, false, valid),
+                (*FIGHTER_STATUS_KIND_WAIT, wait, true, valid),
+                (*FIGHTER_STATUS_KIND_WAIT, wait, false, unloaded),
+            ] {
+                assert_eq!(
+                    take_pending_entry_anchor(&mut pending, host, boss, changing, range),
+                    None
+                );
+                assert!(pending);
+            }
+            assert_eq!(
+                take_pending_entry_anchor(
+                    &mut pending,
+                    *FIGHTER_STATUS_KIND_FALL,
+                    wait,
+                    false,
+                    valid
+                ),
+                Some((0.0, 50.0))
+            );
+            assert!(!pending);
+            // Movement during the countdown and after GO must not re-arm placement.
+            for _ in 0..120 {
+                assert_eq!(
+                    take_pending_entry_anchor(
+                        &mut pending,
+                        *FIGHTER_STATUS_KIND_FALL,
+                        wait,
+                        false,
+                        valid
+                    ),
+                    None
+                );
+            }
+        }
     }
 }
