@@ -440,6 +440,18 @@ pub unsafe fn acquire_boss_item(
         }
         return std::ptr::null_mut();
     }
+    // Entry resets can clear tracking before the host releases its existing boss.
+    if let Some((_, boss_id, boss_boma)) = held_item_by_kind(module_accessor, &[item_kind]) {
+        (*slot_ids)[entry] = boss_id;
+        ensure_boss_item_visible(boss_boma);
+        crate::boss_log!(
+            "[PB][BossItem] reuse entry={} requested_kind={} acquired_id=0x{:x}",
+            entry,
+            item_kind,
+            boss_id
+        );
+        return boss_boma;
+    }
     if crate::debug::enabled() {
         reset_transition_block_log(entry);
         crate::boss_log!(
@@ -1899,6 +1911,27 @@ mod tests {
         STAGE_ID_BOSS_PREVIEW, STAGE_ID_CLASSIC_STAFFROLL,
     };
     use smash::lib::lua_const::*;
+
+    #[test]
+    fn acquisition_reuses_the_hosts_held_boss_before_creating_another() {
+        // Structural check: the native ItemModule API is unavailable in host tests.
+        let source = include_str!("boss_helpers.rs");
+        let acquire = source
+            .split("pub unsafe fn acquire_boss_item(")
+            .nth(1)
+            .unwrap();
+        let before_create = acquire.split("ItemModule::have_item(").next().unwrap();
+        let reuse = before_create
+            .split("held_item_by_kind(module_accessor, &[item_kind])")
+            .nth(1)
+            .expect("must check the owner's held slots before creating a boss");
+        assert!(reuse.contains("(*slot_ids)[entry] = boss_id;"));
+        assert!(reuse.contains("return boss_boma;"));
+        assert!(
+            before_create.find("should_quarantine_boss_frame").unwrap()
+                < before_create.find("held_item_by_kind").unwrap()
+        );
+    }
 
     #[test]
     fn classic_staffroll_is_preview_but_not_world_of_light() {
