@@ -83,10 +83,6 @@ static mut MASTER_IRON_BALL_SMOOTH_CANCEL: bool = false;
 static mut MASTER_IRON_BALL_PURGE_LEFT: i32 = 0;
 static mut ITEM_MANAGER_ADDR: usize = 0;
 static mut MASTER_KENZAN_SPAWNED: bool = false;
-static mut MASTER_CPU_IDLE_STALL_FRAMES: [i32; 8] = [0; 8];
-static mut MASTER_CPU_LAST_X: [f32; 8] = [0.0; 8];
-static mut MASTER_CPU_LAST_Y: [f32; 8] = [0.0; 8];
-static mut MASTER_CPU_RECOVERY_LOG_COOLDOWN: [i32; 8] = [0; 8];
 
 // Crazy Hand
 static mut CONTROLLABLE_2: bool = true;
@@ -104,10 +100,6 @@ static mut CRAZY_TEAM: u64 = 98;
 static mut CRAZY_KUMO_ACTIVE: bool = false;
 static mut CRAZY_KUMO_START_Y: f32 = 0.0;
 static mut CRAZY_KUMO_ENDING: bool = false;
-static mut CRAZY_CPU_IDLE_STALL_FRAMES: [i32; 8] = [0; 8];
-static mut CRAZY_CPU_LAST_X: [f32; 8] = [0.0; 8];
-static mut CRAZY_CPU_LAST_Y: [f32; 8] = [0.0; 8];
-static mut CRAZY_CPU_RECOVERY_LOG_COOLDOWN: [i32; 8] = [0; 8];
 static mut CRAZY_FIRE_CHARIOT_PINKY_LATCH: [bool; 8] = [false; 8];
 static mut CRAZY_FIRE_CHARIOT_THUMB_LATCH: [bool; 8] = [false; 8];
 
@@ -477,26 +469,6 @@ unsafe fn boss_floor_dist(
 }
 
 #[inline(always)]
-unsafe fn reset_master_cpu_idle_recovery(entry_id: usize) {
-    if entry_id < 8 {
-        MASTER_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
-        MASTER_CPU_LAST_X[entry_id] = 0.0;
-        MASTER_CPU_LAST_Y[entry_id] = 0.0;
-        MASTER_CPU_RECOVERY_LOG_COOLDOWN[entry_id] = 0;
-    }
-}
-
-#[inline(always)]
-unsafe fn reset_crazy_cpu_idle_recovery(entry_id: usize) {
-    if entry_id < 8 {
-        CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
-        CRAZY_CPU_LAST_X[entry_id] = 0.0;
-        CRAZY_CPU_LAST_Y[entry_id] = 0.0;
-        CRAZY_CPU_RECOVERY_LOG_COOLDOWN[entry_id] = 0;
-    }
-}
-
-#[inline(always)]
 unsafe fn reset_crazy_fire_chariot_latches(entry_id: usize) {
     if entry_id < 8 {
         CRAZY_FIRE_CHARIOT_PINKY_LATCH[entry_id] = false;
@@ -528,143 +500,6 @@ unsafe fn crazy_cpu_wait_family_status(status: i32) -> bool {
         || status == *ITEM_CRAZYHAND_STATUS_KIND_WAIT_TO_POINT
         || status == *ITEM_CRAZYHAND_STATUS_KIND_DEBUG_WAIT
         || status == *ITEM_STATUS_KIND_WAIT
-}
-
-#[inline(always)]
-unsafe fn maybe_recover_master_cpu_idle(
-    boss_boma: *mut BattleObjectModuleAccessor,
-    entry_id: usize,
-) {
-    if boss_boma.is_null() || entry_id >= 8 {
-        return;
-    }
-    // Pair actions temporarily own both item objects. Recovery is a safety
-    // net for an idle CPU hand, not an authority that may rewrite a native
-    // synchronized status while the partner is acting.
-    if hand_team_authority_active_for_boma(boss_boma) {
-        reset_master_cpu_idle_recovery(entry_id);
-        return;
-    }
-    let status = StatusModule::status_kind(boss_boma);
-    if !master_cpu_wait_family_status(status) {
-        reset_master_cpu_idle_recovery(entry_id);
-        return;
-    }
-    if MASTER_CPU_RECOVERY_LOG_COOLDOWN[entry_id] > 0 {
-        MASTER_CPU_RECOVERY_LOG_COOLDOWN[entry_id] -= 1;
-    }
-
-    let current_x = PostureModule::pos_x(boss_boma);
-    let current_y = PostureModule::pos_y(boss_boma);
-    let moved = (current_x - MASTER_CPU_LAST_X[entry_id]).abs()
-        + (current_y - MASTER_CPU_LAST_Y[entry_id]).abs();
-
-    if moved < 0.25 {
-        MASTER_CPU_IDLE_STALL_FRAMES[entry_id] += 1;
-    } else {
-        MASTER_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
-    }
-
-    MASTER_CPU_LAST_X[entry_id] = current_x;
-    MASTER_CPU_LAST_Y[entry_id] = current_y;
-
-    if MASTER_CPU_IDLE_STALL_FRAMES[entry_id] >= 90 {
-        MASTER_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
-        let should_log = MASTER_CPU_RECOVERY_LOG_COOLDOWN[entry_id] == 0;
-        MASTER_CPU_RECOVERY_LOG_COOLDOWN[entry_id] = 300;
-        MotionModule::change_motion(
-            boss_boma,
-            Hash40::new("wait"),
-            0.0,
-            1.0,
-            false,
-            0.0,
-            false,
-            false,
-        );
-        StatusModule::change_status_request_from_script(
-            boss_boma,
-            *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
-            true,
-        );
-        if should_log {
-            crate::boss_log!(
-                "[PB][MasterHand][CPURecovery] entry={} status={} pos=({:.2},{:.2},{:.2}) cooldown=300",
-                entry_id,
-                status,
-                current_x,
-                current_y,
-                PostureModule::pos_z(boss_boma),
-            );
-        }
-    }
-}
-
-#[inline(always)]
-unsafe fn maybe_recover_crazy_cpu_idle(
-    boss_boma: *mut BattleObjectModuleAccessor,
-    entry_id: usize,
-) {
-    if boss_boma.is_null() || entry_id >= 8 {
-        return;
-    }
-    if hand_team_authority_active_for_boma(boss_boma) {
-        reset_crazy_cpu_idle_recovery(entry_id);
-        return;
-    }
-    let status = StatusModule::status_kind(boss_boma);
-    if !crazy_cpu_wait_family_status(status) {
-        reset_crazy_cpu_idle_recovery(entry_id);
-        return;
-    }
-    if CRAZY_CPU_RECOVERY_LOG_COOLDOWN[entry_id] > 0 {
-        CRAZY_CPU_RECOVERY_LOG_COOLDOWN[entry_id] -= 1;
-    }
-
-    let current_x = PostureModule::pos_x(boss_boma);
-    let current_y = PostureModule::pos_y(boss_boma);
-    let moved = (current_x - CRAZY_CPU_LAST_X[entry_id]).abs()
-        + (current_y - CRAZY_CPU_LAST_Y[entry_id]).abs();
-
-    if moved < 0.25 {
-        CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] += 1;
-    } else {
-        CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
-    }
-
-    CRAZY_CPU_LAST_X[entry_id] = current_x;
-    CRAZY_CPU_LAST_Y[entry_id] = current_y;
-
-    if CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] >= 90 {
-        CRAZY_CPU_IDLE_STALL_FRAMES[entry_id] = 0;
-        let should_log = CRAZY_CPU_RECOVERY_LOG_COOLDOWN[entry_id] == 0;
-        CRAZY_CPU_RECOVERY_LOG_COOLDOWN[entry_id] = 300;
-        MotionModule::change_motion(
-            boss_boma,
-            Hash40::new("wait"),
-            0.0,
-            1.0,
-            false,
-            0.0,
-            false,
-            false,
-        );
-        StatusModule::change_status_request_from_script(
-            boss_boma,
-            *ITEM_CRAZYHAND_STATUS_KIND_WAIT_CHASE,
-            true,
-        );
-        if should_log {
-            crate::boss_log!(
-                "[PB][CrazyHand][CPURecovery] entry={} status={} pos=({:.2},{:.2},{:.2}) cooldown=300",
-                entry_id,
-                status,
-                current_x,
-                current_y,
-                PostureModule::pos_z(boss_boma),
-            );
-        }
-    }
 }
 
 #[inline(always)]
@@ -1460,30 +1295,47 @@ unsafe fn weapon_owner_is_player(lua_state: u64) -> bool {
 }
 
 #[inline(always)]
-unsafe fn mark_boss_player_owned(boss_boma: *mut BattleObjectModuleAccessor, entry_id: i32) {
-    if boss_boma.is_null() {
-        return;
+fn hand_player_control_flag(
+    operation_cpu: Option<bool>,
+    temporary_authority: bool,
+) -> Option<bool> {
+    if temporary_authority {
+        None
+    } else {
+        operation_cpu.map(|cpu| !cpu)
     }
-    WorkModule::on_flag(boss_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
-    WorkModule::set_int(boss_boma, entry_id, ITEM_INSTANCE_WORK_INT_ENTRY_ID);
 }
 
 #[inline(always)]
-unsafe fn configure_boss_owner_mode(boss_boma: *mut BattleObjectModuleAccessor, entry_id: usize) {
-    if boss_boma.is_null() {
-        return;
+unsafe fn configure_boss_owner_mode(
+    boss_boma: *mut BattleObjectModuleAccessor,
+    entry_id: usize,
+) -> Option<bool> {
+    if boss_boma.is_null() || entry_id >= 8 {
+        return None;
     }
+    WorkModule::set_int(boss_boma, entry_id as i32, ITEM_INSTANCE_WORK_INT_ENTRY_ID);
     let fighter_manager = boss_helpers::fighter_manager();
-    if boss_helpers::is_operation_cpu_entry(fighter_manager, entry_id) {
-        WorkModule::off_flag(boss_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER);
-        WorkModule::set_int(boss_boma, entry_id as i32, ITEM_INSTANCE_WORK_INT_ENTRY_ID);
-        println!(
-            "[PB][MasterCrazy] entry={} cpu item_owner=native_ai",
-            entry_id,
-        );
+    let info = boss_helpers::fighter_information_entry(fighter_manager, entry_id);
+    let operation_cpu = if info.is_null() {
+        None
     } else {
-        mark_boss_player_owned(boss_boma, entry_id as i32);
+        Some(FighterInformation::is_operation_cpu(info))
+    };
+    let temporary_authority = hand_team_authority_active_for_boma(boss_boma)
+        || hand_entrance_owns_entry(entry_id, false)
+        || hand_entrance_owns_entry(entry_id, true);
+    // Spawn-time ownership may be unavailable; refresh it without breaking paired moves.
+    let player_owned = hand_player_control_flag(operation_cpu, temporary_authority)?;
+    if WorkModule::is_flag(boss_boma, ITEM_INSTANCE_WORK_FLAG_PLAYER) != player_owned {
+        WorkModule::set_flag(boss_boma, player_owned, ITEM_INSTANCE_WORK_FLAG_PLAYER);
+        crate::boss_log!(
+            "[PB][MasterCrazy] entry={} player_owned={} owner_mode_refreshed=true",
+            entry_id,
+            player_owned
+        );
     }
+    Some(player_owned)
 }
 
 #[inline(always)]
@@ -2881,7 +2733,6 @@ unsafe fn reset_master_runtime_for_spawn() {
     MASTER_IRON_BALL_SMOOTH_CANCEL = false;
     MASTER_IRON_BALL_PURGE_LEFT = 0;
     MASTER_KENZAN_SPAWNED = false;
-    reset_master_cpu_idle_recovery(ENTRY_ID);
     if hand_entrance_authority_claimed() {
         if !HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED {
             HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED = true;
@@ -2910,7 +2761,6 @@ unsafe fn reset_crazy_runtime_for_spawn() {
     CRAZY_KUMO_ACTIVE = false;
     CRAZY_KUMO_START_Y = 0.0;
     CRAZY_KUMO_ENDING = false;
-    reset_crazy_cpu_idle_recovery(ENTRY_ID_2);
     reset_crazy_fire_chariot_latches(ENTRY_ID_2);
     if hand_entrance_authority_claimed() {
         if !HAND_ENTRANCE_RESET_SUPPRESSION_LOGGED {
@@ -2965,10 +2815,6 @@ pub unsafe fn invalidate_transition_tracking(entry_id: usize) {
     MASTER_IRON_BALL_SMOOTH_CANCEL = false;
     MASTER_IRON_BALL_PURGE_LEFT = 0;
     MASTER_KENZAN_SPAWNED = false;
-    MASTER_CPU_IDLE_STALL_FRAMES = [0; 8];
-    MASTER_CPU_LAST_X = [0.0; 8];
-    MASTER_CPU_LAST_Y = [0.0; 8];
-    MASTER_CPU_RECOVERY_LOG_COOLDOWN = [0; 8];
 
     CONTROLLABLE_2 = true;
     ENTRY_ID_2 = entry;
@@ -2985,10 +2831,6 @@ pub unsafe fn invalidate_transition_tracking(entry_id: usize) {
     CRAZY_KUMO_ACTIVE = false;
     CRAZY_KUMO_START_Y = 0.0;
     CRAZY_KUMO_ENDING = false;
-    CRAZY_CPU_IDLE_STALL_FRAMES = [0; 8];
-    CRAZY_CPU_LAST_X = [0.0; 8];
-    CRAZY_CPU_LAST_Y = [0.0; 8];
-    CRAZY_CPU_RECOVERY_LOG_COOLDOWN = [0; 8];
     CRAZY_FIRE_CHARIOT_PINKY_LATCH = [false; 8];
     CRAZY_FIRE_CHARIOT_THUMB_LATCH = [false; 8];
 
@@ -3138,7 +2980,6 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     MASTER_IRON_BALL_SMOOTH_CANCEL = false;
     MASTER_IRON_BALL_PURGE_LEFT = 0;
     MASTER_KENZAN_SPAWNED = false;
-    reset_master_cpu_idle_recovery(entry);
 
     CONTROLLABLE_2 = true;
     ENTRY_ID_2 = entry;
@@ -3154,7 +2995,6 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     CRAZY_KUMO_ACTIVE = false;
     CRAZY_KUMO_START_Y = 0.0;
     CRAZY_KUMO_ENDING = false;
-    reset_crazy_cpu_idle_recovery(entry);
     reset_crazy_fire_chariot_latches(entry);
 }
 
@@ -3165,7 +3005,7 @@ unsafe fn acquire_master_hand_item(
 ) -> *mut BattleObjectModuleAccessor {
     let boss_boma =
         boss_helpers::acquire_boss_item(module_accessor, &raw mut BOSS_ID, *ITEM_KIND_MASTERHAND);
-    configure_boss_owner_mode(boss_boma, entry_id);
+    let _ = configure_boss_owner_mode(boss_boma, entry_id);
     if boss_boma.is_null() {
         return boss_boma;
     }
@@ -3489,7 +3329,7 @@ unsafe fn acquire_crazy_hand_item(
 ) -> *mut BattleObjectModuleAccessor {
     let boss_boma =
         boss_helpers::acquire_boss_item(module_accessor, &raw mut BOSS_ID_2, *ITEM_KIND_CRAZYHAND);
-    configure_boss_owner_mode(boss_boma, entry_id);
+    let _ = configure_boss_owner_mode(boss_boma, entry_id);
     if boss_boma.is_null() {
         return boss_boma;
     }
@@ -4275,8 +4115,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             DamageModule::add_damage(module_accessor, sub_hp, 0);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                         }
-                        if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == false
-                        {
+                        if configure_boss_owner_mode(boss_boma, ENTRY_ID) == Some(true) {
                             WorkModule::off_flag(
                                 boss_boma,
                                 *ITEM_INSTANCE_WORK_FLAG_AI_SOON_TO_BE_ATTACK,
@@ -5507,13 +5346,6 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 *ITEM_MASTERHAND_STATUS_KIND_WAIT_CHASE,
                                 true,
                             );
-                        }
-                        if !FINDER
-                            && !hand_team_active
-                            && boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID)
-                                == true
-                        {
-                            maybe_recover_master_cpu_idle(boss_boma, ENTRY_ID);
                         }
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_MASTERHAND_STATUS_KIND_DOWN_LOOP
@@ -8775,8 +8607,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             DamageModule::add_damage(module_accessor, sub_hp, 0);
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
                         }
-                        if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID) == false
-                        {
+                        if configure_boss_owner_mode(boss_boma, ENTRY_ID_2) == Some(true) {
                             WorkModule::off_flag(
                                 boss_boma,
                                 *ITEM_INSTANCE_WORK_FLAG_AI_SOON_TO_BE_ATTACK,
@@ -9884,12 +9715,6 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                             true,
                         );
                     }
-                    if !FINDER
-                        && !hand_team_active_2
-                        && boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID_2) == true
-                    {
-                        maybe_recover_crazy_cpu_idle(boss_boma_2, ENTRY_ID_2);
-                    }
                     update_finder_runtime(fighter.lua_state_agent);
                     log_hand_team_status();
 
@@ -10204,7 +10029,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                                     == hash40("electroshock_end")
                                 && !DEAD_2
                             {
-                                if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID)
+                                if boss_helpers::is_operation_cpu_entry(fighter_manager, ENTRY_ID_2)
                                     == false
                                 {
                                     CONTROLLABLE_2 = true;
@@ -13046,14 +12871,45 @@ pub unsafe fn crazy_frame(fighter: &mut L2CFighterCommon) {
 mod tests {
     use super::{
         bark_partner_frame_correction, bark_partner_should_finish, crazy_kumo_should_clear_attack,
-        crazy_kumo_y_for_motion_frame, master_chakram_positions, supports_master_item_hooks,
-        take_master_bullet_followup, CRAZY_FLOAT_FLOOR_CLEARANCE, CRAZY_KUMO_ASCENT,
-        CRAZY_NOTAUTSU_GROUND_CLEARANCE, HAND_ITEM_BUILD_ID,
+        crazy_kumo_y_for_motion_frame, hand_player_control_flag, master_chakram_positions,
+        supports_master_item_hooks, take_master_bullet_followup, CRAZY_FLOAT_FLOOR_CLEARANCE,
+        CRAZY_KUMO_ASCENT, CRAZY_NOTAUTSU_GROUND_CLEARANCE, HAND_ITEM_BUILD_ID,
     };
     use smash::{lib::lua_const::*, phx::Vector3f};
 
     fn assert_near(actual: f32, expected: f32) {
         assert!((actual - expected).abs() < 0.001, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn cpu_hand_ownership_refreshes_without_overriding_pair_control() {
+        assert_eq!(hand_player_control_flag(None, false), None);
+        for cpu in [None, Some(false), Some(true)] {
+            assert_eq!(hand_player_control_flag(cpu, true), None);
+        }
+        for cpu_slots in [[false, true], [true, false], [true, true], [false, false]] {
+            let mut player_flags = [true, true];
+            for slot in 0..2 {
+                if let Some(player_owned) = hand_player_control_flag(Some(cpu_slots[slot]), false) {
+                    player_flags[slot] = player_owned;
+                }
+            }
+            assert_eq!(player_flags, cpu_slots.map(|cpu| !cpu));
+        }
+
+        let mut player_owned = true;
+        for (cpu, paired, expected) in [
+            (None, false, true),
+            (Some(true), false, false),
+            (Some(false), false, true),
+            (Some(true), true, true),
+            (Some(true), false, false),
+        ] {
+            if let Some(value) = hand_player_control_flag(cpu, paired) {
+                player_owned = value;
+            }
+            assert_eq!(player_owned, expected);
+        }
     }
 
     #[test]
