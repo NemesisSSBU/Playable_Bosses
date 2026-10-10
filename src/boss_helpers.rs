@@ -1885,6 +1885,15 @@ pub fn is_world_of_light_boss_preview_stage(stage_id: i32) -> bool {
 }
 
 #[inline(always)]
+pub unsafe fn needs_wol_preview_item(
+    module_accessor: *mut BattleObjectModuleAccessor,
+    item_kind: i32,
+) -> bool {
+    is_world_of_light_boss_preview_stage(smash::app::stage::get_stage_id())
+        && held_item_by_kind(module_accessor, &[item_kind]).is_none()
+}
+
+#[inline(always)]
 pub fn is_boss_passthrough_stage(stage_id: i32) -> bool {
     // These scenes should stay on the base fighter because the boss takeover
     // path is not playable there.

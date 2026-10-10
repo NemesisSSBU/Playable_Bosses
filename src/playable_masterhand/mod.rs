@@ -223,6 +223,7 @@ unsafe fn ensure_preview_masterhand(module_accessor: *mut BattleObjectModuleAcce
     let staffroll = boss_helpers::is_classic_staffroll_stage(smash::app::stage::get_stage_id());
     if ModelModule::scale(module_accessor) != HIDDEN_HOST_SCALE
         || !ItemModule::is_have_item(module_accessor, 0)
+        || boss_helpers::needs_wol_preview_item(module_accessor, *ITEM_KIND_MASTERHAND)
     {
         ItemModule::remove_all(module_accessor);
         // 3.0.3 order: acquire the presentation item while the host is still at

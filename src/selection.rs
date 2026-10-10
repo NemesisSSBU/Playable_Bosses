@@ -39,6 +39,8 @@ unsafe fn selection_txn_budget_take() -> bool {
     true
 }
 static mut CACHED_BOSS_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
+// Map presentation follows UI changes without weakening the battle cache's authority rules.
+static mut WOL_PREVIEW_UI_HASH_BY_ENTRY: [u64; MAX_FIGHTERS] = [0; MAX_FIGHTERS];
 static mut CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY: [OpaqueSelectionCacheOrigin; MAX_FIGHTERS] =
     [OpaqueSelectionCacheOrigin::None; MAX_FIGHTERS];
 // A verified battle identity can bridge Classic/Spirit round transitions where
@@ -949,6 +951,10 @@ unsafe fn finish_opaque_selection_candidate(entry_idx: usize) {
         pending_selection_commit(condensed_enabled, pending),
         carrier_confirmed,
     );
+    WOL_PREVIEW_UI_HASH_BY_ENTRY[entry_idx] = match commit {
+        OpaqueSelectionCommit::Cached { ui_hash, .. } => ui_hash,
+        OpaqueSelectionCommit::Clear { .. } => 0,
+    };
     if selection_txn_budget_take() {
         let (proposed_origin, proposed_hash) = match commit {
             OpaqueSelectionCommit::Cached { ui_hash, origin } => (origin_label(origin), ui_hash),
@@ -1208,6 +1214,7 @@ unsafe fn capture_fighter_load(ctx: &skyline::hooks::InlineCtx) {
         &mut *std::ptr::addr_of_mut!(CACHED_BOSS_UI_HASH_ORIGIN_BY_ENTRY),
     );
     if applied {
+        WOL_PREVIEW_UI_HASH_BY_ENTRY[entry] = CACHED_BOSS_UI_HASH_BY_ENTRY[entry];
         LAST_STARTED_BOSS_UI_HASH_BY_ENTRY[entry] = 0;
         ROUND_CONTINUATION_BOSS_UI_HASH_BY_ENTRY[entry] = 0;
     }
@@ -1439,6 +1446,12 @@ fn resolve_current_boss_identity(
         .filter(|hash| is_boss_css_hash(*hash))
         .or_else(|| name_detection.filter(|hash| is_boss_css_hash(*hash)))
         .or_else(|| cache.filter(|hash| is_boss_css_hash(*hash)))
+}
+
+fn wol_preview_identity(stage_id: i32, ui_hash: u64) -> Option<u64> {
+    (crate::boss_helpers::is_world_of_light_boss_preview_stage(stage_id)
+        && is_boss_css_hash(ui_hash))
+        .then_some(ui_hash)
 }
 
 #[inline]
@@ -2530,6 +2543,15 @@ pub unsafe fn selected_css_boss_selector_id(
         selected_boss_selector_id_from_character_name(module_accessor),
         cache,
     );
+    let current = if entry_id >= 0 && (entry_id as usize) < MAX_FIGHTERS {
+        wol_preview_identity(
+            smash::app::stage::get_stage_id(),
+            WOL_PREVIEW_UI_HASH_BY_ENTRY[entry_id as usize],
+        )
+        .or(current)
+    } else {
+        current
+    };
     let round_continuation = round_continuation_boss_hash(entry_id);
     let selected = resolve_with_round_continuation(current, round_continuation);
 
@@ -2786,6 +2808,42 @@ mod version_tests {
 #[cfg(test)]
 mod fighter_load_selection_tests {
     use super::*;
+
+    #[test]
+    fn world_map_selection_overrides_stale_battle_identity_only_on_the_map() {
+        use crate::boss_helpers::{STAGE_ID_AMIIBO_PREVIEW, STAGE_ID_BOSS_PREVIEW, STAGE_ID_CLASSIC_STAFFROLL};
+        for boss in [
+            UI_CHARA_MASTERHAND_HASH,
+            UI_CHARA_CRAZYHAND_HASH,
+            UI_CHARA_MEWTWO_MASTERHAND_HASH,
+            UI_CHARA_KIILA_HASH,
+            UI_CHARA_DARZ_HASH,
+            UI_CHARA_MARX_HASH,
+            UI_CHARA_DRACULA_HASH,
+            UI_CHARA_GANONBOSS_HASH,
+            UI_CHARA_GALLEOM_HASH,
+            UI_CHARA_LIOLEUS_HASH,
+            UI_CHARA_KOOPAG_HASH,
+        ] {
+            let mut pending = PendingOpaqueSelection::begin(0, UI_CHARA_MASTERHAND_HASH);
+            pending.observe_named_lookup(Some(boss));
+            let commit = pending_selection_commit(false, pending);
+            assert_eq!(commit, OpaqueSelectionCommit::Cached {
+                ui_hash: boss,
+                origin: OpaqueSelectionCacheOrigin::CandidateUiLookup,
+            });
+            let battle = resolve_current_boss_identity(None, None, Some(UI_CHARA_MASTERHAND_HASH));
+            assert_eq!(wol_preview_identity(STAGE_ID_BOSS_PREVIEW, boss).or(battle), Some(boss));
+            for stage in [0, 0x141, STAGE_ID_AMIIBO_PREVIEW, STAGE_ID_CLASSIC_STAFFROLL] {
+                assert_eq!(wol_preview_identity(stage, boss).or(battle), battle);
+            }
+            assert!(!cache_visible_on_battle_stage(OpaqueSelectionCacheOrigin::CandidateUiLookup, false));
+            assert!(!origin_is_authoritative_selection(OpaqueSelectionCacheOrigin::CandidateUiLookup));
+        }
+        for invalid in [0, UI_CHARA_MARIO_HASH, 0x50000000, u64::MAX] {
+            assert_eq!(wol_preview_identity(STAGE_ID_BOSS_PREVIEW, invalid), None);
+        }
+    }
 
     #[test]
     fn repeated_standalone_boss_identity_is_kept_for_each_player_and_cpu_slot() {

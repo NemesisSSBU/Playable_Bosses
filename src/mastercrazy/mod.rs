@@ -3998,6 +3998,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         smash::app::sv_system::battle_object_module_accessor(lua_state);
                     if ModelModule::scale(module_accessor) != 0.0001
                         || !ItemModule::is_have_item(module_accessor, 0)
+                        || boss_helpers::needs_wol_preview_item(module_accessor, *ITEM_KIND_MASTERHAND)
                     {
                         ItemModule::remove_all(module_accessor);
                         ModelModule::set_scale(module_accessor, 0.0001);
@@ -8464,6 +8465,7 @@ extern "C" fn once_per_fighter_frame_2(fighter: &mut L2CFighterCommon) {
                         smash::app::sv_system::battle_object_module_accessor(lua_state);
                     if ModelModule::scale(module_accessor) != 0.0001
                         || !ItemModule::is_have_item(module_accessor, 0)
+                        || boss_helpers::needs_wol_preview_item(module_accessor, *ITEM_KIND_CRAZYHAND)
                     {
                         ItemModule::remove_all(module_accessor);
                         ModelModule::set_scale(module_accessor, 0.0001);
