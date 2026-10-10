@@ -2367,12 +2367,11 @@ unsafe fn round_continuation_boss_hash(entry_id: i32) -> Option<u64> {
     is_persistable_host_boss_hash(hash).then_some(hash)
 }
 
-static mut SELECTOR_AUTHORITY_LOGGED: [bool; MAX_FIGHTERS] = [false; MAX_FIGHTERS];
+static mut SELECTOR_AUTHORITY_LOGGED: [Option<u32>; MAX_FIGHTERS] = [None; MAX_FIGHTERS];
 
 /// One bounded, READ-ONLY snapshot of every candidate feeding the battle
-/// selector for an entry. Mutates nothing; latched once per entry so it cannot
-/// spam. Exists to prove which variable supplies an unexpected identity when a
-/// restored selection fails to take over (#89).
+/// selector for each host. Reserve fighters can replace an object in the same
+/// entry without a match reset, so each replacement needs its own snapshot.
 pub unsafe fn log_selector_authority(module_accessor: *mut BattleObjectModuleAccessor) {
     if !crate::debug::enabled() || module_accessor.is_null() {
         return;
@@ -2382,10 +2381,23 @@ pub unsafe fn log_selector_authority(module_accessor: *mut BattleObjectModuleAcc
         return;
     }
     let idx = entry as usize;
-    if SELECTOR_AUTHORITY_LOGGED[idx] {
+    let object_id = (*module_accessor).battle_object_id;
+    let manager = crate::boss_helpers::fighter_manager();
+    if manager.is_null() {
         return;
     }
-    SELECTOR_AUTHORITY_LOGGED[idx] = true;
+    let fighter_entry =
+        FighterManager::get_fighter_entry(manager, smash::app::FighterEntryID(entry))
+            as *mut smash::app::FighterEntry;
+    if fighter_entry.is_null()
+        || FighterEntry::current_fighter_id(fighter_entry) != object_id as u64
+    {
+        return;
+    }
+    if SELECTOR_AUTHORITY_LOGGED[idx] == Some(object_id) {
+        return;
+    }
+    SELECTOR_AUTHORITY_LOGGED[idx] = Some(object_id);
 
     let info = fighter_information_for_entry(entry);
     let raw_summon = if info.is_null() {
@@ -2420,8 +2432,10 @@ pub unsafe fn log_selector_authority(module_accessor: *mut BattleObjectModuleAcc
     );
 
     crate::boss_log!(
-        "[PB][SelectorAuthority] entry={} stage=0x{:x} host_kind={} raw_summon_boss_id=0x{:x} decoded_summon_selector={:?} log_selector={:?} current_cache_hash=0x{:010x} current_cache_origin={} cache_selector={:?} restored_hash=0x{:010x} global_hash=0x{:010x} name_detection={:?} runtime_sources={:?} condensed_enabled={} carrier_confirmed={} chosen_hash={:?} chosen_reason={} boss={}",
+        "[PB][SelectorAuthority] entry={} object_id=0x{:x} host_status={} stage=0x{:x} host_kind={} raw_summon_boss_id=0x{:x} decoded_summon_selector={:?} log_selector={:?} current_cache_hash=0x{:010x} current_cache_origin={} cache_selector={:?} restored_hash=0x{:010x} global_hash=0x{:010x} name_detection={:?} runtime_sources={:?} condensed_enabled={} carrier_confirmed={} chosen_hash={:?} chosen_reason={} boss={}",
         idx,
+        object_id,
+        smash::app::lua_bind::StatusModule::status_kind(module_accessor),
         smash::app::stage::get_stage_id(),
         smash::app::utility::get_kind(&mut *module_accessor),
         raw_summon,
@@ -2456,7 +2470,7 @@ fn origin_label(origin: OpaqueSelectionCacheOrigin) -> &'static str {
 /// Re-arm the snapshot when match state resets so each battle logs once.
 pub unsafe fn reset_selector_authority_log(entry_id: usize) {
     if entry_id < MAX_FIGHTERS {
-        SELECTOR_AUTHORITY_LOGGED[entry_id] = false;
+        SELECTOR_AUTHORITY_LOGGED[entry_id] = None;
     }
 }
 
@@ -2772,6 +2786,52 @@ mod version_tests {
 #[cfg(test)]
 mod fighter_load_selection_tests {
     use super::*;
+
+    #[test]
+    fn repeated_standalone_boss_identity_is_kept_for_each_player_and_cpu_slot() {
+        use OpaqueSelectionCacheOrigin::*;
+        for boss in [
+            UI_CHARA_MASTERHAND_HASH,
+            UI_CHARA_CRAZYHAND_HASH,
+            UI_CHARA_MEWTWO_MASTERHAND_HASH,
+            UI_CHARA_KIILA_HASH,
+            UI_CHARA_DARZ_HASH,
+            UI_CHARA_DRACULA_HASH,
+            UI_CHARA_GANONBOSS_HASH,
+            UI_CHARA_GALLEOM_HASH,
+            UI_CHARA_LIOLEUS_HASH,
+            UI_CHARA_MARX_HASH,
+            UI_CHARA_KOOPAG_HASH,
+        ] {
+            let mut hashes = [0; MAX_FIGHTERS];
+            let mut origins = [None; MAX_FIGHTERS];
+            for entry in 0..MAX_FIGHTERS {
+                assert!(capture_fighter_load_selection(
+                    entry,
+                    boss,
+                    &mut hashes,
+                    &mut origins
+                ));
+                for cpu in [false, true] {
+                    assert!(cache_visible_on_battle_stage(origins[entry], cpu));
+                }
+            }
+            assert_eq!(hashes, [boss; MAX_FIGHTERS]);
+            assert!(capture_fighter_load_selection(
+                3,
+                UI_CHARA_MARIO_HASH,
+                &mut hashes,
+                &mut origins
+            ));
+            for entry in 0..MAX_FIGHTERS {
+                assert_eq!(hashes[entry], if entry == 3 { 0 } else { boss });
+                assert_eq!(
+                    origins[entry],
+                    if entry == 3 { None } else { ConfirmedFighterLoad }
+                );
+            }
+        }
+    }
 
     #[test]
     fn nonzero_active_slot_types_keep_bosses_but_closed_rows_clear_stale_hashes() {

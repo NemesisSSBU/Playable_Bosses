@@ -307,6 +307,13 @@ fn is_classic_stage_transition_after_teardown(
         && current_stage != boss_helpers::STAGE_ID_RESULT
 }
 
+fn should_reset_boss_runtime_for_new_round(
+    stale_result_state: bool,
+    fighter_load_boundary: bool,
+) -> bool {
+    stale_result_state || fighter_load_boundary
+}
+
 #[inline(always)]
 unsafe fn reset_stale_match_generation_if_new_round(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
@@ -394,17 +401,22 @@ unsafe fn reset_stale_match_generation_if_new_round(
     clear_classic_clear_camera_anchor(entry, reset_reason);
 
     let previous_phase = lifecycle_phase_name(BOSS_LIFECYCLE_PHASE[entry]);
-    // Clear the previous match's per-entry WOL secondary-selection latch
-    // before resolving this new round. The fresh decision made below remains
-    // armed for the new match rather than being cleared after resolution.
-    selection::reset_condensed_selection(entry);
-    selection::arm_started_boss_selection_for_new_round(entry);
+    let reset_runtime =
+        should_reset_boss_runtime_for_new_round(stale_result_state, fighter_load_boundary);
+    // Suppression alone was armed by cleanup that already reset the old round.
+    // Preserve any new boss and variant acquired during DEMO before ENTRY.
+    if reset_runtime {
+        selection::reset_condensed_selection(entry);
+        selection::arm_started_boss_selection_for_new_round(entry);
+    }
     let selected_ui_hash = selection::selected_css_boss_selector_id(module_accessor).unwrap_or(0);
 
     // This clears only the temporary scene suppression. The selected boss UI
     // identity remains intact and is re-consumed by the normal setup path.
     selection::clear_boss_selection_suppression_if_ready_go(module_accessor);
-    reset_boss_runtime_for_fighter(module_accessor, entry);
+    if reset_runtime {
+        reset_boss_runtime_for_fighter(module_accessor, entry);
+    }
 
     BOSS_MATCH_STARTED[entry] = false;
     BOSS_HAD_READY_GO[entry] = false;
@@ -1238,6 +1250,11 @@ unsafe fn log_early_takeover(
 pub unsafe fn should_quarantine_boss_frame(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
 ) -> bool {
+    if !module_accessor.is_null()
+        && boss_helpers::is_spirit_capture_status(StatusModule::status_kind(module_accessor))
+    {
+        return true;
+    }
     matches!(
         update_result_transition_state(module_accessor),
         BossTransitionPhase::PostMatchPreResult
@@ -1259,7 +1276,9 @@ pub unsafe fn finish_boss_transition_cleanup(
 unsafe fn cleanup_hidden_host_post_match_transition(
     module_accessor: *mut smash::app::BattleObjectModuleAccessor,
 ) {
-    if module_accessor.is_null() {
+    if module_accessor.is_null()
+        || boss_helpers::is_spirit_capture_status(StatusModule::status_kind(module_accessor))
+    {
         return;
     }
 
@@ -1484,6 +1503,39 @@ unsafe fn log_mario_ready_go_dispatch_enter(
 extern "C" fn mario_boss_dispatch_frame(fighter: &mut L2CFighterCommon) {
     unsafe {
         let module_accessor = fighter.module_accessor;
+        // Roulette needs the native fighter's landing, item-get and shooting motions.
+        if boss_helpers::is_spirit_capture_status(StatusModule::status_kind(module_accessor)) {
+            clear_classic_clear_camera_anchor(
+                boss_helpers::entry_id(module_accessor),
+                "spirit_capture",
+            );
+            if boss_helpers::is_hidden_host(module_accessor) {
+                boss_helpers::restore_plain_mario_visuals(module_accessor);
+                for group in [
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_LANDING,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_SPECIAL,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_ITEM,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_SPECIAL,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_JUMP_AERIAL,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_TREAD_JUMP,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_ITEM_THROW,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_ATTACK,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_WALL_JUMP,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_ESCAPE,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_CATCH,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_JUMP,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_GUARD,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_ATTACK,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_GROUND_ESCAPE,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_CLIFF,
+                    *FIGHTER_STATUS_TRANSITION_GROUP_CHK_AIR_LASSO,
+                ] {
+                    WorkModule::unable_transition_term_forbid_group(module_accessor, group);
+                }
+            }
+            return;
+        }
         log_mario_ready_go_dispatch_enter(module_accessor);
 
         // The Figure Player viewer has a real Mario host, but it is not a
@@ -1801,7 +1853,6 @@ fn read_u8_field(param_struct: &ParamStruct, field_hash: Hash40) -> Option<u8> {
         .and_then(|(_, field)| field.try_into_ref::<u8>().ok().copied())
 }
 
-#[cfg(test)]
 fn read_i8_field(param_struct: &ParamStruct, field_hash: Hash40) -> Option<i8> {
     param_struct
         .0
@@ -2200,9 +2251,16 @@ fn hide_standalone_css_row(charroot: &mut ParamStruct) {
     patch_i8_field(charroot, to_hash40("skill_list_order"), -1);
 }
 
-fn apply_giga_bowser_css_visibility(charroot: &mut ParamStruct, standalone_enabled: bool) {
+fn apply_giga_bowser_css_options(
+    charroot: &mut ParamStruct,
+    standalone_enabled: bool,
+    condensed_enabled: bool,
+) {
     if !standalone_enabled {
         hide_standalone_css_row(charroot);
+    } else if !condensed_enabled {
+        // Koopag already has native c00..c07; keep his own name/layout maps.
+        patch_u8_field(charroot, to_hash40("color_num"), 8);
     }
 }
 
@@ -3046,6 +3104,22 @@ fn callback_koopag_condensed_layout(hash: u64, data: &mut [u8]) -> Option<usize>
 
 // Giga Bowser
 
+fn patch_koopag_save_slot(target_row: &mut ParamStruct, rows: &ParamList) -> bool {
+    let save_no = rows
+        .0
+        .iter()
+        .find(|row| {
+            struct_hash40_field_matches(row, to_hash40("ui_chara_id"), to_hash40("ui_chara_koopa"))
+        })
+        .and_then(|row| row.try_into_ref::<ParamStruct>().ok())
+        .and_then(|row| read_i8_field(row, to_hash40("save_no")))
+        .filter(|save_no| *save_no >= 0);
+    match save_no {
+        Some(save_no) => patch_i8_field(target_row, to_hash40("save_no"), save_no),
+        None => false,
+    }
+}
+
 #[arc_callback]
 fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     load_original_file(hash, &mut data);
@@ -3083,13 +3157,8 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         return Some(original_size);
     };
 
-    // 3.1.0 cloned Bowser's entire CSS row onto Giga Bowser, then tried to
-    // put fighter_kind_koopag back. CSS portraits still loaded, but the VS
-    // screen asked for Bowser costume slot 8 (`color_start_index` /
-    // `original_ui_chara_hash = ui_chara_koopa`) on a fighter that only has
-    // koopag c00. Hardware waits there forever; emulator often does not.
-    // Patch the genuine koopag row in place and leave his costume identity
-    // alone.
+    // Keep Koopag's identity: cloning Bowser's row previously redirected
+    // loading to an unsupported costume 8 instead of native Koopag c00..c07.
     let existing_fighter_kind = read_hash40_field(&target_row, fighter_kind_hash);
     let fighter_kind_source = if existing_fighter_kind == Some(fighter_kind_koopag) {
         "target_row"
@@ -3104,7 +3173,7 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
     patch_bool_field(&mut target_row, to_hash40("is_hidden_boss"), false);
     patch_i8_field(&mut target_row, to_hash40("disp_order"), 15);
     patch_i8_field(&mut target_row, to_hash40("skill_list_order"), 15);
-    patch_i8_field(&mut target_row, to_hash40("save_no"), -1);
+    let save_slot_inherited = patch_koopag_save_slot(&mut target_row, db_root_list);
     patch_hash40_field(
         &mut target_row,
         to_hash40("characall_label_c00"),
@@ -3121,15 +3190,17 @@ fn callback_koopag(hash: u64, mut data: &mut [u8]) -> Option<usize> {
         to_hash40("fighter_type_normal"),
     );
     patch_css_selector_fields(&mut target_row, "ui_chara_koopag", 0x18E);
-    apply_giga_bowser_css_visibility(
+    apply_giga_bowser_css_options(
         &mut target_row,
         BossCssOption::GigaBowser.standalone_enabled(&CONFIG.options),
+        condensed_css_enabled(),
     );
 
     db_root_list.0[target_index] = ParamKind::Struct(target_row);
     crate::boss_log!(
-        "[PB][CSSChara] patched ui_chara_koopag in place fighter_kind_source={} color_start_index=unchanged original_ui_chara_hash=unchanged save_no=-1",
-        fighter_kind_source
+        "[PB][CSSChara] patched ui_chara_koopag in place fighter_kind_source={} color_start_index=unchanged original_ui_chara_hash=unchanged bowser_save_slot_inherited={}",
+        fighter_kind_source,
+        save_slot_inherited
     );
     amiibo_preview::log_ui_chara_db_boundary(
         "ui_chara_koopag",
@@ -4333,8 +4404,59 @@ pub fn main() {
 mod classic_clear_camera_tests {
     use super::{
         is_classic_stage_transition_after_teardown, is_verified_new_round_boundary,
-        BossTransitionPhase, ClassicClearCameraAnchor,
+        should_reset_boss_runtime_for_new_round, BossTransitionPhase, ClassicClearCameraAnchor,
     };
+
+    #[test]
+    fn spirit_capture_returns_before_boss_dispatch_and_transition_cleanup() {
+        // Native fighter callbacks cannot run in a host test.
+        let source = include_str!("lib.rs");
+        for (start, next) in [
+            (
+                "extern \"C\" fn mario_boss_dispatch_frame(",
+                "log_mario_ready_go_dispatch_enter(module_accessor);",
+            ),
+            ("pub unsafe fn should_quarantine_boss_frame(", "matches!("),
+            (
+                "unsafe fn cleanup_hidden_host_post_match_transition(",
+                "let entry_id =",
+            ),
+        ] {
+            let guard = source
+                .split(start)
+                .nth(1)
+                .unwrap()
+                .split(next)
+                .next()
+                .unwrap();
+            assert!(
+                guard.contains("is_spirit_capture_status"),
+                "missing guard in {start}"
+            );
+            assert!(
+                guard.contains("return"),
+                "capture must leave {start} before takeover"
+            );
+        }
+    }
+
+    #[test]
+    fn suppression_only_entry_preserves_bosses_spawned_during_demo() {
+        // Both hands have detached from the host's held-item slot during DEMO.
+        let mut tracked_ids = [0x40000000u32, 0x40010000];
+        for tracked in &mut tracked_ids {
+            assert!(is_verified_new_round_boundary(
+                false, true, false, false, true, false, false
+            ));
+            if should_reset_boss_runtime_for_new_round(false, false) {
+                *tracked = 0;
+            }
+        }
+        assert_eq!(tracked_ids, [0x40000000, 0x40010000]);
+        assert!(should_reset_boss_runtime_for_new_round(true, false));
+        assert!(should_reset_boss_runtime_for_new_round(false, true));
+        assert!(should_reset_boss_runtime_for_new_round(true, true));
+    }
 
     #[test]
     fn anchor_tracks_latest_position_and_holds_only_during_post_match_gap() {
@@ -4437,6 +4559,88 @@ mod classic_clear_camera_tests {
 mod condensed_css_tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn giga_exposes_native_colors_only_in_enabled_standalone_mode() {
+        let mut native = css_visibility_row(true, false, 15, 15);
+        native.0.extend([
+            (to_hash40("color_num"), ParamKind::U8(1)),
+            (to_hash40("color_start_index"), ParamKind::U8(0)),
+            (to_hash40("save_no"), ParamKind::I8(15)),
+            (to_hash40("name_id"), ParamKind::Str("koopag".into())),
+            (
+                to_hash40("fighter_kind"),
+                ParamKind::Hash(to_hash40("fighter_kind_koopag")),
+            ),
+            (
+                to_hash40("original_ui_chara_hash"),
+                ParamKind::Hash(to_hash40("ui_chara_koopag")),
+            ),
+        ]);
+        for color in 0..8 {
+            for field in [
+                format!("c{color:02}_index"),
+                format!("n{color:02}_index"),
+                format!("c{color:02}_group"),
+            ] {
+                native.0.push((to_hash40(&field), ParamKind::U8(0)));
+            }
+        }
+
+        for standalone_enabled in [false, true] {
+            for condensed_enabled in [false, true] {
+                let mut row = native.clone();
+                apply_giga_bowser_css_options(&mut row, standalone_enabled, condensed_enabled);
+                let mut expected = native.clone();
+                if !standalone_enabled {
+                    hide_standalone_css_row(&mut expected);
+                } else if !condensed_enabled {
+                    patch_u8_field(&mut expected, to_hash40("color_num"), 8);
+                }
+                assert_eq!(row, expected, "only costume count or visibility may change");
+
+                apply_giga_bowser_css_options(&mut row, standalone_enabled, condensed_enabled);
+                assert_eq!(row, expected, "repeated callbacks must be idempotent");
+            }
+        }
+    }
+
+    #[test]
+    fn giga_inherits_only_bowsers_save_slot_and_rejects_invalid_donors() {
+        let mut giga = ParamStruct(vec![
+            (to_hash40("save_no"), ParamKind::I8(-1)),
+            (
+                to_hash40("fighter_kind"),
+                ParamKind::Hash(to_hash40("fighter_kind_koopag")),
+            ),
+            (
+                to_hash40("original_ui_chara_hash"),
+                ParamKind::Hash(to_hash40("ui_chara_koopag")),
+            ),
+            (to_hash40("color_start_index"), ParamKind::U8(0)),
+        ]);
+        let original = giga.clone();
+        let mut bowser = ParamStruct(vec![
+            (
+                to_hash40("ui_chara_id"),
+                ParamKind::Hash(to_hash40("ui_chara_koopa")),
+            ),
+            (to_hash40("save_no"), ParamKind::I8(5)),
+        ]);
+        let rows = ParamList(vec![ParamKind::Struct(bowser.clone())]);
+        assert!(patch_koopag_save_slot(&mut giga, &rows));
+        let mut expected = original.clone();
+        patch_i8_field(&mut expected, to_hash40("save_no"), 5);
+        assert_eq!(giga, expected);
+        assert_eq!(rows.0[0], ParamKind::Struct(bowser.clone()));
+        assert!(!patch_koopag_save_slot(&mut giga, &ParamList(vec![])));
+        patch_i8_field(&mut bowser, to_hash40("save_no"), -1);
+        assert!(!patch_koopag_save_slot(
+            &mut giga,
+            &ParamList(vec![ParamKind::Struct(bowser)])
+        ));
+        assert_eq!(giga, expected);
+    }
 
     fn read_le_u16(data: &[u8], offset: usize) -> u16 {
         u16::from_le_bytes(data[offset..offset + 2].try_into().unwrap())
@@ -4809,7 +5013,7 @@ mod condensed_css_tests {
         assert!(!should_install_giga_bowser_layout(true, true));
 
         let mut giga_disabled = css_visibility_row(true, false, 15, 15);
-        apply_giga_bowser_css_visibility(&mut giga_disabled, false);
+        apply_giga_bowser_css_options(&mut giga_disabled, false, false);
         assert_eq!(
             read_bool_field(&giga_disabled, to_hash40("can_select")),
             Some(false)

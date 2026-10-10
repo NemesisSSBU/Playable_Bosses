@@ -18,9 +18,9 @@ use crate::dharkon;
 use crate::selection;
 
 static mut CONTROLLABLE: bool = true;
-static mut IS_ANGRY: bool = false;
+static mut IS_ANGRY: [bool; 8] = [false; 8];
 static mut ENTRY_ID: usize = 0;
-static mut RANDOM_ATTACK: i32 = 0;
+static mut RANDOM_ATTACK: [i32; 8] = [0; 8];
 static mut BOSS_ID: [u32; 8] = [0; 8];
 static mut DEAD: bool = false;
 static mut JUMP_START: bool = false;
@@ -111,15 +111,15 @@ pub unsafe fn reset_match_state(entry_id: usize) {
             core::ptr::addr_of!(RESULT_SPAWNED).read(),
             core::ptr::addr_of!(EXISTS_PUBLIC).read(),
             core::ptr::addr_of!(JUMP_START).read(),
-            core::ptr::addr_of!(IS_ANGRY).read(),
+            core::ptr::addr_of!(IS_ANGRY[entry]).read(),
             core::ptr::addr_of!(CONTROLLER_X).read(),
             core::ptr::addr_of!(CONTROLLER_Y).read()
         );
     }
     CONTROLLABLE = true;
-    IS_ANGRY = false;
+    IS_ANGRY[entry] = false;
     ENTRY_ID = entry;
-    RANDOM_ATTACK = 0;
+    RANDOM_ATTACK[entry] = 0;
     BOSS_ID[entry] = 0;
     DEAD = false;
     JUMP_START = false;
@@ -450,7 +450,7 @@ unsafe fn cleanup_galeem_result_state(module_accessor: *mut BattleObjectModuleAc
     RESULT_SPAWNED = true;
     DEAD = false;
     STOP = false;
-    IS_ANGRY = false;
+    IS_ANGRY[ENTRY_ID] = false;
     CONTROLLABLE = true;
     JUMP_START = false;
     CONTROLLER_X = 0.0;
@@ -623,7 +623,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             DEAD = false;
                             CONTROLLABLE = true;
                             JUMP_START = false;
-                            IS_ANGRY = false;
+                            IS_ANGRY[ENTRY_ID] = false;
                             STOP = false;
                             CONTROLLER_X = 0.0;
                             CONTROLLER_Y = 0.0;
@@ -870,7 +870,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             DEAD = false;
                             CONTROLLABLE = true;
                             JUMP_START = false;
-                            IS_ANGRY = false;
+                            IS_ANGRY[ENTRY_ID] = false;
                             STOP = false;
                             let lua_state = fighter.lua_state_agent;
                             let module_accessor =
@@ -983,7 +983,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             DEAD = false;
                             CONTROLLABLE = true;
                             JUMP_START = false;
-                            IS_ANGRY = false;
+                            IS_ANGRY[ENTRY_ID] = false;
                             STOP = false;
                             CONTROLLER_X = 0.0;
                             CONTROLLER_Y = 0.0;
@@ -2299,9 +2299,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
 
                             let rage_hp = CONFIG.options.galeem_rage_hp.unwrap_or(220.0);
                             if DamageModule::damage(module_accessor, 0) >= rage_hp && !DEAD {
-                                if IS_ANGRY == false && !DEAD {
+                                if IS_ANGRY[ENTRY_ID] == false && !DEAD {
                                     CONTROLLABLE = false;
-                                    IS_ANGRY = true;
+                                    IS_ANGRY[ENTRY_ID] = true;
                                     DamageModule::add_damage(module_accessor, 1.1, 0);
                                     StatusModule::change_status_request_from_script(
                                         boss_boma,
@@ -2321,9 +2321,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             >= smash::app::sv_math::rand(hash40("fighter"), 59)
                                                 as f32
                                         {
-                                            RANDOM_ATTACK =
+                                            RANDOM_ATTACK[ENTRY_ID] =
                                                 smash::app::sv_math::rand(hash40("fighter"), 11);
-                                            if RANDOM_ATTACK == 0 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 0 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
@@ -2331,7 +2331,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                     true,
                                                 );
                                             }
-                                            if RANDOM_ATTACK == 1 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 1 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
@@ -2339,7 +2339,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                     true,
                                                 );
                                             }
-                                            if RANDOM_ATTACK == 2 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 2 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
@@ -2347,7 +2347,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                     true,
                                                 );
                                             }
-                                            if RANDOM_ATTACK == 3 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 3 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
@@ -2355,7 +2355,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                     true,
                                                 );
                                             }
-                                            if RANDOM_ATTACK == 4 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 4 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
@@ -2363,7 +2363,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                     true,
                                                 );
                                             }
-                                            if RANDOM_ATTACK == 5 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 5 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
@@ -2371,7 +2371,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                     true,
                                                 );
                                             }
-                                            if RANDOM_ATTACK == 6 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 6 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
@@ -2379,7 +2379,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                     true,
                                                 );
                                             }
-                                            if RANDOM_ATTACK == 7 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 7 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
@@ -2387,7 +2387,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                     true,
                                                 );
                                             }
-                                            if RANDOM_ATTACK == 8 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 8 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
@@ -2395,7 +2395,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                     true,
                                                 );
                                             }
-                                            if RANDOM_ATTACK == 9 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 9 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
@@ -2403,7 +2403,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                     true,
                                                 );
                                             }
-                                            if RANDOM_ATTACK == 10 {
+                                            if RANDOM_ATTACK[ENTRY_ID] == 10 {
                                                 CONTROLLABLE = false;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,

@@ -22,7 +22,7 @@ static mut JUMP_START: bool = false;
 static mut RESULT_SPAWNED: bool = false;
 static mut STOP: bool = false;
 static mut EXISTS_PUBLIC: bool = false;
-static mut BLACK_HOLE_END: bool = false;
+static mut BLACK_HOLE_END: [bool; 8] = [false; 8];
 static mut CONTROLLER_X: f32 = 0.0;
 static mut CONTROLLER_Y: f32 = 0.0;
 static mut CONTROL_SPEED_MUL: f32 = 2.0;
@@ -103,7 +103,7 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     RESULT_SPAWNED = false;
     STOP = false;
     EXISTS_PUBLIC = false;
-    BLACK_HOLE_END = false;
+    BLACK_HOLE_END[entry] = false;
     CONTROLLER_X = 0.0;
     CONTROLLER_Y = 0.0;
     CONTROL_SPEED_MUL = 2.0;
@@ -137,7 +137,7 @@ unsafe fn restore_marx_after_item_wipe(module_accessor: *mut BattleObjectModuleA
     EXISTS_PUBLIC = true;
     RESULT_SPAWNED = false;
     STOP = false;
-    BLACK_HOLE_END = false;
+    BLACK_HOLE_END[ENTRY_ID] = false;
     let boss_boma =
         boss_helpers::acquire_boss_item(module_accessor, &raw mut BOSS_ID, *ITEM_KIND_MARX);
     let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
@@ -294,7 +294,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         STOP = false;
                         CONTROLLER_X = 0.0;
                         CONTROLLER_Y = 0.0;
-                        BLACK_HOLE_END = false;
+                        BLACK_HOLE_END[ENTRY_ID] = false;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor =
                             smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -404,7 +404,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             STOP = false;
                             CONTROLLER_X = 0.0;
                             CONTROLLER_Y = 0.0;
-                            BLACK_HOLE_END = false;
+                            BLACK_HOLE_END[ENTRY_ID] = false;
                             let lua_state = fighter.lua_state_agent;
                             let module_accessor =
                                 smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -1517,13 +1517,13 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 8.0
                             {
-                                BLACK_HOLE_END = true;
+                                BLACK_HOLE_END[ENTRY_ID] = true;
                             }
                         }
-                        if BLACK_HOLE_END && StatusModule::status_kind(boss_boma) == 72
+                        if BLACK_HOLE_END[ENTRY_ID] && StatusModule::status_kind(boss_boma) == 72
                             || StatusModule::status_kind(boss_boma) == 65
                         {
-                            BLACK_HOLE_END = false;
+                            BLACK_HOLE_END[ENTRY_ID] = false;
                             StatusModule::change_status_request_from_script(
                                 boss_boma,
                                 *ITEM_MARX_STATUS_KIND_MOVE_TELEPORT,
@@ -1531,7 +1531,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             );
                             CONTROLLABLE = true;
                         }
-                        if !BLACK_HOLE_END
+                        if !BLACK_HOLE_END[ENTRY_ID]
                             && StatusModule::status_kind(boss_boma) == 65
                             && CONTROLLABLE
                         {

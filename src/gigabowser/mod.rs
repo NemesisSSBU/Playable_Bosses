@@ -52,20 +52,28 @@ const fn should_latch_respawn_death(
     respawn_enabled && dead && !stop && status_is_dead
 }
 
-static mut DEAD: bool = false;
-static mut STOP: bool = false;
+static mut DEAD: [bool; 8] = [false; 8];
+static mut STOP: [bool; 8] = [false; 8];
 static mut ENTRY_ID: usize = 0;
-static mut DECREASING: bool = false;
-static mut INITIAL_STOCK_COUNT: u64 = 0;
+static mut DECREASING: [bool; 8] = [false; 8];
+static mut INITIAL_STOCK_COUNT: [u64; 8] = [0; 8];
+
+unsafe fn clear_lifecycle(entry: usize) {
+    DEAD[entry] = false;
+    STOP[entry] = false;
+    DECREASING[entry] = false;
+    INITIAL_STOCK_COUNT[entry] = 0;
+}
 
 /// Clear only the dedicated Giga Bowser lifecycle state. Unlike the
 /// item-backed bosses, Giga Bowser is not reset by the shared runtime table.
 /// This is bookkeeping-only; native fighter teardown remains engine-owned.
 pub unsafe fn reset_match_state(entry_id: usize) {
-    let dead = DEAD;
-    let stop = STOP;
-    let decreasing = DECREASING;
-    let initial_stock_count = INITIAL_STOCK_COUNT;
+    let entry = entry_id.min(7);
+    let dead = DEAD[entry];
+    let stop = STOP[entry];
+    let decreasing = DECREASING[entry];
+    let initial_stock_count = INITIAL_STOCK_COUNT[entry];
     if crate::debug::enabled() && (dead || stop || decreasing || initial_stock_count != 0) {
         crate::boss_log!(
             "[PB][GigaBowser][Reset] entry={} dead={} stop={} decreasing={} initial_stock_count={}",
@@ -77,10 +85,7 @@ pub unsafe fn reset_match_state(entry_id: usize) {
         );
     }
     ENTRY_ID = entry_id.min(7);
-    DEAD = false;
-    STOP = false;
-    DECREASING = false;
-    INITIAL_STOCK_COUNT = 0;
+    clear_lifecycle(entry);
 }
 
 extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
@@ -120,8 +125,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
         }
 
         crate::ai_diagnostics::log_native_fighter(module_accessor);
-        ENTRY_ID =
-            WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID) as usize;
+        ENTRY_ID = (WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID)
+            as usize)
+            .min(7);
         if fighter_kind == *FIGHTER_KIND_KOOPAG {
             if !boss_helpers::is_boss_nonbattle_stage(smash::app::stage::get_stage_id()) {
                 if !uses_boss_battle_rules() {
@@ -136,11 +142,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 let respawn_enabled = CONFIG.options.boss_respawn.unwrap_or(false);
                 let status = StatusModule::status_kind(module_accessor);
                 if sv_information::is_ready_go() == false {
-                    DEAD = false;
-                    STOP = false;
-                    DECREASING = false;
+                    clear_lifecycle(ENTRY_ID);
                     if FighterUtil::is_hp_mode(module_accessor) {
-                        INITIAL_STOCK_COUNT = FighterInformation::stock_count(
+                        INITIAL_STOCK_COUNT[ENTRY_ID] = FighterInformation::stock_count(
                             FighterManager::get_fighter_information(
                                 fighter_manager,
                                 smash::app::FighterEntryID(ENTRY_ID as i32),
@@ -152,11 +156,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     respawn_enabled,
                     status == *FIGHTER_STATUS_KIND_REBIRTH,
                 ) {
-                    DEAD = false;
-                    STOP = false;
-                    DECREASING = false;
+                    clear_lifecycle(ENTRY_ID);
                     if FighterUtil::is_hp_mode(module_accessor) {
-                        INITIAL_STOCK_COUNT =
+                        INITIAL_STOCK_COUNT[ENTRY_ID] =
                             boss_helpers::stock_count_entry(fighter_manager, ENTRY_ID);
                     }
                 }
@@ -176,7 +178,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     DamageModule::damage(module_accessor, 0),
                     hp,
                     lifecycle_blocked,
-                    STOP,
+                    STOP[ENTRY_ID],
                 ) {
                     StatusModule::change_status_request_from_script(
                         module_accessor,
@@ -188,7 +190,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                     && DamageModule::damage(module_accessor, 0) >= hp
                     && FighterUtil::is_hp_mode(module_accessor) == false
                     && StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_STANDBY
-                    && STOP
+                    && STOP[ENTRY_ID]
                     && !respawn_enabled
                 {
                     let x = 0.0;
@@ -202,13 +204,13 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         true,
                     );
                 }
-                // DECREASING FOR STAMINA MODE
+                // DECREASING[ENTRY_ID] FOR STAMINA MODE
                 if StatusModule::status_kind(module_accessor) == 470
                     || StatusModule::status_kind(module_accessor) == 181
                 {
                     if FighterUtil::is_hp_mode(module_accessor) && !training_mode {
                         if StatusModule::status_kind(module_accessor) != *FIGHTER_STATUS_KIND_DEAD {
-                            if DECREASING
+                            if DECREASING[ENTRY_ID]
                                 && FighterInformation::stock_count(
                                     FighterManager::get_fighter_information(
                                         fighter_manager,
@@ -221,10 +223,10 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     *FIGHTER_STATUS_KIND_DEAD,
                                     true,
                                 );
-                                INITIAL_STOCK_COUNT = 0;
-                                DECREASING = false;
+                                INITIAL_STOCK_COUNT[ENTRY_ID] = 0;
+                                DECREASING[ENTRY_ID] = false;
                             }
-                            if DECREASING
+                            if DECREASING[ENTRY_ID]
                                 && FighterInformation::stock_count(
                                     FighterManager::get_fighter_information(
                                         fighter_manager,
@@ -243,9 +245,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     fighter_manager,
                                     smash::app::FighterEntryID(ENTRY_ID as i32),
                                 ),
-                            ) < INITIAL_STOCK_COUNT
+                            ) < INITIAL_STOCK_COUNT[ENTRY_ID]
                             {
-                                DECREASING = true;
+                                DECREASING[ENTRY_ID] = true;
                             }
                         }
                     }
@@ -253,19 +255,19 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                 if StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD
                     && !training_mode
                 {
-                    DEAD = true;
+                    DEAD[ENTRY_ID] = true;
                 }
                 if !training_mode || respawn_enabled {
-                    if DEAD == true {
+                    if DEAD[ENTRY_ID] == true {
                         if should_latch_respawn_death(
                             respawn_enabled,
-                            DEAD,
-                            STOP,
+                            DEAD[ENTRY_ID],
+                            STOP[ENTRY_ID],
                             StatusModule::status_kind(module_accessor) == *FIGHTER_STATUS_KIND_DEAD,
                         ) {
-                            STOP = true;
+                            STOP[ENTRY_ID] = true;
                         }
-                        if STOP == false && !respawn_enabled {
+                        if STOP[ENTRY_ID] == false && !respawn_enabled {
                             if FighterInformation::stock_count(
                                 FighterManager::get_fighter_information(
                                     fighter_manager,
@@ -295,10 +297,10 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     *FIGHTER_STATUS_KIND_DEAD,
                                     true,
                                 );
-                                STOP = true;
+                                STOP[ENTRY_ID] = true;
                             }
                         }
-                        if STOP == true {
+                        if STOP[ENTRY_ID] == true {
                             if StatusModule::status_kind(module_accessor)
                                 == *FIGHTER_STATUS_KIND_REBIRTH
                                 && !respawn_enabled
@@ -329,6 +331,22 @@ mod tests {
         giga_bowser_uses_boss_battle_rules, should_latch_respawn_death,
         should_request_boss_hp_death, should_reset_respawn_lifecycle,
     };
+
+    #[test]
+    fn duplicate_giga_bowsers_keep_independent_death_and_stock_state() {
+        unsafe {
+            super::DEAD[1] = true;
+            super::STOP[1] = true;
+            super::INITIAL_STOCK_COUNT[1] = 3;
+            super::clear_lifecycle(0);
+            assert!(super::DEAD[1]);
+            assert!(super::STOP[1]);
+            assert_eq!(super::INITIAL_STOCK_COUNT[1], 3);
+            assert!(!super::DEAD[0]);
+            assert!(!super::STOP[0]);
+            super::clear_lifecycle(1);
+        }
+    }
 
     #[test]
     fn giga_bowser_normal_disables_boss_battle_rules() {

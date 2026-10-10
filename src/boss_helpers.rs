@@ -1871,6 +1871,11 @@ pub fn is_boss_preview_stage(stage_id: i32) -> bool {
         || stage_id == STAGE_ID_AMIIBO_PREVIEW
 }
 
+#[inline(always)]
+pub fn is_spirit_capture_status(status: i32) -> bool {
+    status == *FIGHTER_STATUS_KIND_ROULETTE || status == *FIGHTER_STATUS_KIND_ROULETTE_FURAFURA
+}
+
 /// World of Light constructs its preview host after the UI selection callbacks.
 /// Keep this distinct from the other preview scenes so boss modules can defer
 /// runtime setup until that host is actually valid.
@@ -1911,6 +1916,25 @@ mod tests {
         STAGE_ID_BOSS_PREVIEW, STAGE_ID_CLASSIC_STAFFROLL,
     };
     use smash::lib::lua_const::*;
+
+    #[test]
+    fn spirit_capture_is_native_fighter_control_not_boss_gameplay() {
+        for status in [
+            *FIGHTER_STATUS_KIND_ROULETTE,
+            *FIGHTER_STATUS_KIND_ROULETTE_FURAFURA,
+        ] {
+            assert!(super::is_spirit_capture_status(status));
+        }
+        for status in [
+            *FIGHTER_STATUS_KIND_ENTRY,
+            *FIGHTER_STATUS_KIND_WAIT,
+            *FIGHTER_STATUS_KIND_FALL,
+            *FIGHTER_STATUS_KIND_REBIRTH,
+            *FIGHTER_STATUS_KIND_WIN,
+        ] {
+            assert!(!super::is_spirit_capture_status(status));
+        }
+    }
 
     #[test]
     fn acquisition_reuses_the_hosts_held_boss_before_creating_another() {

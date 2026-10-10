@@ -18,15 +18,15 @@ static mut CONTROLLABLE: bool = true;
 static mut ENTRY_ID: usize = 0;
 static mut BOSS_ID: [u32; 8] = [0; 8];
 static mut DEAD: bool = false;
-static mut MOVING: bool = false;
+static mut MOVING: [bool; 8] = [false; 8];
 static mut JUMP_START: bool = false;
 static mut RESULT_SPAWNED: bool = false;
 static mut STOP: bool = false;
 static mut FRESH_CONTROL: bool = false;
 static mut EXISTS_PUBLIC: bool = false;
-static mut RETURN: bool = false;
-static mut Y_POS: f32 = 0.0;
-static mut INITIAL_Y_POS: f32 = 0.0;
+static mut RETURN: [bool; 8] = [false; 8];
+static mut Y_POS: [f32; 8] = [0.0; 8];
+static mut INITIAL_Y_POS: [f32; 8] = [0.0; 8];
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -73,15 +73,15 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     ENTRY_ID = entry;
     BOSS_ID[entry] = 0;
     DEAD = false;
-    MOVING = false;
+    MOVING[entry] = false;
     JUMP_START = false;
     RESULT_SPAWNED = false;
     STOP = false;
     FRESH_CONTROL = false;
     EXISTS_PUBLIC = false;
-    RETURN = false;
-    Y_POS = 0.0;
-    INITIAL_Y_POS = 0.0;
+    RETURN[entry] = false;
+    Y_POS[entry] = 0.0;
+    INITIAL_Y_POS[entry] = 0.0;
 }
 
 #[inline(always)]
@@ -111,7 +111,7 @@ unsafe fn restore_ganon_after_item_wipe(module_accessor: *mut BattleObjectModule
     EXISTS_PUBLIC = true;
     RESULT_SPAWNED = false;
     STOP = false;
-    RETURN = false;
+    RETURN[ENTRY_ID] = false;
     let boss_boma =
         boss_helpers::acquire_boss_item(module_accessor, &raw mut BOSS_ID, *ITEM_KIND_GANONBOSS);
     let get_boss_intensity = CONFIG.options.boss_difficulty.unwrap_or(10.0);
@@ -252,9 +252,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         JUMP_START = false;
                         STOP = false;
-                        MOVING = false;
+                        MOVING[ENTRY_ID] = false;
                         FRESH_CONTROL = false;
-                        RETURN = false;
+                        RETURN[ENTRY_ID] = false;
                         let lua_state = fighter.lua_state_agent;
                         let module_accessor =
                             smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -299,8 +299,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 *ITEM_INSTANCE_WORK_FLOAT_HP_MAX,
                             );
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-                            Y_POS = PostureModule::pos_y(boss_boma);
-                            INITIAL_Y_POS = PostureModule::pos_y(module_accessor);
+                            Y_POS[ENTRY_ID] = PostureModule::pos_y(boss_boma);
+                            INITIAL_Y_POS[ENTRY_ID] = PostureModule::pos_y(module_accessor);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(
                                 boss_boma,
@@ -364,9 +364,9 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             CONTROLLABLE = true;
                             JUMP_START = false;
                             STOP = false;
-                            MOVING = false;
+                            MOVING[ENTRY_ID] = false;
                             FRESH_CONTROL = false;
-                            RETURN = false;
+                            RETURN[ENTRY_ID] = false;
                             let lua_state = fighter.lua_state_agent;
                             let module_accessor =
                                 smash::app::sv_system::battle_object_module_accessor(lua_state);
@@ -413,7 +413,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             );
 
                             let x = PostureModule::pos_x(module_accessor);
-                            let y = INITIAL_Y_POS;
+                            let y = INITIAL_Y_POS[ENTRY_ID];
                             let z = PostureModule::pos_z(module_accessor);
                             let module_pos = Vector3f { x: x, y: y, z: z };
                             PostureModule::set_pos(boss_boma, &module_pos);
@@ -1242,7 +1242,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                             || StatusModule::status_kind(boss_boma)
                                                 != *ITEM_GANONBOSS_STATUS_KIND_WALK_BACK
                                         {
-                                            if MOVING == false {
+                                            if MOVING[ENTRY_ID] == false {
                                                 if FRESH_CONTROL {
                                                     StatusModule::change_status_request_from_script(
                                                         boss_boma,
@@ -1350,7 +1350,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 let z = PostureModule::pos_z(boss_boma);
                                 let boss_y_pos_2 = Vector3f {
                                     x: x,
-                                    y: Y_POS,
+                                    y: Y_POS[ENTRY_ID],
                                     z: z,
                                 };
                                 PostureModule::set_pos(module_accessor, &boss_y_pos_2);
@@ -1369,7 +1369,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             == *ITEM_GANONBOSS_STATUS_KIND_DOWN_START
                         {
                             CONTROLLABLE = false;
-                            MOVING = false;
+                            MOVING[ENTRY_ID] = false;
                             FRESH_CONTROL = false;
                         }
 
@@ -1488,7 +1488,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 let z = PostureModule::pos_z(boss_boma);
                                 let boss_y_pos_2 = Vector3f {
                                     x: x,
-                                    y: Y_POS,
+                                    y: Y_POS[ENTRY_ID],
                                     z: z,
                                 };
                                 PostureModule::set_pos(module_accessor, &boss_y_pos_2);
@@ -1588,11 +1588,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_GANONBOSS_STATUS_KIND_ATTACK_THUNDER_SLASH_EXEC
                         {
-                            if RETURN
+                            if RETURN[ENTRY_ID]
                                 && MotionModule::frame(boss_boma)
                                     >= MotionModule::end_frame(boss_boma) - 85.0
                             {
-                                RETURN = false;
+                                RETURN[ENTRY_ID] = false;
                                 StatusModule::change_status_request_from_script(
                                     boss_boma,
                                     *ITEM_GANONBOSS_STATUS_KIND_ATTACK_THUNDER_SLASH_RETURN,
@@ -1648,7 +1648,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 >= MotionModule::end_frame(boss_boma) - 5.0
                             {
                                 CONTROLLABLE = true;
-                                MOVING = false;
+                                MOVING[ENTRY_ID] = false;
                                 FRESH_CONTROL = true;
                             }
                         }
@@ -1660,7 +1660,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 >= MotionModule::end_frame(boss_boma) - 5.0
                             {
                                 CONTROLLABLE = true;
-                                MOVING = false;
+                                MOVING[ENTRY_ID] = false;
                                 FRESH_CONTROL = true;
                             }
                         }
@@ -1672,7 +1672,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 >= MotionModule::end_frame(boss_boma) - 5.0
                             {
                                 CONTROLLABLE = true;
-                                MOVING = false;
+                                MOVING[ENTRY_ID] = false;
                                 FRESH_CONTROL = true;
                             }
                         }
@@ -1691,12 +1691,12 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         != *ITEM_GANONBOSS_STATUS_KIND_WALK_BACK
                                         && StatusModule::status_kind(boss_boma)
                                             != *ITEM_GANONBOSS_STATUS_KIND_WALK_FRONT
-                                        && !MOVING
+                                        && !MOVING[ENTRY_ID]
                                     {
                                         if lua_bind::PostureModule::lr(boss_boma) == 1.0 {
                                             // right
                                             if ControlModule::get_stick_x(module_accessor) < -0.5 {
-                                                MOVING = true;
+                                                MOVING[ENTRY_ID] = true;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
                                                     *ITEM_GANONBOSS_STATUS_KIND_WALK_BACK,
@@ -1704,7 +1704,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                 );
                                             }
                                             if ControlModule::get_stick_x(module_accessor) > 0.5 {
-                                                MOVING = true;
+                                                MOVING[ENTRY_ID] = true;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
                                                     *ITEM_GANONBOSS_STATUS_KIND_WALK_FRONT,
@@ -1715,7 +1715,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         if lua_bind::PostureModule::lr(boss_boma) == -1.0 {
                                             // left
                                             if ControlModule::get_stick_x(module_accessor) > 0.5 {
-                                                MOVING = true;
+                                                MOVING[ENTRY_ID] = true;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
                                                     *ITEM_GANONBOSS_STATUS_KIND_WALK_BACK,
@@ -1723,7 +1723,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                                 );
                                             }
                                             if ControlModule::get_stick_x(module_accessor) < -0.5 {
-                                                MOVING = true;
+                                                MOVING[ENTRY_ID] = true;
                                                 StatusModule::change_status_request_from_script(
                                                     boss_boma,
                                                     *ITEM_GANONBOSS_STATUS_KIND_WALK_FRONT,
@@ -1738,7 +1738,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         *CONTROL_PAD_BUTTON_JUMP,
                                     ) {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_BACK_JUMP,
@@ -1750,7 +1750,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         *CONTROL_PAD_BUTTON_SPECIAL,
                                     ) {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_JUMP_SLASH_START,
@@ -1763,11 +1763,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     ) {
                                         if ControlModule::get_stick_x(module_accessor) > 0.5 {
                                             CONTROLLABLE = false;
-                                            MOVING = false;
+                                            MOVING[ENTRY_ID] = false;
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_READY_TURN_JUMP, true);
                                         } else {
                                             CONTROLLABLE = false;
-                                            MOVING = false;
+                                            MOVING[ENTRY_ID] = false;
                                             StatusModule::change_status_request_from_script(
                                                 boss_boma,
                                                 *ITEM_GANONBOSS_STATUS_KIND_TURN_JUMP,
@@ -1781,11 +1781,11 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                     ) {
                                         if ControlModule::get_stick_x(module_accessor) < -0.5 {
                                             CONTROLLABLE = false;
-                                            MOVING = false;
+                                            MOVING[ENTRY_ID] = false;
                                             StatusModule::change_status_request_from_script(boss_boma, *ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_READY_TURN_JUMP, true);
                                         } else {
                                             CONTROLLABLE = false;
-                                            MOVING = false;
+                                            MOVING[ENTRY_ID] = false;
                                             StatusModule::change_status_request_from_script(
                                                 boss_boma,
                                                 *ITEM_GANONBOSS_STATUS_KIND_TURN_JUMP,
@@ -1798,7 +1798,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         *CONTROL_PAD_BUTTON_ATTACK,
                                     ) {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_LASER_BEAM_HOLD,
@@ -1812,7 +1812,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         != 0
                                     {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_SPIN_SLASH_START,
@@ -1826,7 +1826,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         != 0
                                     {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_BODY_ATTACK_HOLD,
@@ -1840,7 +1840,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         != 0
                                     {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_HOMING_BOMB_HOLD,
@@ -1854,8 +1854,8 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         != 0
                                     {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
-                                        RETURN = true;
+                                        MOVING[ENTRY_ID] = false;
+                                        RETURN[ENTRY_ID] = true;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_THUNDER_SLASH_START,
@@ -1869,7 +1869,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         != 0
                                     {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_THUNDER_SLASH_START,
@@ -1883,7 +1883,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         != 0
                                     {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_DOUBLE_SLASH_START,
@@ -1895,7 +1895,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         *CONTROL_PAD_BUTTON_APPEAL_HI,
                                     ) {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_BIG_JUMP,
@@ -1907,7 +1907,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         *CONTROL_PAD_BUTTON_APPEAL_S_R,
                                     ) {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_SLASH_UP,
@@ -1919,7 +1919,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         *CONTROL_PAD_BUTTON_APPEAL_S_L,
                                     ) {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_THUNDER_SLASH_TURN,
@@ -1931,7 +1931,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                         *CONTROL_PAD_BUTTON_APPEAL_LW,
                                     ) {
                                         CONTROLLABLE = false;
-                                        MOVING = false;
+                                        MOVING[ENTRY_ID] = false;
                                         StatusModule::change_status_request_from_script(
                                             boss_boma,
                                             *ITEM_GANONBOSS_STATUS_KIND_ATTACK_BACK_SLASH,

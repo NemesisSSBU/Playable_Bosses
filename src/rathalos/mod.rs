@@ -14,7 +14,7 @@ use smash::phx::Vector3f;
 use std::u32;
 
 static mut CONTROLLABLE: bool = true;
-static mut GROUNDED: bool = true;
+static mut GROUNDED: [bool; 8] = [true; 8];
 static mut ENTRY_ID: usize = 0;
 static mut BOSS_ID: [u32; 8] = [0; 8];
 static mut DEAD: bool = false;
@@ -23,7 +23,7 @@ static mut RESULT_SPAWNED: bool = false;
 static mut STOP: bool = false;
 static mut FRESH_CONTROL: bool = false;
 static mut EXISTS_PUBLIC: bool = false;
-static mut INITIAL_Y_POS: f32 = 0.0;
+static mut INITIAL_Y_POS: [f32; 8] = [0.0; 8];
 
 extern "C" {
     #[link_name = "\u{1}_ZN3app17sv_camera_manager10dead_rangeEP9lua_State"]
@@ -67,7 +67,7 @@ unsafe fn store_rathalos_runtime(slot: *mut BossCommonRuntime) {
 pub unsafe fn reset_match_state(entry_id: usize) {
     let entry = boss_runtime::sanitize_entry_id(entry_id);
     CONTROLLABLE = true;
-    GROUNDED = true;
+    GROUNDED[entry] = true;
     ENTRY_ID = entry;
     BOSS_ID[entry] = 0;
     DEAD = false;
@@ -76,7 +76,7 @@ pub unsafe fn reset_match_state(entry_id: usize) {
     STOP = false;
     FRESH_CONTROL = false;
     EXISTS_PUBLIC = false;
-    INITIAL_Y_POS = 0.0;
+    INITIAL_Y_POS[entry] = 0.0;
 }
 
 #[inline(always)]
@@ -158,7 +158,7 @@ unsafe fn restore_rathalos_after_item_wipe(module_accessor: *mut BattleObjectMod
         z: PostureModule::pos_z(module_accessor),
     };
     PostureModule::set_pos(boss_boma, &boss_pos);
-    if GROUNDED {
+    if GROUNDED[ENTRY_ID] {
         StatusModule::change_status_request_from_script(
             boss_boma,
             *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT,
@@ -365,7 +365,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             CONTROLLABLE = true;
                         }
                         JUMP_START = false;
-                        GROUNDED = true;
+                        GROUNDED[ENTRY_ID] = true;
                         STOP = false;
                         FRESH_CONTROL = false;
                         let lua_state = fighter.lua_state_agent;
@@ -412,7 +412,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 *ITEM_INSTANCE_WORK_FLOAT_HP_MAX,
                             );
                             WorkModule::set_float(boss_boma, 999.0, *ITEM_INSTANCE_WORK_FLOAT_HP);
-                            INITIAL_Y_POS = PostureModule::pos_y(module_accessor);
+                            INITIAL_Y_POS[ENTRY_ID] = PostureModule::pos_y(module_accessor);
                             ModelModule::set_scale(module_accessor, 0.0001);
                             StatusModule::change_status_request_from_script(
                                 boss_boma,
@@ -475,7 +475,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             DEAD = false;
                             CONTROLLABLE = true;
                             JUMP_START = false;
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             STOP = false;
                             FRESH_CONTROL = false;
                             let lua_state = fighter.lua_state_agent;
@@ -524,7 +524,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             );
 
                             let x = PostureModule::pos_x(module_accessor);
-                            let y = INITIAL_Y_POS;
+                            let y = INITIAL_Y_POS[ENTRY_ID];
                             let z = PostureModule::pos_z(module_accessor);
                             let module_pos = Vector3f { x: x, y: y, z: z };
                             PostureModule::set_pos(boss_boma, &module_pos);
@@ -598,7 +598,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 BOSS_ID[boss_helpers::entry_id(module_accessor)],
                             );
                             if CONTROLLABLE == true {
-                                if GROUNDED == true {
+                                if GROUNDED[ENTRY_ID] == true {
                                     if MotionModule::motion_kind(boss_boma) != smash::hash40("wait")
                                         && StatusModule::status_kind(boss_boma)
                                             != *ITEM_LIOLEUSBOSS_STATUS_KIND_WAIT
@@ -1398,7 +1398,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_END
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -1409,7 +1409,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_DOWN_AIR_END
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -1452,7 +1452,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_MOVE_TACKLE_TURN
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -1467,7 +1467,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_KIZETSU_END
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -1478,7 +1478,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_HOLE_END
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -1489,7 +1489,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_MOVE_TACKLE_END
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -1530,7 +1530,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE_END
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -1551,7 +1551,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_FIREBALL3_END
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -1670,7 +1670,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
                         if StatusModule::status_kind(boss_boma) == *ITEM_LIOLEUSBOSS_STATUS_KIND_FLY
                         {
-                            GROUNDED = false;
+                            GROUNDED[ENTRY_ID] = false;
                             //Boss Control Stick Movement
                             if ControlModule::get_stick_x(module_accessor) <= 0.001 {
                                 let pos = Vector3f {
@@ -1899,7 +1899,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_BACK_JUMP_FIREBALL
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -1910,7 +1910,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_BACK_JUMP_FIREBALL2
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -1924,7 +1924,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
-                                GROUNDED = false;
+                                GROUNDED[ENTRY_ID] = false;
                                 CONTROLLABLE = true;
                                 FRESH_CONTROL = true;
                             }
@@ -1935,7 +1935,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
-                                GROUNDED = false;
+                                GROUNDED[ENTRY_ID] = false;
                                 CONTROLLABLE = true;
                                 FRESH_CONTROL = true;
                             }
@@ -1953,7 +1953,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         if StatusModule::status_kind(boss_boma)
                             == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_HOWLING
                         {
-                            GROUNDED = true;
+                            GROUNDED[ENTRY_ID] = true;
                             if MotionModule::frame(boss_boma)
                                 >= MotionModule::end_frame(boss_boma) - 2.0
                             {
@@ -2003,7 +2003,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
 
                         if CONTROLLABLE == false {
-                            if GROUNDED == true {
+                            if GROUNDED[ENTRY_ID] == true {
                                 if DEAD == false {
                                     if StatusModule::status_kind(boss_boma)
                                         == *ITEM_LIOLEUSBOSS_STATUS_KIND_ATTACK_TACKLE
@@ -2026,7 +2026,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
 
                         if CONTROLLABLE == true
-                            && GROUNDED == true
+                            && GROUNDED[ENTRY_ID] == true
                             && DEAD == false
                             && sv_information::is_ready_go() == true
                         {
@@ -2036,7 +2036,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 *CONTROL_PAD_BUTTON_JUMP,
                             ) {
                                 CONTROLLABLE = false;
-                                GROUNDED = false;
+                                GROUNDED[ENTRY_ID] = false;
                                 StatusModule::change_status_request_from_script(
                                     boss_boma,
                                     *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_AIR,
@@ -2156,7 +2156,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                         }
 
                         if CONTROLLABLE == true
-                            && GROUNDED == false
+                            && GROUNDED[ENTRY_ID] == false
                             && DEAD == false
                             && sv_information::is_ready_go() == true
                         {
@@ -2219,7 +2219,7 @@ extern "C" fn once_per_fighter_frame(fighter: &mut L2CFighterCommon) {
                                 ) > 0.0
                             {
                                 CONTROLLABLE = false;
-                                GROUNDED = true;
+                                GROUNDED[ENTRY_ID] = true;
                                 StatusModule::change_status_request_from_script(
                                     boss_boma,
                                     *ITEM_LIOLEUSBOSS_STATUS_KIND_CHANGE_MODE_GROUND,
